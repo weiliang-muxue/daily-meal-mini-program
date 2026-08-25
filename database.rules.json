@@ -1,0 +1,30 @@
+{
+  "meal_users": {
+    "read": false,
+    "write": false
+  },
+  "meal_user_states": {
+    "read": false,
+    "write": false
+  },
+  "meal_avatar_uploads": {
+    "read": false,
+    "write": false
+  },
+  "meal_members": {
+    "read": false,
+    "write": false
+  },
+  "meal_invites": {
+    "read": false,
+    "write": false
+  },
+  "health_daily": {
+    "read": false,
+    "write": false
+  },
+  "health_photo_uploads": {
+    "read": false,
+    "write": false
+  }
+}

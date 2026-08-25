@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "本周计划",
+  "enablePullDownRefresh": true,
+  "usingComponents": { "meal-card": "/components/meal-card/meal-card" }
+}

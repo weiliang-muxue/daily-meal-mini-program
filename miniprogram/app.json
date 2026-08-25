@@ -1,0 +1,34 @@
+{
+  "pages": [
+    "pages/access/access",
+    "pages/plan/plan",
+    "pages/health/health",
+    "pages/shopping/shopping",
+    "pages/guide/guide",
+    "pages/profile/profile",
+    "pages/meal-edit/meal-edit"
+  ],
+  "window": {
+    "navigationBarTitleText": "每天怎么吃",
+    "navigationBarBackgroundColor": "#F5F7F2",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F5F7F2",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#6D7770",
+    "selectedColor": "#176B46",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/plan/plan", "text": "本周" },
+      { "pagePath": "pages/health/health", "text": "记录" },
+      { "pagePath": "pages/shopping/shopping", "text": "采购" },
+      { "pagePath": "pages/profile/profile", "text": "我的" }
+    ]
+  },
+  "style": "v2",
+  "__usePrivacyCheck__": true,
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}

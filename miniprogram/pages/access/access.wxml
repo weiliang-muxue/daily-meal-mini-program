@@ -1,0 +1,22 @@
+<view class="access-screen">
+  <image class="access-image" src="/assets/meal-plan-cover.jpg" mode="aspectFill" />
+  <view class="access-shade"></view>
+  <view class="access-content">
+    <text class="brand">每天怎么吃</text>
+    <text class="title">私人健康计划</text>
+    <text class="copy">仅供受邀请的成员使用。每个人的餐食、体重照片和运动记录彼此独立。</text>
+
+    <view wx:if="{{loading}}" class="access-card"><text>正在验证微信身份…</text></view>
+    <view wx:else class="access-card">
+      <view class="mode-tabs">
+        <view class="mode-tab {{mode === 'invite' ? 'active' : ''}}" data-mode="invite" bindtap="setMode">邀请码</view>
+        <view class="mode-tab {{mode === 'owner' ? 'active' : ''}}" data-mode="owner" bindtap="setMode">首次部署</view>
+      </view>
+      <text class="form-label">{{mode === 'owner' ? '管理员部署口令' : '成员邀请码'}}</text>
+      <input class="code-input" value="{{code}}" bindinput="inputCode" maxlength="32" placeholder="请输入" />
+      <text wx:if="{{error}}" class="error">{{error}}</text>
+      <button class="submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">验证并进入</button>
+      <text class="hint">首次部署只能激活 1 位管理员；之后由管理员在“我的”页面生成一次性邀请码。</text>
+    </view>
+  </view>
+</view>

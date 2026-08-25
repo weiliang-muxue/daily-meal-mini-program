@@ -1,0 +1,47 @@
+.plan-screen { padding-bottom: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.cover { flex: none; height: 180rpx; border-radius: 16rpx; overflow: hidden; position: relative; margin-bottom: 20rpx; }
+.cover-image, .cover-shade { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cover-shade { background: linear-gradient(90deg, rgba(18,44,33,.86), rgba(18,44,33,.2)); }
+.cover-copy { position: absolute; inset: 0; padding: 26rpx; display: flex; flex-direction: column; justify-content: flex-end; color: #fff; }
+.cover-copy text:first-child { font-size: 36rpx; font-weight: 760; }
+.cover-copy text:last-child { margin-top: 6rpx; font-size: 24rpx; color: rgba(255,255,255,.82); }
+.intro { display: flex; justify-content: space-between; align-items: flex-start; padding: 12rpx 4rpx 22rpx; }
+.eyebrow { display: block; color: #a87519; font-size: 24rpx; font-weight: 700; margin-bottom: 7rpx; }
+.page-title { display: block; font-size: 48rpx; line-height: 1.2; font-weight: 780; }
+.health-badge { padding: 12rpx 16rpx; border-radius: 8rpx; background: #fff4d8; color: #80570d; font-size: 23rpx; font-weight: 700; }
+.sync-strip { min-height: 66rpx; padding: 0 18rpx; display: flex; align-items: center; gap: 12rpx; background: #e7f1eb; color: #37604c; border-radius: 10rpx; font-size: 23rpx; }
+.sync-strip.offline { background: #fff0e9; color: #8a4736; }
+.sync-dot { width: 13rpx; height: 13rpx; border-radius: 50%; background: #176b46; }
+.offline .sync-dot { background: #c85f45; }
+.retry { margin-left: auto; font-weight: 700; }
+.strip-hover { opacity: .78; }
+.plan-scroll { flex: none; width: 100%; margin-top: 18rpx; }
+.plan-list { display: inline-flex; gap: 12rpx; }
+.plan-chip { min-width: 128rpx; min-height: 70rpx; padding: 0 22rpx; border-radius: 10rpx; background: #fff; border: 1rpx solid #dce4de; display: flex; align-items: center; justify-content: center; color: #68766f; font-size: 25rpx; font-weight: 650; }
+.plan-chip.active { background: #1f3028; color: #fff; border-color: #1f3028; }
+.day-scroll { flex: none; width: 100%; margin: 18rpx 0; }
+.day-list { display: inline-flex; gap: 12rpx; padding: 2rpx 2rpx 4rpx; }
+.day-button { width: 88rpx; min-height: 100rpx; border-radius: 12rpx; background: #fff; border: 1rpx solid #dce4de; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.day-button.active { background: #176b46; color: #fff; border-color: #176b46; }
+.day-hover { opacity: .74; }
+.day-short { font-size: 32rpx; font-weight: 750; }
+.day-full { margin-top: 4rpx; font-size: 20rpx; opacity: .76; }
+.day-swiper { flex: 1; min-height: 0; }
+.day-pane { height: 100%; }
+.day-heading { display: flex; align-items: baseline; justify-content: space-between; padding: 8rpx 4rpx 20rpx; }
+.day-name { font-size: 40rpx; font-weight: 750; }
+.day-theme { color: #68766f; font-size: 25rpx; }
+.dinner-control { margin: 30rpx 0 20rpx; }
+.control-title { display: block; font-size: 34rpx; font-weight: 730; margin-bottom: 16rpx; }
+.segment { padding: 8rpx; border-radius: 14rpx; background: #e9ede9; display: grid; grid-template-columns: 1fr 1fr; gap: 8rpx; }
+.segment-button { min-height: 90rpx; border-radius: 10rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #5e6a64; font-weight: 700; }
+.segment-button.active { color: #fff; background: #176b46; }
+.segment-button.active.workout { background: #8d650f; }
+.segment-sub { font-size: 21rpx; margin-top: 4rpx; opacity: .78; font-weight: 500; }
+.segment-hover { opacity: .76; }
+.mode-note { border-left: 6rpx solid #176b46; background: #e7f1eb; padding: 22rpx 24rpx; color: #405149; font-size: 25rpx; line-height: 1.62; }
+.mode-note.workout { border-color: #a87519; background: #fff4d8; }
+.bottom-space { height: calc(40rpx + env(safe-area-inset-bottom)); }
+.loading-wrap { padding-top: 30rpx; }
+.skeleton-title { width: 50%; height: 50rpx; border-radius: 8rpx; margin-bottom: 30rpx; }
+.skeleton-card { height: 360rpx; border-radius: 16rpx; margin-bottom: 22rpx; }

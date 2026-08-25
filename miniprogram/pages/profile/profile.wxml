@@ -1,0 +1,43 @@
+<view class="screen">
+  <view class="profile-header surface">
+    <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" aria-label="选择头像">
+      <image wx:if="{{avatarPreview}}" class="avatar" src="{{avatarPreview}}" mode="aspectFill" />
+      <view wx:else class="avatar avatar-empty"><text>{{nicknameInitial}}</text></view>
+    </button>
+    <view class="header-copy"><text class="header-title">{{profile.nickname || '还没有设置昵称'}}</text><text class="header-subtitle">头像和昵称可以跳过，以后随时修改</text></view>
+  </view>
+
+  <view class="auth-strip {{authState}}" bindtap="retryLogin">
+    <view class="auth-dot"></view><view><text class="auth-title">{{authState === 'ready' ? '微信身份已连接' : authState === 'connecting' ? '正在验证微信身份' : '暂时离线'}}</text><text class="auth-detail">{{authDetail}}</text></view>
+  </view>
+
+  <text class="section-title">公开资料</text>
+  <view class="profile-form surface">
+    <view class="field-row"><text class="field-label">昵称</text><input type="nickname" maxlength="20" value="{{nickname}}" bindinput="onNicknameInput" placeholder="填写你希望显示的昵称" /></view>
+    <view class="privacy-note"><text>仅在你主动选择头像、填写昵称并点击保存后上传。小程序不会自动获取完整微信资料。</text></view>
+    <button class="primary-button" loading="{{saving}}" disabled="{{saving}}" bindtap="saveProfile" hover-class="button-hover">保存资料</button>
+  </view>
+
+  <text class="section-title">数据状态</text>
+  <view class="surface data-list">
+    <view class="data-row"><text>数据真源</text><text>微信云数据库</text></view>
+    <view class="data-row"><text>最近更新</text><text>{{updatedText}}</text></view>
+    <view class="data-row"><text>离线处理</text><text>本机快照，联网后重试</text></view>
+  </view>
+
+  <block wx:if="{{member.role === 'owner'}}">
+    <text class="section-title">邀请成员</text>
+    <view class="invite-card surface">
+      <view class="invite-heading"><view><text class="invite-title">当前 {{memberCount}} / {{maxMembers}} 人</text><text class="invite-copy">每个邀请码只能使用一次，7 天后过期</text></view></view>
+      <input class="invite-label" maxlength="20" value="{{inviteLabel}}" bindinput="inputInviteLabel" placeholder="备注，例如：家人（可选）" />
+      <button class="secondary-button" loading="{{creatingInvite}}" disabled="{{creatingInvite || memberCount >= maxMembers}}" bindtap="createInvite">生成一次性邀请码</button>
+      <view wx:if="{{inviteCode}}" class="invite-result" bindtap="copyInvite"><text class="invite-code">{{inviteCode}}</text><text class="invite-expire">有效期至 {{inviteExpiresText}} · 点击复制</text></view>
+    </view>
+  </block>
+
+  <view class="privacy-card">
+    <text class="privacy-title">身份与隐私</text>
+    <text>登录使用 wx.login，并由云函数从可信上下文识别当前用户。AppSecret、session_key、openid 和 unionid 不保存在前端；数据库中的身份标识也不会展示给其他用户。</text>
+  </view>
+  <button class="danger-button" bindtap="clearMyData">清空我的私人数据</button>
+</view>

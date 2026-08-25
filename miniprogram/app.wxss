@@ -1,0 +1,39 @@
+page {
+  --primary: #176b46;
+  --primary-soft: #e7f1eb;
+  --ink: #1f3028;
+  --muted: #68766f;
+  --line: #dce4de;
+  --surface: #ffffff;
+  --background: #f5f7f2;
+  --warm: #c85f45;
+  --warm-soft: #fff0e9;
+  --gold: #a87519;
+  --gold-soft: #fff4d8;
+  background: var(--background);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 30rpx;
+}
+
+view, text, image, button, input, textarea { box-sizing: border-box; }
+button::after { border: 0; }
+.screen { min-height: 100vh; padding: 24rpx 28rpx calc(40rpx + env(safe-area-inset-bottom)); }
+.surface { background: var(--surface); border: 1rpx solid var(--line); border-radius: 16rpx; }
+.section-title { display: block; margin: 40rpx 0 18rpx; font-size: 36rpx; line-height: 1.25; font-weight: 700; }
+.section-copy { color: var(--muted); line-height: 1.65; }
+.primary-button, .secondary-button {
+  min-height: 92rpx; border-radius: 14rpx; display: flex; align-items: center; justify-content: center;
+  font-size: 30rpx; font-weight: 650; letter-spacing: 0;
+}
+.primary-button { background: var(--primary); color: #fff; }
+.primary-button[disabled] { opacity: .48; }
+.primary-button.button-hover { opacity: .82; }
+.secondary-button { background: #fff; color: var(--primary); border: 1rpx solid #b9d0c1; }
+.text-action { color: var(--primary); font-weight: 650; padding: 20rpx 0; min-height: 88rpx; display: flex; align-items: center; }
+.status-panel { padding: 28rpx; text-align: center; margin-top: 24rpx; }
+.status-title { display: block; font-weight: 700; margin-bottom: 8rpx; }
+.status-detail { display: block; color: var(--muted); line-height: 1.5; font-size: 26rpx; }
+.skeleton { overflow: hidden; background: #e5eae6; position: relative; }
+.skeleton::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: shimmer 1.2s infinite; }
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }

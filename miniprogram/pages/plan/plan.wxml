@@ -1,0 +1,62 @@
+<view class="screen plan-screen">
+  <view class="cover">
+    <image class="cover-image" src="/assets/meal-plan-cover.jpg" mode="aspectFill" />
+    <view class="cover-shade"></view>
+    <view class="cover-copy"><text>每天怎么吃</text><text>清淡、低油，也要吃够</text></view>
+  </view>
+  <view class="intro">
+    <view>
+      <text class="eyebrow">{{planTitle}} · 一人份</text>
+      <text class="page-title">今天怎么吃</text>
+    </view>
+    <view class="health-badge">骨健康优先</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <view class="skeleton skeleton-title"></view>
+    <view class="skeleton skeleton-card"></view>
+    <view class="skeleton skeleton-card"></view>
+  </view>
+
+  <block wx:else>
+    <view class="sync-strip {{offline ? 'offline' : ''}}" bindtap="retrySync" hover-class="strip-hover">
+      <view class="sync-dot"></view><text>{{syncText}}</text><text wx:if="{{offline}}" class="retry">重试</text>
+    </view>
+
+    <scroll-view wx:if="{{plans.length > 1}}" class="plan-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="plan-list"><view wx:for="{{plans}}" wx:key="id" class="plan-chip {{activePlanId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectPlan">{{item.title}}</view></view>
+    </scroll-view>
+
+    <scroll-view class="day-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="day-list">
+        <view wx:for="{{days}}" wx:key="id" class="day-button {{selectedDay === index ? 'active' : ''}}" data-index="{{index}}" bindtap="selectDay" hover-class="day-hover" aria-label="选择{{item.name}}">
+          <text class="day-short">{{item.short}}</text><text class="day-full">{{item.name}}</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <swiper class="day-swiper" current="{{selectedDay}}" bindchange="onSwiperChange" duration="220">
+      <swiper-item wx:for="{{days}}" wx:key="id">
+        <scroll-view class="day-pane" scroll-y enhanced>
+          <view class="day-heading"><text class="day-name">{{item.name}}</text><text class="day-theme">{{item.theme}}</text></view>
+          <meal-card meal="{{breakfast}}" tone="breakfast" editable bind:edit="editBreakfast" />
+
+          <view class="dinner-control">
+            <text class="control-title">今晚动不动？</text>
+            <view class="segment" aria-label="选择今晚是否锻炼">
+              <view class="segment-button {{dinnerMode === 'rest' ? 'active' : ''}}" data-mode="rest" bindtap="selectMode" hover-class="segment-hover"><text>不锻炼</text><text class="segment-sub">轻一点</text></view>
+              <view class="segment-button {{dinnerMode === 'workout' ? 'active workout' : ''}}" data-mode="workout" bindtap="selectMode" hover-class="segment-hover"><text>锻炼</text><text class="segment-sub">补恢复</text></view>
+            </view>
+          </view>
+
+          <meal-card meal="{{dinner}}" tone="{{dinnerMode}}" editable bind:edit="editDinner" />
+          <view class="mode-note {{dinnerMode}}">
+            <text wx:if="{{dinnerMode === 'rest'}}">不锻炼日晚餐保留蛋白质和蔬菜，主食比锻炼日少，但不建议完全不吃。</text>
+            <text wx:else>锻炼日晚餐增加适量主食和蛋白质，支持恢复；不是额外加餐，也不是每天固定香蕉鸡蛋。</text>
+          </view>
+          <view class="bottom-space"></view>
+        </scroll-view>
+      </swiper-item>
+    </swiper>
+  </block>
+</view>

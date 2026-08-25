@@ -1,0 +1,8 @@
+.intro { padding: 28rpx; background: #e7f1eb; }
+.intro-title { display: block; color: #176b46; font-size: 32rpx; font-weight: 740; }
+.intro-copy { display: block; margin-top: 10rpx; color: #405149; font-size: 25rpx; line-height: 1.65; }
+.form { margin-top: 24rpx; padding: 0 28rpx; }
+.field { min-height: 104rpx; display: flex; align-items: center; gap: 20rpx; border-bottom: 1rpx solid #e5eae6; }.field:last-child { border-bottom: 0; }
+.field > text { width: 170rpx; flex: none; font-weight: 700; }.field input, .field textarea { flex: 1; min-width: 0; }
+.field.vertical { display: block; padding: 24rpx 0; }.field.vertical > text { display: block; width: auto; margin-bottom: 14rpx; }.field.vertical textarea { width: 100%; min-height: 90rpx; line-height: 1.6; color: #405149; }
+.save { margin-top: 28rpx; }.reset { margin-top: 18rpx; }

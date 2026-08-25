@@ -1,0 +1,11 @@
+<view class="screen">
+  <view class="intro surface"><text class="intro-title">只调整我的这一餐</text><text class="intro-copy">基础食谱以后更新时，你的个人版本仍按稳定餐食 ID 保留。其他成员看不到也不会被修改。</text></view>
+  <view class="form surface">
+    <view class="field"><text>名称</text><input maxlength="40" value="{{form.title}}" data-field="title" bindinput="input" /></view>
+    <view class="field vertical"><text>食材与份量</text><textarea maxlength="300" value="{{form.ingredients}}" data-field="ingredients" bindinput="input" auto-height /></view>
+    <view class="field vertical"><text>做法</text><textarea maxlength="300" value="{{form.method}}" data-field="method" bindinput="input" auto-height /></view>
+    <view class="field vertical"><text>个人提示</text><textarea maxlength="60" value="{{form.tag}}" data-field="tag" bindinput="input" auto-height /></view>
+  </view>
+  <button class="primary-button save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存我的方案</button>
+  <button wx:if="{{hasOverride}}" class="secondary-button reset" bindtap="reset">恢复基础餐食</button>
+</view>

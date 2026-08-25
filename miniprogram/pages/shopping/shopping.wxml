@@ -1,0 +1,26 @@
+<view class="screen">
+  <view class="heading-row">
+    <view><text class="eyebrow">一人份 · 叶菜分两次买</text><text class="page-title">采购清单</text></view>
+    <view class="progress"><text class="progress-number">{{checked}}/{{total}}</text><text class="progress-label">已买到</text></view>
+  </view>
+
+  <view wx:if="{{offline}}" class="offline-strip" bindtap="retrySync"><text>当前显示本机快照，点此重试云同步</text></view>
+  <view wx:elif="{{saving}}" class="saving-strip"><text>正在保存到云端…</text></view>
+
+  <view wx:if="{{loading}}">
+    <view wx:for="{{skeletons}}" wx:key="*this" class="skeleton group-skeleton"></view>
+  </view>
+  <view wx:else-if="{{!groups.length}}" class="surface status-panel">
+    <text class="status-title">暂无采购项</text><text class="status-detail">下拉刷新后再试。</text>
+  </view>
+  <block wx:else>
+    <view wx:for="{{groups}}" wx:key="id" class="group surface">
+      <view class="group-heading"><text class="group-title">{{item.name}}</text><text class="group-count">{{item.checkedCount}} / {{item.items.length}}</text></view>
+      <view wx:for="{{item.items}}" wx:for-item="food" wx:key="id" class="shopping-row {{food.checked ? 'checked' : ''}}" data-id="{{food.id}}" bindtap="toggleItem" hover-class="row-hover" aria-label="{{food.checked ? '取消勾选' : '勾选'}}{{food.name}}">
+        <view class="checkbox"><text wx:if="{{food.checked}}">✓</text></view>
+        <view class="food-copy"><text class="food-name">{{food.name}}</text><text class="food-amount">{{food.amount}}</text></view>
+      </view>
+    </view>
+    <button class="secondary-button reset-button" bindtap="resetChecked">重置勾选</button>
+  </block>
+</view>

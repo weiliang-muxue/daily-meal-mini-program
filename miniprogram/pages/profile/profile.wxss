@@ -1,0 +1,30 @@
+.profile-header { display: flex; align-items: center; gap: 24rpx; padding: 28rpx; }
+.avatar-button { width: 112rpx; height: 112rpx; padding: 0; margin: 0; border-radius: 50%; background: transparent; flex: none; }
+.avatar { width: 112rpx; height: 112rpx; border-radius: 50%; }
+.avatar-empty { background: #176b46; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 42rpx; font-weight: 750; }
+.header-copy { min-width: 0; }
+.header-title { display: block; font-size: 35rpx; line-height: 1.35; font-weight: 730; }
+.header-subtitle { display: block; margin-top: 8rpx; color: #68766f; font-size: 24rpx; line-height: 1.5; }
+.auth-strip { display: flex; gap: 16rpx; align-items: flex-start; margin-top: 20rpx; padding: 22rpx 26rpx; border-radius: 12rpx; background: #e7f1eb; }
+.auth-strip.offline { background: #fff0e9; }
+.auth-dot { margin-top: 10rpx; width: 14rpx; height: 14rpx; border-radius: 50%; background: #176b46; flex: none; }
+.offline .auth-dot { background: #c85f45; }
+.auth-title { display: block; font-size: 27rpx; font-weight: 700; }
+.auth-detail { display: block; margin-top: 4rpx; color: #68766f; font-size: 23rpx; line-height: 1.5; }
+.profile-form { padding: 28rpx; }
+.field-row { min-height: 92rpx; display: flex; align-items: center; gap: 22rpx; border-bottom: 1rpx solid #e6ebe7; }
+.field-label { width: 90rpx; font-weight: 700; }
+.field-row input { flex: 1; min-width: 0; }
+.privacy-note { padding: 22rpx 0 26rpx; color: #68766f; font-size: 24rpx; line-height: 1.6; }
+.data-list { overflow: hidden; }
+.data-row { min-height: 92rpx; padding: 0 26rpx; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; border-bottom: 1rpx solid #e8ece9; font-size: 27rpx; }
+.data-row:last-child { border-bottom: 0; }
+.data-row text:last-child { color: #68766f; text-align: right; }
+.privacy-card { margin-top: 30rpx; padding: 28rpx; border-left: 6rpx solid #a87519; background: #fff4d8; color: #654d20; font-size: 25rpx; line-height: 1.65; }
+.privacy-title { display: block; color: #4c3916; font-weight: 750; margin-bottom: 8rpx; }
+.invite-card { padding: 28rpx; }
+.invite-title { display: block; font-size: 31rpx; font-weight: 730; }.invite-copy { display: block; margin-top: 7rpx; color: #68766f; font-size: 23rpx; }
+.invite-label { min-height: 88rpx; margin: 22rpx 0; padding: 0 20rpx; border: 1rpx solid #cfd8d1; border-radius: 10rpx; }
+.invite-result { margin-top: 20rpx; padding: 24rpx; text-align: center; border-radius: 10rpx; background: #e7f1eb; }
+.invite-code { display: block; color: #176b46; font-size: 40rpx; font-weight: 800; letter-spacing: 0; }.invite-expire { display: block; margin-top: 8rpx; color: #68766f; font-size: 22rpx; }
+.danger-button { min-height: 88rpx; margin-top: 28rpx; background: transparent; color: #a33f2b; border: 1rpx solid #dcb8ae; border-radius: 12rpx; font-size: 26rpx; }

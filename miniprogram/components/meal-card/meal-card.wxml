@@ -1,0 +1,13 @@
+<view class="meal-card {{tone}}">
+  <view class="meal-topline">
+    <view class="meal-mark"></view>
+    <text class="meal-label">{{meal.label}}</text>
+    <view wx:if="{{editable}}" class="edit-action" bindtap="edit" aria-label="调整这顿餐">调整</view>
+  </view>
+  <text class="meal-title">{{meal.title}}</text>
+  <text class="meal-ingredients">{{meal.ingredients}}</text>
+  <view class="meal-divider"></view>
+  <text class="meal-method">{{meal.method}}</text>
+  <text class="meal-tag">{{meal.tag}}</text>
+  <text wx:if="{{meal.personalized}}" class="personal-tag">我的方案</text>
+</view>

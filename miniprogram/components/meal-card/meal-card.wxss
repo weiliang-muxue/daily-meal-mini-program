@@ -1,0 +1,15 @@
+.meal-card { background: #fff; border: 1rpx solid #dce4de; border-radius: 16rpx; padding: 30rpx; margin-bottom: 22rpx; }
+.meal-card.workout { background: #f1f7f3; border-color: #c9ddd0; }
+.meal-topline { display: flex; align-items: center; gap: 12rpx; margin-bottom: 16rpx; }
+.meal-mark { width: 14rpx; height: 14rpx; border-radius: 50%; background: #c85f45; }
+.rest .meal-mark { background: #176b46; }
+.workout .meal-mark { background: #a87519; }
+.meal-label { font-size: 25rpx; font-weight: 700; color: #68766f; }
+.edit-action { margin-left: auto; min-width: 88rpx; min-height: 64rpx; display: flex; align-items: center; justify-content: flex-end; color: #176b46; font-size: 24rpx; font-weight: 700; }
+.meal-title { display: block; font-size: 38rpx; line-height: 1.32; font-weight: 750; color: #1f3028; }
+.meal-ingredients { display: block; margin-top: 18rpx; font-size: 28rpx; line-height: 1.68; font-weight: 550; color: #405149; }
+.meal-divider { height: 1rpx; background: #e7ece8; margin: 22rpx 0; }
+.meal-method { display: block; font-size: 27rpx; line-height: 1.68; color: #68766f; }
+.meal-tag { display: inline-flex; margin-top: 22rpx; padding: 10rpx 16rpx; border-radius: 8rpx; background: #e7f1eb; color: #176b46; font-size: 24rpx; font-weight: 700; }
+.workout .meal-tag { background: #fff1cf; color: #80570d; }
+.personal-tag { display: inline-flex; margin: 22rpx 0 0 10rpx; padding: 10rpx 14rpx; border-radius: 8rpx; border: 1rpx solid #b9d0c1; color: #176b46; font-size: 22rpx; font-weight: 700; }

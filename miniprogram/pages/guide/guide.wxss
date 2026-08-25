@@ -1,0 +1,26 @@
+.hero { padding: 34rpx; background: #1f4937; color: #fff; }
+.hero-kicker { display: block; color: #f2ce72; font-size: 24rpx; font-weight: 700; }
+.hero-title { display: block; font-size: 42rpx; line-height: 1.35; font-weight: 760; margin: 12rpx 0 18rpx; }
+.hero-copy { display: block; color: rgba(255,255,255,.82); font-size: 27rpx; line-height: 1.68; }
+.anchor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18rpx; }
+.anchor { padding: 26rpx; }
+.anchor-number { display: block; color: #a87519; font-weight: 800; font-size: 23rpx; }
+.anchor-title { display: block; font-size: 29rpx; font-weight: 720; margin: 14rpx 0 10rpx; }
+.anchor-copy { display: block; color: #68766f; font-size: 24rpx; line-height: 1.55; }
+.setting-list { overflow: hidden; }
+.setting-row { min-height: 128rpx; padding: 24rpx 28rpx; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; border-bottom: 1rpx solid #e8ece9; }
+.setting-row:last-child { border-bottom: 0; }
+.setting-title { display: block; font-weight: 700; }
+.setting-copy { display: block; color: #68766f; font-size: 24rpx; margin-top: 6rpx; }
+.reminder-form { padding: 24rpx; }
+.reminder-form textarea { width: 100%; min-height: 100rpx; line-height: 1.55; margin-bottom: 18rpx; }
+.reminder-list { overflow: hidden; }
+.reminder-row { min-height: 104rpx; padding: 18rpx 24rpx; display: flex; align-items: center; gap: 16rpx; border-bottom: 1rpx solid #e8ece9; }
+.reminder-row:last-child { border-bottom: 0; }
+.reminder-main { flex: 1; display: flex; align-items: center; gap: 16rpx; line-height: 1.5; }
+.reminder-check { flex: none; width: 42rpx; height: 42rpx; border: 2rpx solid #aab7af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; }
+.reminder-main.done .reminder-check { background: #176b46; border-color: #176b46; }
+.reminder-main.done text { color: #87918b; text-decoration: line-through; }
+.remove { min-width: 88rpx; min-height: 72rpx; display: flex; align-items: center; justify-content: flex-end; color: #a34b37; font-size: 25rpx; }
+.warning { margin-top: 30rpx; padding: 26rpx; border-left: 6rpx solid #c85f45; background: #fff0e9; color: #764437; font-size: 26rpx; line-height: 1.65; }
+.warning-title { display: block; color: #633426; font-weight: 750; margin-bottom: 8rpx; }

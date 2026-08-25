@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionName": "health_daily",
+      "fields": [
+        { "fieldPath": "owner", "order": "ASCENDING" },
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ],
+      "purpose": "当前用户月历"
+    },
+    {
+      "collectionName": "health_daily",
+      "fields": [
+        { "fieldPath": "owner", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ],
+      "purpose": "跨月近 7 天趋势"
+    },
+    {
+      "collectionName": "meal_invites",
+      "fields": [
+        { "fieldPath": "codeHash", "order": "ASCENDING" },
+        { "fieldPath": "active", "order": "ASCENDING" }
+      ],
+      "purpose": "一次性邀请码验证"
+    }
+  ]
+}
