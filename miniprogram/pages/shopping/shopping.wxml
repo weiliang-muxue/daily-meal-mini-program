@@ -10,7 +10,7 @@
   <view wx:if="{{loading}}">
     <view wx:for="{{skeletons}}" wx:key="*this" class="skeleton group-skeleton"></view>
   </view>
-  <view wx:else-if="{{!groups.length}}" class="surface status-panel">
+  <view wx:elif="{{!groups.length}}" class="surface status-panel">
     <text class="status-title">暂无采购项</text><text class="status-detail">下拉刷新后再试。</text>
   </view>
   <block wx:else>

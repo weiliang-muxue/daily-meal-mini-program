@@ -68,15 +68,21 @@ appConfig.pages.forEach((page) => ['js', 'json', 'wxml', 'wxss'].forEach((extens
 }))
 
 const jsFiles = []
+const wxmlFiles = []
 function walk(directory) {
   fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
     if (entry.name === 'node_modules') return
     const fullPath = path.join(directory, entry.name)
     if (entry.isDirectory()) walk(fullPath)
     else if (entry.name.endsWith('.js')) jsFiles.push(fullPath)
+    else if (entry.name.endsWith('.wxml')) wxmlFiles.push(fullPath)
   })
 }
 walk(root)
 jsFiles.forEach((file) => new Function(fs.readFileSync(file, 'utf8')))
+wxmlFiles.forEach((file) => {
+  const source = fs.readFileSync(file, 'utf8')
+  assert(!/\bwx:else-if\b/.test(source), `${path.relative(root, file)} 使用了无效的 wx:else-if，请改用 wx:elif`)
+})
 
-console.log(`验证通过：${plans.length} 个周期，${dayIds.length} 天，${dinners.length} 套差异化晚餐，${shoppingIds.length} 个采购项，${jsFiles.length} 个 JS 文件语法正常。`)
+console.log(`验证通过：${plans.length} 个周期，${dayIds.length} 天，${dinners.length} 套差异化晚餐，${shoppingIds.length} 个采购项，${jsFiles.length} 个 JS 文件及 ${wxmlFiles.length} 个 WXML 文件检查正常。`)
