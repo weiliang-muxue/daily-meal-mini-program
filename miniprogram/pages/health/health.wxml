@@ -37,7 +37,14 @@
 
     <view class="record-card surface">
       <view class="record-heading"><view><text class="record-date">{{selectedDate}}</text><text class="record-caption">当天记录可随时补充或修改</text></view><view wx:if="{{selectedRecord}}" class="saved-badge">已记录</view></view>
-      <view class="weight-row"><view><text class="field-label">体重</text><view class="weight-input"><input type="digit" value="{{weight}}" bindinput="inputWeight" placeholder="例如 61.8" /><text>kg</text></view></view><view class="photo-wrap"><view class="photo-button touch-target" bindtap="choosePhoto" hover-class="control-hover" aria-role="button" aria-label="{{photoPreview ? '更换照片' : '添加照片'}}"><image wx:if="{{photoPreview}}" src="{{photoPreview}}" mode="aspectFill" /><text wx:else>添加照片</text></view><view wx:if="{{photoPreview}}" class="remove-photo touch-target" bindtap="removePhoto" hover-class="control-hover" aria-role="button">移除</view></view></view>
+      <view class="weight-row"><view><text class="field-label">体重</text><view class="weight-input"><input type="digit" value="{{weight}}" bindinput="inputWeight" placeholder="例如 61.8" /><text>kg</text></view></view><view class="photo-wrap"><view class="photo-button touch-target {{choosingPhoto ? 'disabled' : ''}}" bindtap="choosePhoto" hover-class="control-hover" aria-role="button" aria-disabled="{{choosingPhoto}}" aria-label="{{photoPreview ? '更换照片' : '添加照片'}}"><image wx:if="{{photoPreview}}" src="{{photoPreview}}" mode="aspectFill" /><text wx:else>{{choosingPhoto ? '正在检查' : '添加照片'}}</text></view><view wx:if="{{photoPreview}}" class="remove-photo touch-target" bindtap="removePhoto" hover-class="control-hover" aria-role="button">移除</view></view></view>
+      <view wx:if="{{photoPrivacyError}}" class="photo-privacy-error" aria-role="alert">
+        <text>{{photoPrivacyError}}</text>
+        <view class="photo-error-actions">
+          <button class="photo-error-button" bindtap="retryChoosePhoto" disabled="{{choosingPhoto}}">重试选择</button>
+          <button class="photo-error-button" bindtap="openPrivacyGuide">查看《隐私保护指引》</button>
+        </view>
+      </view>
       <view class="exercise-row"><view><text class="field-label">运动打卡</text><text class="field-hint">完成后月历显示绿色标记</text></view><switch checked="{{exerciseCompleted}}" color="#176B46" bindchange="toggleExercise" /></view>
       <view wx:if="{{exerciseCompleted}}" class="exercise-fields">
         <picker range="{{exerciseTypes}}" value="{{exerciseTypeIndex}}" bindchange="pickExerciseType"><view class="picker-field">{{exerciseTypes[exerciseTypeIndex]}}</view></picker>

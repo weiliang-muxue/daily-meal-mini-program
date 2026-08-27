@@ -1,9 +1,10 @@
 const { membershipStore } = require('../../services/membership-store')
 const { authStore } = require('../../services/auth-store')
 const { userStore } = require('../../services/user-store')
+const { navigateToUserAgreement, openPrivacyContractOrLocal } = require('../../utils/privacy-auth')
 
 Page({
-  data: { loading: true, code: '', error: '', submitting: false },
+  data: { loading: true, code: '', error: '', submitting: false, privacyError: '' },
   onLoad() { this.check() },
 
   async check(force = false) {
@@ -35,5 +36,15 @@ Page({
   async enter() {
     try { await authStore.init({ force: true }); await userStore.init({ force: true }) } catch (_) {}
     wx.switchTab({ url: '/pages/plan/plan' })
+  },
+
+  openUserAgreement() { return navigateToUserAgreement() },
+  async openPrivacyGuide() {
+    this.setData({ privacyError: '' })
+    const result = await openPrivacyContractOrLocal()
+    if (!result.openedPlatformContract && !result.usedLocalFallback) {
+      this.setData({ privacyError: result.error || '《隐私保护指引》暂时无法打开，请稍后重试。' })
+    }
+    return result
   },
 })

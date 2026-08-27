@@ -14,5 +14,10 @@
       <button class="submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">验证并进入</button>
       <text class="hint" user-select="{{true}}">邀请码只能使用一次，并在创建 24 小时后过期。加入后可在其他手机上使用同一微信账号恢复数据。</text>
     </view>
+    <view class="legal-links" aria-label="协议与隐私入口">
+      <view class="legal-link touch-target" bindtap="openUserAgreement" hover-class="legal-link-hover" aria-role="button">《用户协议》</view>
+      <view class="legal-link touch-target" bindtap="openPrivacyGuide" hover-class="legal-link-hover" aria-role="button">《隐私保护指引》</view>
+    </view>
+    <text wx:if="{{privacyError}}" class="privacy-link-error" aria-role="alert">{{privacyError}}</text>
   </view>
 </view>

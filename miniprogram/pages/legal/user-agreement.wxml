@@ -1,0 +1,68 @@
+<view class="legal-screen">
+  <view class="legal-header">
+    <view class="legal-header-inner">
+      <text class="legal-kicker">每天怎么吃</text>
+      <text class="legal-title">用户协议</text>
+      <text class="legal-summary" user-select="{{true}}">本协议说明邀请制服务的使用边界、健康与 AI 风险、账号数据隔离、删除和支持路径。</text>
+    </view>
+  </view>
+
+  <view class="legal-document" user-select="{{true}}">
+    <view class="legal-notice">本页面用于公开、可审计地说明服务规则，不替代微信平台的隐私授权，也不会通过自绘弹窗取得隐私同意。</view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">一、服务范围与成员资格</text>
+      <text class="legal-paragraph">“每天怎么吃”是一款邀请制饮食计划小程序。只有通过有效邀请码或已存在有效成员身份的微信用户可以进入核心功能。邀请码不得出售、冒用、批量尝试或用于绕过成员限制。</text>
+      <text class="legal-paragraph">小程序以微信可信登录上下文识别当前使用者，不另设密码账号。成员资格与当前微信身份关联；更换微信账号不会自动继承原账号的数据或成员身份。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">二、功能与使用责任</text>
+      <text class="legal-item">根据用户主动选择的周期、餐次、目标、风格、忌口、健康约束和运动安排生成候选餐单。</text>
+      <text class="legal-item">保存用户确认后的餐单、采购勾选、提醒、个人餐食调整及主动填写的健康记录。</text>
+      <text class="legal-item">用户应核对输入和生成结果，不得上传违法、侵权或与功能无关的内容，也不应提交他人的健康资料或照片。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">三、非医疗服务</text>
+      <text class="legal-paragraph">本小程序只提供日常饮食计划和记录辅助，不提供诊断、处方、用药、治疗或紧急救助。AI 结果和提醒不能替代医生、注册营养师或其他合格专业人员的判断。</text>
+      <text class="legal-paragraph">存在食物过敏、妊娠、未成年人营养需求、慢性病、进食障碍、近期手术或正在接受治疗时，应先咨询合格专业人员。出现急症或明显不适时，应立即停止依赖本小程序并联系当地急救或医疗机构。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">四、第三方 AI 处理</text>
+      <text class="legal-paragraph">只有用户主动发起生成时，生成所需的最小输入才会发送给当前发布配置使用的第三方 AI 服务。昵称、头像、微信身份标识、体重、健康照片和历史健康记录不应作为生成输入发送。</text>
+      <text class="legal-paragraph">AI 可能产生事实错误、不适合个人情况或未充分满足约束的内容。系统会进行结构与安全校验，但用户仍须在预览页核对并主动确认。具体服务商和处理说明以当前发布版本经核对的隐私说明及微信平台《隐私保护指引》为准；本协议不代替第三方自己的有效条款，也不承诺未经证实的第三方保存、删除或可用性规则。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">五、账号与数据隔离</text>
+      <text class="legal-paragraph">餐单、采购、提醒、资料和健康记录按当前微信身份隔离。邀请管理员只能管理成员资格、邀请码和管理员交接，不能因此查看其他成员的私人餐单、体重、运动、备注、头像或照片。</text>
+      <text class="legal-paragraph">用户应妥善管理微信账号和设备。发现异常访问时，应先保护微信账号，并通过下述支持路径报告问题。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">六、隐私能力与选择</text>
+      <text class="legal-paragraph">头像、相机和相册等敏感能力只在用户主动点击相应操作时按微信平台规则请求授权。拒绝授权不会阻止查看本协议或使用不依赖该能力的功能，用户可以稍后重试或打开微信平台《隐私保护指引》。</text>
+      <button class="legal-action" bindtap="openPrivacyGuide" hover-class="button-hover">查看《隐私保护指引》</button>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">七、删除与退出</text>
+      <text class="legal-paragraph">“我的”页提供“删除我的全部数据和成员身份”。操作需要二次确认，完成后当前微信身份的资料、餐单、采购、提醒、健康记录、图片及关联任务将按产品删除流程清理，已删除内容不可恢复。</text>
+      <text class="legal-paragraph">仍有其他活跃成员时，唯一管理员必须先明确选择接任成员并完成管理员交接，不能由系统自动指定。删除失败时应按页面提示重试；删除完成后再次使用核心功能需要重新获得邀请。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">八、服务可用性与变更</text>
+      <text class="legal-paragraph">网络、微信平台、云服务或第三方 AI 异常可能导致部分功能暂时不可用。应用会在可行范围内提供错误提示、重试或本机快照，但不以静态结果冒充新的 AI 生成，也不保证服务始终无中断或生成结果绝对准确。</text>
+      <text class="legal-paragraph">功能或规则发生实质变化时，应同步更新发布版本中的页面和相关说明。用户可以在继续操作前重新查阅。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">九、联系支持</text>
+      <text class="legal-paragraph">普通使用问题可先联系向你发放邀请码的管理员，由管理员按项目公开《支持说明》中的问题反馈渠道转交。隐私相关请求可打开微信平台《隐私保护指引》，查看小程序运营者在平台登记并经核对的联系方式。</text>
+      <text class="legal-paragraph">安全问题应按项目公开《安全说明》的私密渠道报告，不要在公开问题、截图或日志中提供密钥、微信身份标识、体重、照片或其他个人信息。本地页面不会虚构尚未配置或未经核验的电话、邮箱及运营者信息。</text>
+    </view>
+  </view>
+</view>

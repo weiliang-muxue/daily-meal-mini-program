@@ -5,6 +5,12 @@ const { membershipStore } = require('../../services/membership-store')
 const { callFunction } = require('../../utils/cloud')
 const { clearPrivateCache } = require('../../services/private-cache')
 const { MAX_AVATAR_BYTES, privateImagePayload } = require('../../utils/private-image')
+const {
+  ensurePrivacyAuthorized,
+  getPrivacyAuthorizationState,
+  navigateToUserAgreement,
+  openPrivacyContractOrLocal,
+} = require('../../utils/privacy-auth')
 
 function pad(value) { return String(value).padStart(2, '0') }
 
@@ -43,13 +49,15 @@ function confirmModal(options) {
 Page({
   data: {
     profile: {}, nickname: '', nicknameInitial: '我', avatarPreview: '', avatarLocalPath: '',
+    avatarPrivacyMode: 'checking', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false,
+    legalPrivacyError: '',
     authState: 'idle', authDetail: '', updatedText: '', saving: false,
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
     member: {}, memberCount: 0, maxMembers: 7, inviteLabel: '', inviteCode: '', inviteExpiresText: '', creatingInvite: false,
     transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '', transferringOwner: false,
   },
 
-  onLoad() { this.connect() },
+  onLoad() { this.checkAvatarPrivacy(); this.connect() },
   onShow() { this.render() },
 
   async connect(force = false) {
@@ -166,9 +174,66 @@ Page({
     })
   },
 
+  async checkAvatarPrivacy() {
+    const privacy = await getPrivacyAuthorizationState()
+    if (!privacy.supported || privacy.authorized) {
+      this.setData({ avatarPrivacyMode: 'native', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false })
+      return
+    }
+    if (privacy.needAuthorization === true) {
+      this.setData({
+        avatarPrivacyMode: 'authorize',
+        avatarPrivacyError: '选择头像前需按微信平台流程完成隐私授权。完成后请再次点击头像。',
+        avatarPrivacyTone: 'hint',
+        authorizingAvatar: false,
+      })
+      return
+    }
+    this.setData({
+      avatarPrivacyMode: 'authorize', avatarPrivacyError: privacy.message,
+      avatarPrivacyTone: 'error', authorizingAvatar: false,
+    })
+  },
+
+  async authorizeAvatarPrivacy() {
+    if (this.data.authorizingAvatar) return
+    this.setData({ authorizingAvatar: true, avatarPrivacyError: '' })
+    const privacy = await ensurePrivacyAuthorized()
+    if (privacy.authorized) {
+      this.setData({
+        avatarPrivacyMode: 'native',
+        avatarPrivacyError: '隐私授权已完成，请再次点击头像并选择图片。',
+        avatarPrivacyTone: 'success',
+        authorizingAvatar: false,
+      })
+      return
+    }
+    this.setData({
+      avatarPrivacyMode: 'authorize', avatarPrivacyError: privacy.message,
+      avatarPrivacyTone: 'error', authorizingAvatar: false,
+    })
+  },
+
+  openUserAgreement() { return navigateToUserAgreement() },
+  async openPrivacyGuide() {
+    this.setData({ legalPrivacyError: '' })
+    const result = await openPrivacyContractOrLocal()
+    if (!result.openedPlatformContract && !result.usedLocalFallback) {
+      this.setData({ legalPrivacyError: result.error || '《隐私保护指引》暂时无法打开，请稍后重试。' })
+    }
+    return result
+  },
+
   onChooseAvatar(event) {
-    if (event.detail.avatarUrl) this.setData({
-      avatarPreview: event.detail.avatarUrl, avatarLocalPath: event.detail.avatarUrl,
+    if (event.detail && event.detail.avatarUrl) this.setData({
+      avatarPreview: event.detail.avatarUrl,
+      avatarLocalPath: event.detail.avatarUrl,
+      avatarPrivacyError: '',
+      avatarPrivacyTone: 'hint',
+    })
+    else this.setData({
+      avatarPrivacyError: '头像选择未完成。请重试，或先查看《隐私保护指引》后再操作。',
+      avatarPrivacyTone: 'error',
     })
   },
   onNicknameInput(event) {

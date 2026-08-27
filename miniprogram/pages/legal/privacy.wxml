@@ -1,0 +1,60 @@
+<view class="legal-screen">
+  <view class="legal-header">
+    <view class="legal-header-inner">
+      <text class="legal-kicker">本地可审计说明</text>
+      <text class="legal-title">隐私保护说明</text>
+      <text class="legal-summary" user-select="{{true}}">说明本小程序如何使用用户主动提供的数据，以及授权、隔离、第三方 AI 和删除路径。</text>
+    </view>
+  </view>
+
+  <view class="legal-document" user-select="{{true}}">
+    <view class="legal-notice">本页是随代码发布的本地说明，不冒充微信平台登记的《隐私保护指引》。平台合同可打开时，应优先以其中经运营者核对的信息为准。</view>
+    <button class="legal-action" bindtap="openPlatformPrivacy" hover-class="button-hover">打开微信平台《隐私保护指引》</button>
+    <text wx:if="{{contractError}}" class="legal-error" aria-role="alert">{{contractError}}</text>
+
+    <view class="legal-section">
+      <text class="legal-section-title">一、收集的数据</text>
+      <text class="legal-item">微信登录产生的可信身份上下文，用于连接当前成员身份和隔离数据；前端不保存或展示 AppSecret、session_key、openid 或 unionid。</text>
+      <text class="legal-item">用户主动填写的昵称、饮食目标、风格、忌口、健康约束、运动安排、备注和提醒设置。</text>
+      <text class="legal-item">候选、当前及历史餐单，采购勾选和个人餐食调整。</text>
+      <text class="legal-item">用户主动记录的体重、运动情况，以及主动选择的头像和健康照片。</text>
+      <text class="legal-paragraph">当前功能不读取微信运动、医疗检查结果、通讯录、位置或相册列表，也不会自动获取完整微信资料。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">二、使用目的与最小化</text>
+      <text class="legal-paragraph">上述数据只用于成员验证、恢复个人资料、生成和保存餐单、同步采购与提醒、展示健康记录及完成用户主动发起的操作。头像和健康照片只有在用户主动选择后才处理；昵称和头像可以跳过，不影响餐单核心功能。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">三、敏感能力授权</text>
+      <text class="legal-paragraph">当用户点击选择头像、添加健康照片等敏感操作时，小程序会先使用微信提供的隐私状态和授权能力；不在启动时强制要求同意，也不绘制仿冒的隐私同意弹窗。</text>
+      <text class="legal-paragraph">拒绝后该次敏感操作不会继续，页面会给出就近错误、重试和查看平台合同的路径。旧微信基础库不支持相关 API 时，保留微信原生控件和平台原生拦截流程。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">四、第三方 AI</text>
+      <text class="legal-paragraph">只有用户主动点击生成时，本次生成所需的餐次、周期、目标、风格、忌口、健康约束和逐日运动安排才会发送到当前发布配置使用的第三方 AI 服务。昵称、头像、微信身份标识、体重、照片、历史健康记录和本机缓存不作为生成输入发送。</text>
+      <text class="legal-paragraph">具体服务商、处理目的、数据范围和适用规则必须由运营者在发布前依据实际配置核对，并在微信平台《隐私保护指引》中如实披露。本页不声称未经证实的第三方保存期限、删除保证或其他条款。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">五、存储与隔离</text>
+      <text class="legal-paragraph">业务数据以云数据库为真源，并按当前微信身份隔离；本机缓存只作离线快照，也按在线确认后的身份命名空间隔离。业务集合拒绝客户端直接读写，头像和健康照片通过受控流程处理，界面查看私有图片时使用短期地址。</text>
+      <text class="legal-paragraph">邀请管理员可以管理成员资格，但不能查看其他成员的餐单、采购、体重、运动、备注、头像或照片。更换微信账号不会获得原账号数据。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">六、保存与删除</text>
+      <text class="legal-paragraph">用户数据在提供对应功能所需期间保存，或直至用户执行删除流程；法律法规或已核对的实际运营要求另有规定时，以有效要求为准。AI 运行期的中间任务按发布配置定期清理，不代表第三方服务商作出相同承诺。</text>
+      <text class="legal-paragraph">用户可在“我的”页选择“删除我的全部数据和成员身份”，经过二次确认后清理当前微信身份的资料、餐单、采购、提醒、健康记录、图片和关联任务。唯一管理员仍有活跃成员时须先明确完成管理员交接。删除失败会提示重试，删除完成后内容不可恢复。</text>
+    </view>
+
+    <view class="legal-section">
+      <text class="legal-section-title">七、查询、纠正与联系</text>
+      <text class="legal-paragraph">用户可在相应页面查看和修改昵称、头像、计划偏好、提醒及健康记录。需要整体删除时使用“我的”页删除入口。隐私相关问题可打开微信平台《隐私保护指引》，查看运营者在平台登记并核对的联系方式；普通问题也可由邀请管理员按项目公开《支持说明》转交。</text>
+      <text class="legal-paragraph">反馈时不要提交密钥、微信身份标识、数据库原文、饮食与健康详情或未经遮盖的照片。安全问题应使用项目公开《安全说明》所列私密渠道。</text>
+      <view class="legal-link touch-target" bindtap="openUserAgreement" hover-class="button-hover" aria-role="button">查看《用户协议》</view>
+    </view>
+  </view>
+</view>

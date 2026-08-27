@@ -11,10 +11,18 @@
 .error { display: block; padding: 14rpx 16rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 24rpx; line-height: 1.5; margin-top: 12rpx; overflow-wrap: anywhere; }
 .submit { min-height: 92rpx; margin-top: 22rpx; border-radius: 12rpx; background: var(--primary-fill); color: var(--on-primary); font-size: 30rpx; font-weight: 720; }
 .hint { display: block; margin-top: 20rpx; color: var(--muted); font-size: 23rpx; line-height: 1.55; overflow-wrap: anywhere; }
+.legal-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16rpx; margin-top: 18rpx; }
+.legal-link { min-height: 88rpx; padding: 12rpx 8rpx; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.92); font-size: 25rpx; line-height: 1.45; font-weight: 650; text-align: center; }
+.legal-link-hover { opacity: .72; }
+.privacy-link-error { display: block; padding: 16rpx 18rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 24rpx; line-height: 1.55; overflow-wrap: anywhere; }
 @media (orientation: landscape) and (max-height: 500px) {
   .access-content { min-height: 100vh; justify-content: flex-start; padding-top: 42rpx; }
 }
 @media (max-width: 340px) {
   .access-content { padding-left: 24rpx; padding-right: 24rpx; }
   .title { font-size: 48rpx; }
+  .legal-links { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+@media (max-width: 400px) {
+  .legal-link { min-height: 48px; }
 }

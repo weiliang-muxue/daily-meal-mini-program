@@ -1,10 +1,21 @@
 <view class="screen">
   <view class="profile-header surface">
-    <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" aria-label="选择头像">
+    <button wx:if="{{avatarPrivacyMode === 'native'}}" class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" aria-label="选择头像">
+      <image wx:if="{{avatarPreview}}" class="avatar" src="{{avatarPreview}}" mode="aspectFill" />
+      <view wx:else class="avatar avatar-empty"><text>{{nicknameInitial}}</text></view>
+    </button>
+    <button wx:else class="avatar-button avatar-authorize" bindtap="authorizeAvatarPrivacy" loading="{{authorizingAvatar}}" disabled="{{authorizingAvatar || avatarPrivacyMode === 'checking'}}" aria-label="{{avatarPrivacyMode === 'checking' ? '正在检查头像隐私授权' : '授权后选择头像'}}">
       <image wx:if="{{avatarPreview}}" class="avatar" src="{{avatarPreview}}" mode="aspectFill" />
       <view wx:else class="avatar avatar-empty"><text>{{nicknameInitial}}</text></view>
     </button>
     <view class="header-copy"><text class="header-title">{{profile.nickname || '还没有设置昵称'}}</text><text class="header-subtitle">头像和昵称可以跳过，以后随时修改</text></view>
+  </view>
+  <view wx:if="{{avatarPrivacyError}}" class="avatar-privacy-message {{avatarPrivacyTone}}" aria-role="alert">
+    <text>{{avatarPrivacyError}}</text>
+    <view class="avatar-error-actions">
+      <button wx:if="{{avatarPrivacyMode !== 'native'}}" bindtap="authorizeAvatarPrivacy" loading="{{authorizingAvatar}}" disabled="{{authorizingAvatar}}">重试授权</button>
+      <button bindtap="openPrivacyGuide">查看《隐私保护指引》</button>
+    </view>
   </view>
 
   <view wx:if="{{authState === 'offline'}}" class="auth-strip offline touch-target" bindtap="retryLogin" hover-class="profile-control-hover" aria-role="button" aria-label="暂时离线，点此重试">
@@ -80,5 +91,10 @@
     <text class="privacy-title">身份与隐私</text>
     <text>登录使用 wx.login，并由云函数从可信上下文识别当前用户。AppSecret、session_key、openid 和 unionid 不保存在前端；数据库中的身份标识也不会展示给其他用户。</text>
   </view>
+  <view class="legal-links" aria-label="协议与隐私入口">
+    <view class="legal-link touch-target" bindtap="openUserAgreement" hover-class="profile-control-hover" aria-role="button">《用户协议》</view>
+    <view class="legal-link touch-target" bindtap="openPrivacyGuide" hover-class="profile-control-hover" aria-role="button">《隐私保护指引》</view>
+  </view>
+  <text wx:if="{{legalPrivacyError}}" class="legal-privacy-error" aria-role="alert">{{legalPrivacyError}}</text>
   <button class="danger-button" bindtap="clearMyData">删除我的全部数据和成员身份</button>
 </view>

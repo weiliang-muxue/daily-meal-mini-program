@@ -9,7 +9,9 @@
     "pages/shopping/shopping",
     "pages/guide/guide",
     "pages/profile/profile",
-    "pages/meal-edit/meal-edit"
+    "pages/meal-edit/meal-edit",
+    "pages/legal/user-agreement",
+    "pages/legal/privacy"
   ],
   "window": {
     "navigationBarTitleText": "每天怎么吃",

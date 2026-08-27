@@ -1,10 +1,17 @@
 .profile-header { display: flex; align-items: center; gap: 24rpx; padding: 28rpx; }
 .avatar-button { width: 112rpx; height: 112rpx; padding: 0; margin: 0; border-radius: 50%; background: transparent; flex: none; }
+.avatar-authorize[disabled] { opacity: .6; }
 .avatar { width: 112rpx; height: 112rpx; border-radius: 50%; }
 .avatar-empty { background: var(--primary-fill); color: var(--on-primary); display: flex; align-items: center; justify-content: center; font-size: 42rpx; font-weight: 750; }
 .header-copy { min-width: 0; }
 .header-title { display: block; font-size: 35rpx; line-height: 1.35; font-weight: 730; }
 .header-subtitle { display: block; margin-top: 8rpx; color: var(--muted); font-size: 24rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.avatar-privacy-message { margin-top: 16rpx; padding: 20rpx 22rpx; border: 1rpx solid var(--line-strong); border-radius: 9rpx; background: var(--surface-muted); color: var(--muted-strong); font-size: 24rpx; line-height: 1.55; overflow-wrap: anywhere; }
+.avatar-privacy-message.hint { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+.avatar-privacy-message.success { border-color: var(--line-strong); background: var(--primary-soft); color: var(--primary-soft-ink); }
+.avatar-privacy-message.error { border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger); }
+.avatar-error-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 16rpx; }
+.avatar-error-actions button { min-height: 88rpx; margin: 0; padding: 12rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--surface); color: var(--primary); font-size: 23rpx; line-height: 1.4; }
 .auth-strip { display: flex; gap: 16rpx; align-items: flex-start; margin-top: 20rpx; padding: 22rpx 26rpx; border: 1rpx solid var(--line-strong); border-radius: 12rpx; background: var(--primary-soft); }
 .auth-strip.offline { border-color: var(--warm-line); background: var(--warm-soft); }
 .profile-control-hover { opacity: .78; }
@@ -23,6 +30,9 @@
 .data-row text { min-width: 0; overflow-wrap: anywhere; }.data-row text:last-child { color: var(--muted); text-align: right; }
 .privacy-card { margin-top: 30rpx; padding: 28rpx; border-left: 6rpx solid var(--gold); background: var(--gold-soft); color: var(--gold-ink); font-size: 25rpx; line-height: 1.65; overflow-wrap: anywhere; }
 .privacy-title { display: block; color: var(--gold-ink); font-weight: 750; margin-bottom: 8rpx; }
+.legal-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 18rpx; }
+.legal-link { min-height: 88rpx; padding: 12rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--surface); color: var(--primary); font-size: 25rpx; line-height: 1.4; font-weight: 680; text-align: center; }
+.legal-privacy-error { display: block; margin-top: 12rpx; padding: 18rpx 20rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 24rpx; line-height: 1.55; overflow-wrap: anywhere; }
 .invite-card { padding: 28rpx; }
 .invite-title { display: block; font-size: 31rpx; font-weight: 730; }.invite-copy { display: block; margin-top: 7rpx; color: var(--muted); font-size: 23rpx; line-height: 1.5; overflow-wrap: anywhere; }
 .invite-label { min-height: 88rpx; margin: 22rpx 0; padding: 0 20rpx; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--input-surface); color: var(--ink); }
@@ -59,7 +69,8 @@
   .data-row { align-items: flex-start; flex-direction: column; gap: 6rpx; }
   .data-row text:last-child { text-align: left; }
   .member-option { align-items: flex-start; }
+  .avatar-error-actions, .legal-links { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 400px) {
-  .auth-strip, .invite-result, .member-option { min-height: 48px; }
+  .auth-strip, .invite-result, .member-option, .avatar-error-actions button, .legal-link { min-height: 48px; }
 }

@@ -2,6 +2,7 @@ const { membershipStore } = require('../../services/membership-store')
 const { healthStore, isRecordRevisionConflict } = require('../../services/health-store')
 const { dateKey, monthKey, shiftMonth, monthLabel, calendarCells } = require('../../utils/date')
 const { MAX_HEALTH_PHOTO_BYTES, privateImagePayload } = require('../../utils/private-image')
+const { ensurePrivacyAuthorized, openPrivacyContractOrLocal } = require('../../utils/privacy-auth')
 
 const exerciseTypes = ['跳操', '骑车', '抗阻训练', '跑步', '快走', '瑜伽', '其他运动']
 
@@ -12,7 +13,8 @@ Page({
     month: monthKey(), monthText: monthLabel(monthKey()), weekdays: ['一', '二', '三', '四', '五', '六', '日'], cells: [], records: [],
     selectedDate: dateKey(), selectedRecord: null, selectedRecordRevision: 0, weight: '', note: '', exerciseCompleted: false,
     exerciseTypes, exerciseTypeIndex: 0, exerciseDuration: '30', exerciseIntensity: 'medium',
-    photoPreview: '', photoFileId: '', photoLocalPath: '', clearPhoto: false, saving: false, loading: true, error: '', offline: false,
+    photoPreview: '', photoFileId: '', photoLocalPath: '', clearPhoto: false, photoPrivacyError: '',
+    choosingPhoto: false, saving: false, loading: true, error: '', offline: false,
     trendMetric: 'weight', trendMode: 'month', trendRecords: [], trendSummary: '本月暂无体重记录',
     weekExerciseCount: 0, weekExerciseMinutes: 0, monthExerciseCount: 0, monthExerciseMinutes: 0,
   },
@@ -39,6 +41,7 @@ Page({
       loading: true, error: '', offline: false, monthText: monthLabel(targetMonth), records: [], cells: [],
       selectedRecord: null, selectedRecordRevision: 0, weight: '', note: '', exerciseCompleted: false, exerciseTypeIndex: 0,
       exerciseDuration: '30', exerciseIntensity: 'medium', photoPreview: '', photoFileId: '', photoLocalPath: '', clearPhoto: false,
+      photoPrivacyError: '', choosingPhoto: false,
       trendRecords: [], trendSummary: '正在读取记录', weekExerciseCount: 0, weekExerciseMinutes: 0,
       monthExerciseCount: 0, monthExerciseMinutes: 0,
     })
@@ -96,7 +99,7 @@ Page({
       exerciseCompleted: Boolean(exercise), exerciseTypeIndex: typeIndex,
       exerciseDuration: exercise ? String(exercise.durationMinutes) : '30', exerciseIntensity: exercise && exercise.intensity || 'medium',
       photoPreview: record && record.photoUrl || '', photoFileId: record && record.photoFileId || '', photoLocalPath: '',
-      clearPhoto: false,
+      clearPhoto: false, photoPrivacyError: '', choosingPhoto: false,
     })
     this.loadWeekTrend(date)
   },
@@ -108,16 +111,59 @@ Page({
   inputDuration(event) { this.setData({ exerciseDuration: event.detail.value }) },
   selectIntensity(event) { this.setData({ exerciseIntensity: event.currentTarget.dataset.value }) },
 
-  choosePhoto() {
-    wx.chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['compressed'], success: ({ tempFiles }) => {
+  async choosePhoto() {
+    if (this.data.choosingPhoto) return
+    this.setData({ choosingPhoto: true, photoPrivacyError: '' })
+    try {
+      const privacy = await ensurePrivacyAuthorized()
+      if (!privacy.authorized) {
+        this.setData({ photoPrivacyError: privacy.message })
+        return
+      }
+      if (typeof wx === 'undefined' || typeof wx.chooseMedia !== 'function') {
+        throw new Error('CHOOSE_MEDIA_UNAVAILABLE')
+      }
+
+      const { tempFiles } = await new Promise((resolve, reject) => {
+        wx.chooseMedia({
+          count: 1,
+          mediaType: ['image'],
+          sourceType: ['album', 'camera'],
+          sizeType: ['compressed'],
+          success: resolve,
+          fail: reject,
+        })
+      })
       const selected = tempFiles && tempFiles[0]
       if (!selected) return
       if (Number(selected.size) > MAX_HEALTH_PHOTO_BYTES) {
         wx.showToast({ title: '健康照片不能超过 2 MB', icon: 'none' })
         return
       }
-      this.setData({ photoPreview: selected.tempFilePath, photoFileId: '', photoLocalPath: selected.tempFilePath })
-    } })
+      this.setData({
+        photoPreview: selected.tempFilePath,
+        photoFileId: '',
+        photoLocalPath: selected.tempFilePath,
+        photoPrivacyError: '',
+      })
+    } catch (error) {
+      const message = String(error && error.errMsg || error && error.message || '')
+      if (!/cancel/i.test(message)) {
+        this.setData({
+          photoPrivacyError: '照片选择暂时不可用。请更新微信或稍后重试，也可先查看《隐私保护指引》。',
+        })
+      }
+    } finally {
+      this.setData({ choosingPhoto: false })
+    }
+  },
+  retryChoosePhoto() { return this.choosePhoto() },
+  async openPrivacyGuide() {
+    const result = await openPrivacyContractOrLocal()
+    if (!result.openedPlatformContract && !result.usedLocalFallback) {
+      this.setData({ photoPrivacyError: result.error || '《隐私保护指引》暂时无法打开，请稍后重试。' })
+    }
+    return result
   },
   removePhoto() { this.setData({ photoPreview: '', photoFileId: '', photoLocalPath: '', clearPhoto: true }) },
 
