@@ -1,0 +1,3 @@
+#!/bin/sh
+
+node scripts/check-staged-safety.js --pre-push
