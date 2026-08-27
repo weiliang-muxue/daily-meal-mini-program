@@ -1,0 +1,9 @@
+{
+  "lastReleasedVersion": "0.1.0",
+  "workingVersion": "0.2.0-dev.1",
+  "releaseStatus": "unreleased",
+  "stateSchemaVersion": 6,
+  "minimumMigratableStateSchemaVersion": 1,
+  "aiContractVersion": 1,
+  "aiPlannerVersion": "4"
+}

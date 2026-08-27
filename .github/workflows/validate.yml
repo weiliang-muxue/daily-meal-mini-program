@@ -1,0 +1,68 @@
+name: Validate public source
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate versions, migrations and contracts
+        run: node scripts/validate.js
+
+      - name: Reject secrets and private data in published history
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REF_NAME: ${{ github.ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            node scripts/check-staged-safety.js --range "$BASE_SHA" "$PR_HEAD_SHA" "refs/heads/$HEAD_REF"
+          else
+            TARGET_OID="$(git rev-parse --verify "$REF_NAME")"
+            node scripts/check-staged-safety.js --range "$BEFORE_SHA" "$TARGET_OID" "$REF_NAME"
+          fi
+
+      - name: Check patch whitespace
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git diff --check "$BASE_SHA" "$PR_HEAD_SHA"
+          elif [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            git diff-tree --check --root -r "$PUSH_SHA"
+          else
+            git diff --check "$BEFORE_SHA" "$PUSH_SHA"
+          fi
