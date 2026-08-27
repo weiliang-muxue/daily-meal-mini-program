@@ -8,6 +8,7 @@ const fs = require('fs')
 const root = path.resolve(__dirname, '..')
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
 const releaseManifest = JSON.parse(read('release-manifest.json'))
+const { validateReleaseGate } = require(path.join(root, 'scripts/release-gate'))
 const stateSchema = require(path.join(root, 'shared/user-state'))
 const aiPlanner = require(path.join(root, 'cloudfunctions/aiPlanner/lib'))
 const membershipCore = require(path.join(root, 'cloudfunctions/membership/core'))
@@ -18,10 +19,18 @@ const CLOUD_FUNCTIONS = [
 ]
 const WX_SERVER_SDK_VERSION = '4.0.2'
 
-const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
-assert(semverPattern.test(releaseManifest.lastReleasedVersion), '最后发布版本必须是 SemVer')
-assert(semverPattern.test(releaseManifest.workingVersion), '工作版本必须是 SemVer')
-assert(['unreleased', 'released'].includes(releaseManifest.releaseStatus), '发布状态无效')
+validateReleaseGate({
+  manifest: releaseManifest,
+  changelog: read('CHANGELOG.md'),
+  readme: read('README.md'),
+  tagTypeForVersion(version) {
+    try {
+      return childProcess.execFileSync('git', ['cat-file', '-t', `refs/tags/v${version}`], {
+        cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim()
+    } catch (_) { return '' }
+  },
+})
 assert.strictEqual(releaseManifest.stateSchemaVersion, 6, '当前发布清单必须使用 schema v6')
 assert.strictEqual(stateSchema.CURRENT_SCHEMA, releaseManifest.stateSchemaVersion, '共享 schema 与版本清单不一致')
 assert.strictEqual(aiPlanner.CONTRACT_VERSION, releaseManifest.aiContractVersion, 'AI 契约与版本清单不一致')
@@ -63,6 +72,7 @@ assert.deepStrictEqual(aiPlanner.expectedMealKeys(aiPlanner.normalizeRequest({
 const requiredPages = [
   'pages/plan/plan', 'pages/planner/planner', 'pages/plan-preview/plan-preview', 'pages/plan-history/plan-history',
   'pages/health/health', 'pages/shopping/shopping', 'pages/guide/guide', 'pages/profile/profile', 'pages/meal-edit/meal-edit',
+  'pages/legal/user-agreement', 'pages/legal/privacy',
 ]
 const appConfig = JSON.parse(read('miniprogram/app.json'))
 requiredPages.forEach((page) => assert(appConfig.pages.includes(page), `app.json 缺少路由 ${page}`))
@@ -92,7 +102,7 @@ const requiredFiles = [
   'cloudfunctions/auth/upload-ticket.js', 'cloudfunctions/health/upload-ticket.js',
   'cloudfunctions/privacy/upload-ticket.js',
   'shared/upload-ticket.js', 'shared/upload-ticket.test.js',
-  'miniprogram/utils/private-image.js',
+  'miniprogram/utils/private-image.js', 'miniprogram/utils/privacy-auth.js',
   'database.rules.json', 'database.indexes.json', 'storage.rules.json',
   'cloudfunctions/membership/.env.example', 'cloudfunctions/aiPlanner/.env.example',
   'release-manifest.json', 'CHANGELOG.md', 'SUPPORT.md', 'SECURITY.md',
@@ -283,6 +293,7 @@ const healthStyles = read('miniprogram/pages/health/health.wxss')
 assert(/repeat\(7, minmax\(44px, 1fr\)\)/.test(healthStyles), '窄屏健康月历必须保持七列 44px 点击热区')
 
 const testScripts = [
+  'scripts/release-gate.test.js',
   'shared/user-state.test.js',
   'cloudfunctions/userData/index.test.js',
   'shared/image-file.test.js',
@@ -317,6 +328,7 @@ const testScripts = [
   'scripts/test-plan-history-page.js',
   'scripts/test-health-guide-pages.js',
   'scripts/test-profile-transfer.js',
+  'scripts/test-privacy-auth.js',
   'scripts/check-staged-safety.test.js',
   'cloudfunctions/privacy/core.test.js',
   'cloudfunctions/privacy/index.test.js',

@@ -1,7 +1,8 @@
 {
   "lastReleasedVersion": "0.1.0",
-  "workingVersion": "0.2.0-dev.1",
-  "releaseStatus": "unreleased",
+  "workingVersion": "0.2.0",
+  "releaseStatus": "release-candidate",
+  "wechatUploadDescription": "0.2.0：新增7/14天AI动态餐单、候选预览与历史恢复，完善成员权限、健康记录、隐私删除和跨设备数据保护。",
   "stateSchemaVersion": 6,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 1,
