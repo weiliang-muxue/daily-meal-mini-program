@@ -1,34 +1,73 @@
 <view class="screen">
-  <view class="hero surface">
-    <text class="hero-kicker">巧囊闭经针治疗期</text>
-    <text class="hero-title">把骨健康放在减脂前面</text>
-    <text class="hero-copy">食谱只能帮助日常执行，钙和维生素 D 的治疗剂量、疗程监测及 add-back 治疗以开药医生为准。</text>
+  <view wx:if="{{loading}}" class="guide-state surface" aria-label="正在加载健康提醒">
+    <view class="skeleton guide-title-skeleton"></view>
+    <view class="skeleton guide-line-skeleton"></view>
+    <view class="skeleton guide-card-skeleton"></view>
+    <text class="status-detail">正在读取已保存的提醒与设置</text>
   </view>
 
-  <text class="section-title">每天的两个锚点</text>
-  <view class="anchor-grid">
+  <view wx:elif="{{error}}" class="guide-state error-state surface" aria-role="alert">
+    <text class="status-title">健康提醒暂时无法加载</text>
+    <text class="status-detail">{{error}}</text>
+    <button class="secondary-button guide-retry" bindtap="retryConnect" hover-class="button-hover">重新加载</button>
+  </view>
+
+  <block wx:else>
+  <view wx:if="{{saving}}" class="sync-strip saving" aria-live="polite">
+    <text class="sync-title">正在同步</text>
+    <text class="sync-copy">本次修改已先保存在本机</text>
+  </view>
+  <view wx:elif="{{offline}}" class="sync-strip offline" aria-role="alert">
+    <view class="sync-message">
+      <text class="sync-title">本机已保存、尚未同步</text>
+      <text class="sync-copy">{{saveError}}</text>
+    </view>
+    <button class="sync-retry" bindtap="retrySync" disabled="{{saving}}" hover-class="button-hover">重试同步</button>
+  </view>
+
+  <view class="hero surface">
+    <text class="hero-kicker">由你主动决定</text>
+    <text class="hero-title">按需管理健康提醒</text>
+    <text class="hero-copy">新用户不会默认启用专业健康提醒。仅在与你有关、且你愿意记录时开启；之后可以随时关闭。</text>
+  </view>
+
+  <block wx:if="{{settings.calciumAnchorReminder}}">
+    <text class="section-title">补钙食物提醒</text>
+    <view class="anchor-grid">
     <view class="anchor surface"><text class="anchor-number">01</text><text class="anchor-title">奶或强化豆奶</text><text class="anchor-copy">约 300 ml，豆奶看标签确认强化钙含量。</text></view>
     <view class="anchor surface"><text class="anchor-number">02</text><text class="anchor-title">酸奶 / 豆腐 / 小鱼</text><text class="anchor-copy">再选一个食物来源，深绿叶菜是加分项。</text></view>
+    </view>
+  </block>
+
+  <view wx:if="{{settings.vitaminDReminder}}" class="vitamin-note surface">
+    <text class="block-title">维生素 D 复诊提醒</text>
+    <text class="block-copy">补充剂剂量、检测和疗程应由医生结合你的情况决定，不根据小程序内容自行调整。</text>
+  </view>
+
+  <view wx:if="{{!settings.calciumAnchorReminder && !settings.vitaminDReminder}}" class="surface status-panel reminder-empty">
+    <text class="status-title">没有启用专业健康提醒</text>
+    <text class="status-detail">下方开关默认关闭。只有你主动开启后，相关内容才会显示。</text>
   </view>
 
   <text class="section-title">计划提醒</text>
   <view class="surface setting-list">
-    <view class="setting-row"><view><text class="setting-title">显示补钙锚点提醒</text><text class="setting-copy">在计划中保留食物提醒</text></view><switch checked="{{settings.calciumAnchorReminder}}" color="#176B46" data-key="calciumAnchorReminder" bindchange="toggleSetting" /></view>
-    <view class="setting-row"><view><text class="setting-title">显示维生素 D 提醒</text><text class="setting-copy">复诊时核对补充与检测</text></view><switch checked="{{settings.vitaminDReminder}}" color="#176B46" data-key="vitaminDReminder" bindchange="toggleSetting" /></view>
+    <view class="setting-row"><view><text class="setting-title">显示补钙食物提醒</text><text class="setting-copy">默认关闭，开启后显示普通食物提示</text></view><switch checked="{{settings.calciumAnchorReminder}}" disabled="{{saving}}" color="#176B46" data-key="calciumAnchorReminder" bindchange="toggleSetting" /></view>
+    <view class="setting-row"><view><text class="setting-title">显示维生素 D 复诊提醒</text><text class="setting-copy">默认关闭，开启后显示复诊核对提示</text></view><switch checked="{{settings.vitaminDReminder}}" disabled="{{saving}}" color="#176B46" data-key="vitaminDReminder" bindchange="toggleSetting" /></view>
   </view>
 
   <text class="section-title">我的补充提醒</text>
   <view class="reminder-form surface">
-    <textarea maxlength="80" value="{{newReminder}}" bindinput="inputReminder" placeholder="例如：复诊时带钙片瓶身" auto-height />
-    <button class="primary-button" bindtap="addReminder" hover-class="button-hover">添加提醒</button>
+    <textarea maxlength="80" value="{{newReminder}}" disabled="{{saving}}" bindinput="inputReminder" placeholder="例如：复诊时带钙片瓶身" auto-height />
+    <button class="primary-button" bindtap="addReminder" loading="{{saving}}" disabled="{{saving}}" hover-class="button-hover">添加提醒</button>
   </view>
   <view wx:if="{{!reminders.length}}" class="surface status-panel"><text class="status-title">还没有个人提醒</text><text class="status-detail">这里适合记录复诊问题、补充剂标签或计划调整。</text></view>
   <view wx:else class="surface reminder-list">
     <view wx:for="{{reminders}}" wx:key="id" class="reminder-row">
-      <view class="reminder-main {{item.done ? 'done' : ''}}" data-id="{{item.id}}" bindtap="toggleReminder"><view class="reminder-check">{{item.done ? '✓' : ''}}</view><text>{{item.text}}</text></view>
-      <view class="remove" data-id="{{item.id}}" bindtap="removeReminder" aria-label="删除提醒">删除</view>
+      <view class="reminder-main touch-target {{item.done ? 'done' : ''}} {{saving ? 'disabled' : ''}}" data-id="{{item.id}}" bindtap="toggleReminder" hover-class="reminder-hover" aria-role="checkbox" aria-checked="{{item.done}}" aria-disabled="{{saving}}"><view class="reminder-check">{{item.done ? '✓' : ''}}</view><text>{{item.text}}</text></view>
+      <view class="remove touch-target {{saving ? 'disabled' : ''}}" data-id="{{item.id}}" bindtap="removeReminder" hover-class="remove-hover" aria-role="button" aria-disabled="{{saving}}" aria-label="删除提醒">删除</view>
     </view>
   </view>
 
-  <view class="warning"><text class="warning-title">需要联系医生的情况</text><text>持续骨痛、明显乏力或抽筋、反复头晕；疗程较长且从未评估维生素 D 或骨密度。不要自行叠加多种含钙、维生素 D 的产品。</text></view>
+  <view wx:if="{{settings.calciumAnchorReminder || settings.vitaminDReminder}}" class="warning"><text class="warning-title">提醒边界</text><text>这些内容只帮助记录和日常执行，不构成诊断、处方或治疗建议。持续不适或治疗相关问题请联系医生，不要自行叠加补充剂或调整用药。</text></view>
+  </block>
 </view>

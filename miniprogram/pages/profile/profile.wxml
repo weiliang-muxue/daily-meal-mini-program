@@ -7,7 +7,10 @@
     <view class="header-copy"><text class="header-title">{{profile.nickname || '还没有设置昵称'}}</text><text class="header-subtitle">头像和昵称可以跳过，以后随时修改</text></view>
   </view>
 
-  <view class="auth-strip {{authState}}" bindtap="retryLogin">
+  <view wx:if="{{authState === 'offline'}}" class="auth-strip offline touch-target" bindtap="retryLogin" hover-class="profile-control-hover" aria-role="button" aria-label="暂时离线，点此重试">
+    <view class="auth-dot"></view><view><text class="auth-title">暂时离线</text><text class="auth-detail">{{authDetail}}</text></view>
+  </view>
+  <view wx:else class="auth-strip {{authState}}" aria-label="{{authState === 'ready' ? '微信身份已连接' : '正在验证微信身份'}}">
     <view class="auth-dot"></view><view><text class="auth-title">{{authState === 'ready' ? '微信身份已连接' : authState === 'connecting' ? '正在验证微信身份' : '暂时离线'}}</text><text class="auth-detail">{{authDetail}}</text></view>
   </view>
 
@@ -16,6 +19,12 @@
     <view class="field-row"><text class="field-label">昵称</text><input type="nickname" maxlength="20" value="{{nickname}}" bindinput="onNicknameInput" placeholder="填写你希望显示的昵称" /></view>
     <view class="privacy-note"><text>仅在你主动选择头像、填写昵称并点击保存后上传。小程序不会自动获取完整微信资料。</text></view>
     <button class="primary-button" loading="{{saving}}" disabled="{{saving}}" bindtap="saveProfile" hover-class="button-hover">保存资料</button>
+  </view>
+
+  <text class="section-title">健康提醒</text>
+  <view class="surface setting-list">
+    <view class="setting-row"><view class="setting-copy"><text class="setting-title">补钙食物提醒</text><text class="setting-detail">默认关闭，只在你主动开启后显示</text></view><switch checked="{{settings.calciumAnchorReminder}}" disabled="{{savingSettings}}" color="#176B46" data-key="calciumAnchorReminder" bindchange="toggleHealthSetting" /></view>
+    <view class="setting-row"><view class="setting-copy"><text class="setting-title">维生素 D 复诊提醒</text><text class="setting-detail">默认关闭，可随时修改或关闭</text></view><switch checked="{{settings.vitaminDReminder}}" disabled="{{savingSettings}}" color="#176B46" data-key="vitaminDReminder" bindchange="toggleHealthSetting" /></view>
   </view>
 
   <text class="section-title">数据状态</text>
@@ -28,10 +37,42 @@
   <block wx:if="{{member.role === 'owner'}}">
     <text class="section-title">邀请成员</text>
     <view class="invite-card surface">
-      <view class="invite-heading"><view><text class="invite-title">当前 {{memberCount}} / {{maxMembers}} 人</text><text class="invite-copy">每个邀请码只能使用一次，7 天后过期</text></view></view>
+      <view class="invite-heading"><view><text class="invite-title">当前 {{memberCount}} / {{maxMembers}} 人</text><text class="invite-copy">1 位管理员加 6 个受邀名额；邀请码单次使用，创建 24 小时后失效</text></view></view>
       <input class="invite-label" maxlength="20" value="{{inviteLabel}}" bindinput="inputInviteLabel" placeholder="备注，例如：家人（可选）" />
       <button class="secondary-button" loading="{{creatingInvite}}" disabled="{{creatingInvite || memberCount >= maxMembers}}" bindtap="createInvite">生成一次性邀请码</button>
-      <view wx:if="{{inviteCode}}" class="invite-result" bindtap="copyInvite"><text class="invite-code">{{inviteCode}}</text><text class="invite-expire">有效期至 {{inviteExpiresText}} · 点击复制</text></view>
+      <view wx:if="{{inviteCode}}" class="invite-result touch-target" bindtap="copyInvite" hover-class="profile-control-hover" aria-role="button" aria-label="复制邀请码"><text class="invite-code">{{inviteCode}}</text><text class="invite-expire">有效至 {{inviteExpiresText}}（北京时间） · 点击复制</text></view>
+    </view>
+
+    <text class="section-title">管理员交接</text>
+    <view class="transfer-card surface">
+      <text class="transfer-title">选择一名普通成员接任</text>
+      <text class="transfer-copy">转移后你会立即变为普通成员。成员列表只显示称呼和随机成员编号。</text>
+
+      <view wx:if="{{membersState === 'loading' || membersState === 'idle'}}" class="member-status">
+        <view class="member-skeleton skeleton"></view>
+        <view class="member-skeleton short skeleton"></view>
+        <text class="member-status-copy">正在加载成员</text>
+      </view>
+      <view wx:elif="{{membersState === 'error'}}" class="member-status">
+        <text class="member-status-title">成员列表暂时不可用</text>
+        <text class="member-status-copy">{{membersError}}</text>
+        <button class="member-retry" bindtap="retryMembers" disabled="{{transferringOwner}}">重试</button>
+      </view>
+      <view wx:elif="{{membersState === 'empty'}}" class="member-status">
+        <text class="member-status-title">还没有可接任的成员</text>
+        <text class="member-status-copy">成员使用一次性邀请码加入后，会显示在这里。</text>
+      </view>
+      <radio-group wx:else class="member-options" bindchange="selectTransferMember">
+        <label wx:for="{{transferMembers}}" wx:key="memberRef" class="member-option touch-target {{selectedMemberRef === item.memberRef ? 'selected' : ''}}">
+          <radio value="{{item.memberRef}}" checked="{{selectedMemberRef === item.memberRef}}" disabled="{{transferringOwner}}" color="#176B46" />
+          <view class="member-copy">
+            <text class="member-name">{{item.displayName}}</text>
+            <text class="member-ref">成员编号 {{item.memberRef}}</text>
+          </view>
+        </label>
+      </radio-group>
+
+      <button class="transfer-button" bindtap="transferOwner" loading="{{transferringOwner}}" disabled="{{transferringOwner || membersState !== 'ready' || !selectedMemberRef}}">转移管理员身份</button>
     </view>
   </block>
 
@@ -39,5 +80,5 @@
     <text class="privacy-title">身份与隐私</text>
     <text>登录使用 wx.login，并由云函数从可信上下文识别当前用户。AppSecret、session_key、openid 和 unionid 不保存在前端；数据库中的身份标识也不会展示给其他用户。</text>
   </view>
-  <button class="danger-button" bindtap="clearMyData">清空我的私人数据</button>
+  <button class="danger-button" bindtap="clearMyData">删除我的全部数据和成员身份</button>
 </view>

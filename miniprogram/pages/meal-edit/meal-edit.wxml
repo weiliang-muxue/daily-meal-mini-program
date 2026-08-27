@@ -1,11 +1,66 @@
 <view class="screen">
-  <view class="intro surface"><text class="intro-title">只调整我的这一餐</text><text class="intro-copy">基础食谱以后更新时，你的个人版本仍按稳定餐食 ID 保留。其他成员看不到也不会被修改。</text></view>
-  <view class="form surface">
-    <view class="field"><text>名称</text><input maxlength="40" value="{{form.title}}" data-field="title" bindinput="input" /></view>
-    <view class="field vertical"><text>食材与份量</text><textarea maxlength="300" value="{{form.ingredients}}" data-field="ingredients" bindinput="input" auto-height /></view>
-    <view class="field vertical"><text>做法</text><textarea maxlength="300" value="{{form.method}}" data-field="method" bindinput="input" auto-height /></view>
-    <view class="field vertical"><text>个人提示</text><textarea maxlength="60" value="{{form.tag}}" data-field="tag" bindinput="input" auto-height /></view>
+  <view wx:if="{{loading}}" class="status-panel surface">
+    <text class="status-title">正在读取餐食</text>
+    <text class="status-detail">从当前已确认计划中查找这份餐食。</text>
   </view>
-  <button class="primary-button save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存我的方案</button>
-  <button wx:if="{{hasOverride}}" class="secondary-button reset" bindtap="reset">恢复基础餐食</button>
+
+  <view wx:elif="{{error}}" class="status-panel surface error-panel" aria-role="alert">
+    <text class="status-title">无法编辑</text>
+    <text class="status-detail">{{error}}</text>
+    <button class="secondary-button retry" bindtap="retry" hover-class="button-hover">重新读取</button>
+  </view>
+
+  <block wx:else>
+    <view class="intro surface">
+      <view class="meal-meta">
+        <text class="meal-type">{{mealLabel}}</text>
+        <text wx:if="{{scenarioLabel}}" class="scenario">{{scenarioLabel}}</text>
+      </view>
+      <text class="day-label">{{dayLabel}}</text>
+      <text class="intro-title">调整个人显示内容</text>
+      <text class="intro-copy">调整按稳定餐食 ID 保存在你的账户中，不改变餐次、运动场景或已确认计划结构，也不会影响其他成员。</text>
+    </view>
+
+    <view wx:if="{{hasStructuredIngredients}}" class="original surface">
+      <text class="block-title">原计划食材结构</text>
+      <text class="block-copy">以下名称、数量、单位和分类来自已确认计划，保持只读。</text>
+      <view class="ingredient-table">
+        <view wx:for="{{originalIngredients}}" wx:key="id" class="ingredient-row">
+          <view class="ingredient-main">
+            <text class="ingredient-name">{{item.name}}</text>
+            <text class="ingredient-category">{{item.category}}</text>
+          </view>
+          <text class="ingredient-amount">{{item.quantity}} {{item.unit}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form surface">
+      <view class="field vertical">
+        <text class="field-label">个人餐名</text>
+        <input maxlength="50" value="{{form.title}}" data-field="title" bindinput="input" placeholder="填写餐食名称" />
+      </view>
+      <view class="field vertical">
+        <text class="field-label">个人食材说明</text>
+        <textarea maxlength="500" value="{{form.ingredients}}" data-field="ingredients" bindinput="input" placeholder="按你的实际调整填写食材与份量" auto-height="false" />
+        <text class="field-help">这是个人显示文本，不会改写原计划的结构化食材或自动重算采购清单。</text>
+      </view>
+      <view class="field vertical">
+        <text class="field-label">个人做法</text>
+        <textarea maxlength="500" value="{{form.method}}" data-field="method" bindinput="input" placeholder="填写这份餐食的做法" auto-height="false" />
+      </view>
+      <view class="field vertical">
+        <text class="field-label">个人提示</text>
+        <textarea maxlength="80" value="{{form.tag}}" data-field="tag" bindinput="input" placeholder="可选，例如：提前一晚准备" auto-height="false" />
+      </view>
+    </view>
+
+    <view class="contract-note">
+      <text class="contract-title">采购边界</text>
+      <text class="contract-copy">采购清单继续以已确认计划中的结构化食材为准。需要同步改变采购量时，请重新定制并确认一份计划。</text>
+    </view>
+
+    <button class="primary-button save" loading="{{saving}}" disabled="{{saving || resetting}}" bindtap="save" hover-class="button-hover">保存个人调整</button>
+    <button wx:if="{{hasOverride}}" class="secondary-button reset" loading="{{resetting}}" disabled="{{saving || resetting}}" bindtap="reset" hover-class="button-hover">恢复原计划内容</button>
+  </block>
 </view>

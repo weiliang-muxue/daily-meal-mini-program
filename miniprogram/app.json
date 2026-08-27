@@ -2,6 +2,9 @@
   "pages": [
     "pages/access/access",
     "pages/plan/plan",
+    "pages/planner/planner",
+    "pages/plan-preview/plan-preview",
+    "pages/plan-history/plan-history",
     "pages/health/health",
     "pages/shopping/shopping",
     "pages/guide/guide",
@@ -10,23 +13,27 @@
   ],
   "window": {
     "navigationBarTitleText": "每天怎么吃",
-    "navigationBarBackgroundColor": "#F5F7F2",
-    "navigationBarTextStyle": "black",
-    "backgroundColor": "#F5F7F2",
-    "backgroundTextStyle": "dark"
+    "navigationBarBackgroundColor": "@navigationBarBackgroundColor",
+    "navigationBarTextStyle": "@navigationBarTextStyle",
+    "backgroundColor": "@backgroundColor",
+    "backgroundTextStyle": "@backgroundTextStyle",
+    "backgroundColorTop": "@backgroundColor",
+    "backgroundColorBottom": "@backgroundColor"
   },
   "tabBar": {
-    "color": "#6D7770",
-    "selectedColor": "#176B46",
-    "backgroundColor": "#FFFFFF",
-    "borderStyle": "white",
+    "color": "@tabBarColor",
+    "selectedColor": "@tabBarSelectedColor",
+    "backgroundColor": "@tabBarBackgroundColor",
+    "borderStyle": "@tabBarBorderStyle",
     "list": [
-      { "pagePath": "pages/plan/plan", "text": "本周" },
+      { "pagePath": "pages/plan/plan", "text": "餐单" },
       { "pagePath": "pages/health/health", "text": "记录" },
       { "pagePath": "pages/shopping/shopping", "text": "采购" },
       { "pagePath": "pages/profile/profile", "text": "我的" }
     ]
   },
+  "darkmode": true,
+  "themeLocation": "theme.json",
   "style": "v2",
   "__usePrivacyCheck__": true,
   "lazyCodeLoading": "requiredComponents",

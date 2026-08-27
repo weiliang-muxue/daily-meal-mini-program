@@ -3,7 +3,7 @@ const { authStore } = require('../../services/auth-store')
 const { userStore } = require('../../services/user-store')
 
 Page({
-  data: { loading: true, mode: 'invite', code: '', error: '', submitting: false },
+  data: { loading: true, code: '', error: '', submitting: false },
   onLoad() { this.check() },
 
   async check(force = false) {
@@ -17,17 +17,15 @@ Page({
     this.setData({ loading: false })
   },
 
-  setMode(event) { this.setData({ mode: event.currentTarget.dataset.mode, code: '', error: '' }) },
   inputCode(event) { this.setData({ code: String(event.detail.value || '').toUpperCase().replace(/\s/g, '').slice(0, 32) }) },
 
   async submit() {
     const code = this.data.code.trim()
-    if (!code) return this.setData({ error: this.data.mode === 'owner' ? '请输入部署口令' : '请输入邀请码' })
+    if (!code) return this.setData({ error: '请输入邀请码' })
     if (this.data.submitting) return
     this.setData({ submitting: true, error: '' })
     try {
-      if (this.data.mode === 'owner') await membershipStore.activateOwner(code)
-      else await membershipStore.acceptInvite(code)
+      await membershipStore.acceptInvite(code)
       await this.enter()
     } catch (error) {
       this.setData({ error: error.message || '验证失败，请核对后重试' })

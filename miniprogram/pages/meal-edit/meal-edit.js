@@ -1,45 +1,208 @@
-const { plans } = require('../../data/meal-plan')
+'use strict'
+
 const { userStore } = require('../../services/user-store')
 const { membershipStore } = require('../../services/membership-store')
 
-function findBaseMeal(mealId) {
-  const [dayId, type] = String(mealId || '').split(':')
-  for (const plan of plans) {
-    const day = plan.days.find((item) => item.id === dayId)
-    if (day && ['breakfast', 'restDinner', 'workoutDinner'].includes(type)) return { day, type, meal: day[type] }
+const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
+const SCENARIO_LABELS = { default: '', rest: '不运动备选', workout: '运动备选' }
+const EDITABLE_FIELDS = ['title', 'ingredients', 'method', 'tag']
+
+function cleanText(value, maxLength) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+function safeDecode(value) {
+  try { return decodeURIComponent(String(value || '')) } catch (_) { return '' }
+}
+
+function displayIngredients(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (!item || typeof item !== 'object') return ''
+      const name = cleanText(item.name, 50)
+      const quantity = Number(item.quantity)
+      const unit = cleanText(item.unit, 12)
+      if (!name || !Number.isFinite(quantity) || quantity <= 0 || !unit) return ''
+      return `${name} ${quantity} ${unit}`
+    }).filter(Boolean).join(' · ')
+  }
+  return cleanText(value, 500)
+}
+
+function structuredIngredients(value) {
+  if (!Array.isArray(value)) return []
+  return value.map((item, index) => ({
+    id: `${index}-${cleanText(item && item.name, 50)}`,
+    name: cleanText(item && item.name, 50),
+    quantity: Number.isFinite(Number(item && item.quantity)) ? Number(item.quantity) : '',
+    unit: cleanText(item && item.unit, 12),
+    category: cleanText(item && item.category, 20),
+  })).filter((item) => item.name)
+}
+
+function fallbackMealId(plan, day, meal, dayIndex, mealIndex) {
+  if (meal && typeof meal.id === 'string' && meal.id) return meal.id
+  if (meal && typeof meal.mealId === 'string' && meal.mealId) return meal.mealId
+  const planId = cleanText(plan && plan.id, 120) || 'plan'
+  const dayId = cleanText(day && day.id, 120) || `${planId}-d${dayIndex + 1}`
+  const type = cleanText(meal && meal.type, 20) || 'snack'
+  const scenario = cleanText(meal && meal.scenario, 20) || 'default'
+  return `${planId}:${dayId}:meal:${type}:${scenario}:${mealIndex + 1}`
+}
+
+function findPlanMeal(plan, mealId) {
+  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.days)) return null
+  for (let dayIndex = 0; dayIndex < plan.days.length; dayIndex += 1) {
+    const day = plan.days[dayIndex]
+    const meals = Array.isArray(day && day.meals) ? day.meals : []
+    for (let mealIndex = 0; mealIndex < meals.length; mealIndex += 1) {
+      const meal = meals[mealIndex]
+      if (fallbackMealId(plan, day, meal, dayIndex, mealIndex) === mealId) {
+        return { plan, day, dayIndex, meal, mealIndex }
+      }
+    }
   }
   return null
 }
 
+function baseForm(meal) {
+  return {
+    title: cleanText(meal && meal.title, 50),
+    ingredients: displayIngredients(meal && meal.ingredients),
+    method: cleanText(meal && meal.method, 500),
+    tag: cleanText(meal && meal.tag, 80),
+  }
+}
+
+function sanitizedForm(value) {
+  return {
+    title: cleanText(value && value.title, 50),
+    ingredients: cleanText(value && value.ingredients, 500),
+    method: cleanText(value && value.method, 500),
+    tag: cleanText(value && value.tag, 80),
+  }
+}
+
+function sameForm(left, right) {
+  return EDITABLE_FIELDS.every((field) => cleanText(left && left[field], field === 'title' ? 50 : field === 'tag' ? 80 : 500)
+    === cleanText(right && right[field], field === 'title' ? 50 : field === 'tag' ? 80 : 500))
+}
+
 Page({
-  data: { mealId: '', base: {}, form: {}, hasOverride: false, saving: false },
+  data: {
+    loading: true,
+    error: '',
+    mealId: '',
+    planId: '',
+    base: {},
+    form: {},
+    originalIngredients: [],
+    hasStructuredIngredients: false,
+    mealLabel: '',
+    scenarioLabel: '',
+    dayLabel: '',
+    hasOverride: false,
+    saving: false,
+    resetting: false,
+  },
+
   async onLoad(options) {
-    const member = await membershipStore.init()
-    if (!member || member.status !== 'active') return wx.reLaunch({ url: '/pages/access/access' })
-    await userStore.init()
-    const mealId = decodeURIComponent(options.mealId || '')
-    const found = findBaseMeal(mealId)
-    if (!found) return wx.showToast({ title: '餐食不存在', icon: 'none' })
-    const override = userStore.data.mealOverrides[mealId]
-    this.setData({ mealId, base: found.meal, form: { ...found.meal, ...(override || {}) }, hasOverride: Boolean(override) })
+    await this.load(options)
   },
-  input(event) { this.setData({ [`form.${event.currentTarget.dataset.field}`]: event.detail.value }) },
+
+  async load(options, force = false) {
+    this.setData({ loading: true, error: '' })
+    try {
+      const member = await membershipStore.init({ force })
+      if (!member || member.status !== 'active') {
+        wx.reLaunch({ url: '/pages/access/access' })
+        return
+      }
+      await userStore.init({ force })
+      const mealId = safeDecode(options && options.mealId)
+      if (!mealId || mealId.length > 120) throw new Error('餐食标识无效')
+      this.setData({ mealId })
+      const found = findPlanMeal(userStore.data.activePlan, mealId)
+      if (!found) throw new Error('当前计划中没有这份餐食，计划可能已更新')
+      const base = baseForm(found.meal)
+      if (!base.title || !base.ingredients || !base.method) throw new Error('餐食数据不完整，暂时无法编辑')
+      const overrides = userStore.data.mealOverrides && typeof userStore.data.mealOverrides === 'object'
+        ? userStore.data.mealOverrides : {}
+      const override = overrides[mealId]
+      const form = override ? sanitizedForm({ ...base, ...override }) : base
+      const type = MEAL_LABELS[found.meal.type] || cleanText(found.meal.label, 30) || '餐食'
+      const scenario = SCENARIO_LABELS[found.meal.scenario || 'default'] || ''
+      const date = cleanText(found.day.date, 10)
+      const dayName = cleanText(found.day.name, 12) || `第 ${found.dayIndex + 1} 天`
+      this.setData({
+        loading: false,
+        mealId,
+        planId: cleanText(found.plan.id, 120),
+        base,
+        form,
+        originalIngredients: structuredIngredients(found.meal.ingredients),
+        hasStructuredIngredients: Array.isArray(found.meal.ingredients),
+        mealLabel: type,
+        scenarioLabel: scenario,
+        dayLabel: [date, dayName].filter(Boolean).join(' · '),
+        hasOverride: Boolean(override),
+      })
+    } catch (error) {
+      this.setData({ loading: false, error: error.message || '暂时无法打开这份餐食' })
+    }
+  },
+
+  retry() {
+    this.load({ mealId: encodeURIComponent(this.data.mealId) }, true)
+  },
+
+  input(event) {
+    const field = event.currentTarget.dataset.field
+    if (!EDITABLE_FIELDS.includes(field)) return
+    this.setData({ [`form.${field}`]: event.detail.value })
+  },
+
   async save() {
-    const form = this.data.form
-    if (!String(form.title || '').trim() || !String(form.ingredients || '').trim()) return wx.showToast({ title: '名称和食材不能为空', icon: 'none' })
+    if (this.data.saving || this.data.resetting) return
+    const form = sanitizedForm(this.data.form)
+    if (!form.title || !form.ingredients || !form.method) {
+      wx.showToast({ title: '名称、食材和做法不能为空', icon: 'none' })
+      return
+    }
+    const currentPlan = userStore.data.activePlan
+    if (!currentPlan || currentPlan.id !== this.data.planId || !findPlanMeal(currentPlan, this.data.mealId)) {
+      this.setData({ error: '当前计划已经变化，请返回后重新打开餐食' })
+      return
+    }
     this.setData({ saving: true })
-    const mealOverrides = { ...userStore.data.mealOverrides, [this.data.mealId]: {
-      title: String(form.title).trim().slice(0, 40), ingredients: String(form.ingredients).trim().slice(0, 300),
-      method: String(form.method || '').trim().slice(0, 300), tag: String(form.tag || '').trim().slice(0, 60), updatedAt: new Date().toISOString(),
-    } }
-    try { await userStore.patch({ mealOverrides }, { immediate: true }); wx.showToast({ title: '我的方案已保存', icon: 'success' }); setTimeout(() => wx.navigateBack(), 500) }
-    catch (error) { wx.showToast({ title: error.message || '保存失败', icon: 'none' }); this.setData({ saving: false }) }
+    const mealOverrides = { ...(userStore.data.mealOverrides || {}) }
+    if (sameForm(form, this.data.base)) delete mealOverrides[this.data.mealId]
+    else mealOverrides[this.data.mealId] = { ...form, updatedAt: new Date().toISOString() }
+    try {
+      await userStore.patch({ mealOverrides }, { immediate: true })
+      wx.showToast({ title: sameForm(form, this.data.base) ? '已恢复原计划' : '个人调整已保存', icon: 'success' })
+      setTimeout(() => wx.navigateBack(), 500)
+    } catch (error) {
+      wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
+      this.setData({ saving: false })
+    }
   },
+
   reset() {
-    wx.showModal({ title: '恢复基础餐食？', content: '只删除你的个人调整，不影响其他人。', confirmText: '恢复', success: async ({ confirm }) => {
+    if (this.data.saving || this.data.resetting) return
+    wx.showModal({ title: '恢复原计划内容？', content: '只删除这份餐食的个人显示调整，不修改已确认计划和采购清单。', confirmText: '恢复', success: async ({ confirm }) => {
       if (!confirm) return
-      const mealOverrides = { ...userStore.data.mealOverrides }; delete mealOverrides[this.data.mealId]
-      try { await userStore.patch({ mealOverrides }, { immediate: true }); wx.navigateBack() } catch (error) { wx.showToast({ title: '恢复失败', icon: 'none' }) }
+      this.setData({ resetting: true })
+      const mealOverrides = { ...(userStore.data.mealOverrides || {}) }
+      delete mealOverrides[this.data.mealId]
+      try {
+        await userStore.patch({ mealOverrides }, { immediate: true })
+        wx.showToast({ title: '已恢复原计划', icon: 'success' })
+        setTimeout(() => wx.navigateBack(), 400)
+      } catch (error) {
+        wx.showToast({ title: error.message || '恢复失败，请重试', icon: 'none' })
+        this.setData({ resetting: false })
+      }
     } })
   },
 })

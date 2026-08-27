@@ -1,1 +1,5 @@
-{ "navigationBarTitleText": "调整我的餐食" }
+{
+  "navigationBarTitleText": "调整我的餐食",
+  "backgroundColor": "@backgroundColor",
+  "backgroundTextStyle": "@backgroundTextStyle"
+}

@@ -1,28 +1,16 @@
-const { catalog, plans, findPlan, findDay } = require('../../data/meal-plan')
+'use strict'
+
 const { userStore } = require('../../services/user-store')
 const { authStore } = require('../../services/auth-store')
 const { membershipStore } = require('../../services/membership-store')
+const { buildPlanView } = require('../../services/plan-view')
 const { formatUpdatedAt } = require('../../utils/date')
-
-function mealWithOverride(dayId, type, meal, overrides) {
-  const mealId = `${dayId}:${type}`
-  const override = overrides[mealId]
-  return { ...meal, ...(override || {}), mealId, personalized: Boolean(override) }
-}
 
 Page({
   data: {
-    plans,
-    days: [],
-    activePlanId: catalog.defaultPlanId,
-    planTitle: '',
-    selectedDay: 0,
-    selected: {},
-    dinnerMode: 'rest',
-    dinner: {},
-    loading: true,
-    offline: false,
-    syncText: '正在连接云端',
+    loading: true, error: '', offline: false, hasPlan: false, hasDraft: false,
+    days: [], selectedDayIndex: 0, selectedDay: {}, planTitle: '', dateRangeText: '', mealSummaryText: '',
+    planVersion: 0, sourceLabel: '', syncText: '正在连接云端',
   },
 
   onLoad() { this.loadData() },
@@ -30,70 +18,65 @@ Page({
   onHide() { userStore.flush().catch(() => {}) },
 
   async loadData(force = false) {
-    this.setData({ loading: true })
+    this.setData({ loading: true, error: '' })
     try {
       const member = await membershipStore.init({ force })
       if (!member || member.status !== 'active') return wx.reLaunch({ url: '/pages/access/access' })
       await authStore.init({ force })
       await userStore.init({ force })
-    } catch (_) {}
+    } catch (error) {
+      this.setData({ error: error.message || '暂时无法加载餐单' })
+    }
     this.render()
   },
 
   render() {
     const state = userStore.data
-    const plan = findPlan(state.activePlanId || catalog.defaultPlanId)
-    const fallbackIndex = Number.isInteger(state.selectedDay) ? state.selectedDay : 0
-    const selected = findDay(plan, state.selectedDayId, fallbackIndex)
-    const selectedDay = plan.days.findIndex((day) => day.id === selected.id)
-    const dinnerMode = state.dinnerModeByDay[selected.id] || state.defaultDinnerMode
-    const breakfast = mealWithOverride(selected.id, 'breakfast', selected.breakfast, state.mealOverrides)
-    const dinnerType = dinnerMode === 'workout' ? 'workoutDinner' : 'restDinner'
-    const dinner = mealWithOverride(selected.id, dinnerType, selected[dinnerType], state.mealOverrides)
+    const view = buildPlanView(state.activePlan, state)
+    const plan = state.activePlan
     this.setData({
-      days: plan.days, activePlanId: plan.id, planTitle: plan.title, selectedDay, selected, dinnerMode,
-      breakfast, dinner,
       loading: false,
+      error: this.data.error || (!view.hasPlan && userStore.state === 'error' ? userStore.error : ''),
       offline: userStore.state === 'offline',
+      hasPlan: view.hasPlan,
+      hasDraft: Boolean(state.draftPlan),
+      days: view.days,
+      selectedDayIndex: Math.max(0, view.selectedDayIndex),
+      selectedDay: view.selectedDay || {},
+      planTitle: view.title,
+      dateRangeText: view.dateRange.text,
+      mealSummaryText: view.mealSummary.text,
+      planVersion: view.planVersion,
+      sourceLabel: plan && plan.source === 'legacy' ? '旧版迁移计划' : 'AI 定制计划',
       syncText: userStore.state === 'offline' ? '离线快照 · 点此重试' : `云端已同步 ${formatUpdatedAt(state.updatedAt)}`,
     })
     wx.stopPullDownRefresh()
   },
 
   selectDay(event) {
-    const selectedDay = Number(event.currentTarget.dataset.index)
-    const selectedDayId = this.data.days[selectedDay].id
-    userStore.patch({ selectedDay, selectedDayId })
+    const index = Number(event.currentTarget.dataset.index)
+    const day = this.data.days[index]
+    if (!day) return
+    userStore.patch({ selectedDay: index, selectedDayId: day.id })
     this.render()
   },
 
-  selectPlan(event) {
-    const activePlanId = event.currentTarget.dataset.id
-    const plan = findPlan(activePlanId)
-    const selectedDay = Math.min(userStore.data.selectedDay, plan.days.length - 1)
-    userStore.patch({ activePlanId: plan.id, selectedDay, selectedDayId: plan.days[selectedDay].id })
+  selectDinnerMode(event) {
+    const mode = event.currentTarget.dataset.mode === 'workout' ? 'workout' : 'rest'
+    const dayId = this.data.selectedDay.id
+    userStore.patch({ dinnerModeByDay: { ...userStore.data.dinnerModeByDay, [dayId]: mode } })
     this.render()
   },
 
-  onSwiperChange(event) {
-    const selectedDay = Number(event.detail.current)
-    if (selectedDay === this.data.selectedDay) return
-    const selectedDayId = this.data.days[selectedDay].id
-    userStore.patch({ selectedDay, selectedDayId })
-    this.render()
+  editMeal(event) {
+    const mealId = event.currentTarget.dataset.id
+    if (mealId) wx.navigateTo({ url: `/pages/meal-edit/meal-edit?mealId=${encodeURIComponent(mealId)}` })
   },
 
-  selectMode(event) {
-    const dinnerMode = event.currentTarget.dataset.mode === 'workout' ? 'workout' : 'rest'
-    const dinnerModeByDay = { ...userStore.data.dinnerModeByDay, [this.data.selected.id]: dinnerMode }
-    userStore.patch({ dinnerModeByDay })
-    this.render()
-  },
-
-  editBreakfast() { this.openMealEditor(this.data.breakfast.mealId) },
-  editDinner() { this.openMealEditor(this.data.dinner.mealId) },
-  openMealEditor(mealId) { wx.navigateTo({ url: `/pages/meal-edit/meal-edit?mealId=${encodeURIComponent(mealId)}` }) },
-
+  openPlanner() { wx.navigateTo({ url: '/pages/planner/planner' }) },
+  openDraft() { wx.navigateTo({ url: '/pages/plan-preview/plan-preview' }) },
+  openHistory() { wx.navigateTo({ url: '/pages/plan-history/plan-history' }) },
+  openBasis() { wx.navigateTo({ url: '/pages/guide/guide' }) },
   retrySync() { this.loadData(true) },
   onPullDownRefresh() { this.loadData(true) },
 })

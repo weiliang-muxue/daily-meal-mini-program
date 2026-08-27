@@ -1,0 +1,206 @@
+<view class="screen planner-screen {{taskVisible ? 'task-actions-visible' : ''}}">
+  <view class="step-head" aria-label="第 {{stepNumber}} 步，共 {{stepCount}} 步：{{stepTitle}}">
+    <view class="step-copy">
+      <text class="step-count">第 {{stepNumber}} / {{stepCount}} 步</text>
+      <text class="step-title">{{stepTitle}}</text>
+    </view>
+    <view class="step-track" aria-hidden="true">
+      <view wx:for="{{stepItems}}" wx:key="index" class="step-segment {{item.state}}"></view>
+    </view>
+  </view>
+
+  <view wx:if="{{loadingPage}}" class="status-panel surface">
+    <text class="status-title">正在读取你的定制设置</text>
+    <text class="status-detail">已保存的步骤将在加载后恢复。</text>
+  </view>
+
+  <view wx:elif="{{pageError}}" class="status-panel surface error-panel" aria-role="alert">
+    <text class="status-title">加载失败</text>
+    <text class="status-detail">{{pageError}}</text>
+    <button class="secondary-button status-action" bindtap="retryConnect" hover-class="button-hover">重新连接</button>
+  </view>
+
+  <block wx:else>
+    <view class="service-strip {{aiStatus}}">
+      <view class="service-indicator"></view>
+      <view class="service-copy">
+        <text class="service-title">{{aiStatusTitle}}</text>
+        <text class="service-detail">{{aiStatusDetail}}</text>
+      </view>
+      <button wx:if="{{aiStatus === 'error' || aiStatus === 'unconfigured'}}" class="service-retry" bindtap="retryAiStatus" hover-class="button-hover">重试</button>
+    </view>
+
+    <view wx:if="{{currentStep === 0}}" class="step-body">
+      <text class="section-heading">这次需要哪些餐次</text>
+      <text class="section-description">可任意组合。未选择的餐次不会生成。</text>
+      <checkbox-group class="option-list" bindchange="onMealsChange">
+        <label wx:for="{{mealOptions}}" wx:key="value" class="option-row touch-target {{item.checked ? 'selected' : ''}}">
+          <view class="option-copy">
+            <text class="option-title">{{item.label}}</text>
+            <text class="option-detail">{{item.detail}}</text>
+          </view>
+          <checkbox value="{{item.value}}" checked="{{item.checked}}" color="#176b46" />
+        </label>
+      </checkbox-group>
+    </view>
+
+    <view wx:elif="{{currentStep === 1}}" class="step-body">
+      <text class="section-heading">计划覆盖多长时间</text>
+      <text class="section-description">新计划会先进入预览，确认后才替换当前计划。</text>
+      <view class="segmented" aria-role="group" aria-label="选择计划周期">
+        <button class="segment {{preferences.durationDays === 7 ? 'selected' : ''}}" data-days="7" bindtap="chooseDuration" hover-class="button-hover" aria-pressed="{{preferences.durationDays === 7}}">7 天</button>
+        <button class="segment {{preferences.durationDays === 14 ? 'selected' : ''}}" data-days="14" bindtap="chooseDuration" hover-class="button-hover" aria-pressed="{{preferences.durationDays === 14}}">14 天</button>
+      </view>
+      <view class="field-block">
+        <text class="field-label">开始日期</text>
+        <picker mode="date" value="{{preferences.startDate}}" bindchange="onStartDateChange" aria-label="开始日期 {{preferences.startDate}}">
+          <view class="date-picker" aria-role="button">{{preferences.startDate}}<text class="field-action">选择</text></view>
+        </picker>
+      </view>
+    </view>
+
+    <view wx:elif="{{currentStep === 2}}" class="step-body">
+      <text class="section-heading">本次饮食目标</text>
+      <text class="section-description">选择适用目标，也可以补充这周特别想吃什么。</text>
+      <text class="field-label group-label">目标</text>
+      <checkbox-group class="choice-grid" bindchange="onGoalsChange">
+        <label wx:for="{{goalOptions}}" wx:key="label" class="choice touch-target {{item.checked ? 'selected' : ''}}">
+          <checkbox class="visually-hidden" value="{{item.label}}" checked="{{item.checked}}" />
+          <text>{{item.label}}</text>
+        </label>
+      </checkbox-group>
+      <text class="field-label group-label">风格</text>
+      <checkbox-group class="choice-grid" bindchange="onStylesChange">
+        <label wx:for="{{styleOptions}}" wx:key="label" class="choice touch-target {{item.checked ? 'selected' : ''}}">
+          <checkbox class="visually-hidden" value="{{item.label}}" checked="{{item.checked}}" />
+          <text>{{item.label}}</text>
+        </label>
+      </checkbox-group>
+      <view class="field-block">
+        <text class="field-label">本次补充目标</text>
+        <textarea maxlength="160" value="{{preferences.customGoal}}" bindinput="inputCustomGoal" placeholder="例如：这周希望主食更充足，优先米饭和面食" auto-height="false" />
+        <text class="field-counter">最多 160 字</text>
+      </view>
+    </view>
+
+    <view wx:elif="{{currentStep === 3}}" class="step-body">
+      <text class="section-heading">需要避开的食物</text>
+      <text class="section-description">请明确填写过敏、忌口和医生已经告知的饮食限制。AI 结果仅供餐单参考。</text>
+      <view class="field-block">
+        <text class="field-label">过敏与忌口</text>
+        <textarea maxlength="240" value="{{preferences.restrictions}}" bindinput="inputRestrictions" placeholder="例如：花生过敏；不吃猪肉；乳糖不耐" auto-height="false" />
+        <text class="field-counter">最多 240 字</text>
+      </view>
+      <view class="field-block">
+        <text class="field-label">健康相关饮食约束</text>
+        <textarea maxlength="240" value="{{preferences.healthNotes}}" bindinput="inputHealthNotes" placeholder="只填写与本次餐单相关、你愿意主动提供的信息" auto-height="false" />
+        <text class="field-counter">不用于诊断、处方或调整用药</text>
+      </view>
+    </view>
+
+    <view wx:elif="{{currentStep === 4}}" class="step-body">
+      <text class="section-heading">逐日安排运动</text>
+      <text class="section-description">勾选计划运动的日期。餐单可据此调整普通食物与主食安排。</text>
+      <view class="exercise-list">
+        <view wx:for="{{exerciseDays}}" wx:key="dayIndex" class="exercise-day surface {{item.planned ? 'planned' : ''}}">
+          <button class="exercise-toggle" data-index="{{item.dayIndex}}" bindtap="toggleExercise" hover-class="row-hover" aria-pressed="{{item.planned}}" aria-label="{{item.label}} {{item.date}}，{{item.planned ? '已安排运动' : '未安排运动'}}">
+            <view class="exercise-date">
+              <text class="exercise-label">{{item.label}} · {{item.weekday}}</text>
+              <text class="exercise-date-text">{{item.date}}</text>
+            </view>
+            <text class="exercise-state">{{item.planned ? '已安排' : '休息日'}}</text>
+          </button>
+          <view wx:if="{{item.planned}}" class="exercise-fields">
+            <view class="compact-field">
+              <text class="field-label">运动类型</text>
+              <input maxlength="30" value="{{item.type}}" data-index="{{item.dayIndex}}" bindinput="inputExerciseType" placeholder="例如：力量训练" />
+            </view>
+            <view class="compact-field">
+              <text class="field-label">时长（分钟）</text>
+              <input type="number" maxlength="3" value="{{item.durationText}}" data-index="{{item.dayIndex}}" bindinput="inputExerciseDuration" placeholder="例如：45" />
+            </view>
+            <view class="intensity-row" aria-role="group" aria-label="运动强度">
+              <button wx:for="{{item.intensityOptions}}" wx:for-item="intensity" wx:key="value" class="intensity {{intensity.checked ? 'selected' : ''}}" data-index="{{item.dayIndex}}" data-intensity="{{intensity.value}}" bindtap="chooseIntensity" hover-class="button-hover" aria-pressed="{{intensity.checked}}">{{intensity.label}}</button>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="field-block">
+        <text class="field-label">运动补充说明</text>
+        <textarea maxlength="160" value="{{preferences.exerciseNotes}}" bindinput="inputExerciseNotes" placeholder="例如：训练通常在晚餐前进行" auto-height="false" />
+      </view>
+    </view>
+
+    <view wx:elif="{{currentStep === 5}}" class="step-body">
+      <block wx:if="{{taskVisible}}">
+        <text class="section-heading">候选计划生成进度</text>
+        <text class="section-description">任务按片段推进。离开页面不会替换当前计划，回来后可以继续。</text>
+        <view class="task-panel surface" aria-live="polite">
+          <view class="task-head">
+            <view class="task-copy">
+              <text class="task-title">{{taskTitle}}</text>
+              <text class="task-detail">{{taskDetail}}</text>
+            </view>
+            <text class="task-percent">{{taskPercentText}}</text>
+          </view>
+          <view class="progress-track" aria-role="progressbar" aria-label="候选计划生成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{taskPercent}}" aria-valuetext="{{taskPercentText}}">
+            <view class="progress-fill" style="width: {{taskPercent}}%;"></view>
+          </view>
+          <view class="task-stages">
+            <view wx:for="{{taskStages}}" wx:key="key" class="task-stage {{item.state}}">
+              <view class="stage-marker"><text>{{index + 1}}</text></view>
+              <view class="stage-copy">
+                <text class="stage-label">{{item.label}}</text>
+                <text class="stage-detail">{{item.detail}}</text>
+              </view>
+              <text class="stage-state">{{item.state === 'done' ? '完成' : item.state === 'current' ? '进行中' : item.state === 'error' ? '需重试' : item.state === 'cancelled' ? '已取消' : '等待'}}</text>
+            </view>
+          </view>
+          <view class="task-boundary">
+            <text>生成期间，云端会私有保存本次选择和 AI 中间结果；任务完成或过期后会清除中间正文，只保留必要状态。候选计划同步后进入预览，确认前不会替换当前计划。</text>
+          </view>
+        </view>
+      </block>
+      <block wx:else>
+        <text class="section-heading">确认本次生成条件</text>
+        <text class="section-description">先生成候选计划。预览确认前，不会替换你正在使用的计划。</text>
+        <view class="summary surface">
+          <view wx:for="{{summaryRows}}" wx:key="label" class="summary-row">
+            <text class="summary-label">{{item.label}}</text>
+            <text class="summary-value">{{item.value}}</text>
+          </view>
+        </view>
+        <checkbox-group wx:if="{{hasDinner}}" class="double-dinner" bindchange="onDoubleDinnerChange">
+          <label class="option-row touch-target {{preferences.doubleDinner ? 'selected' : ''}}">
+            <view class="option-copy">
+              <text class="option-title">为晚餐生成两套备选</text>
+              <text class="option-detail">每天分别生成运动日晚餐和不运动日晚餐</text>
+            </view>
+            <checkbox value="enabled" checked="{{preferences.doubleDinner}}" color="#176b46" />
+          </label>
+        </checkbox-group>
+        <view class="privacy-box">
+          <text class="privacy-title">发送范围</text>
+          <text class="privacy-copy">点击生成后，云函数会把本页选择的餐次、日期、目标、风格、主动填写的约束与运动安排发送至当前发布配置的 gptpro.live AI 服务。不会发送微信身份、昵称、体重、照片、位置、历史餐单或其他个人记录。</text>
+        </view>
+      </block>
+    </view>
+
+    <view wx:if="{{stepError}}" class="inline-error" aria-role="alert">
+      <text>{{stepError}}</text>
+      <button wx:if="{{currentStep === 5 && aiStatus === 'ready'}}" class="error-retry" bindtap="retryGenerate">重试生成</button>
+    </view>
+
+    <view class="bottom-actions {{taskVisible ? 'task-layout' : ''}}">
+      <button wx:if="{{currentStep > 0 && !taskVisible}}" class="secondary-button back-button" bindtap="goBack" disabled="{{generating}}" hover-class="button-hover">上一步</button>
+      <button wx:if="{{currentStep < 5}}" class="primary-button next-button" bindtap="goNext" hover-class="button-hover">下一步</button>
+      <block wx:elif="{{taskVisible}}">
+        <button wx:if="{{taskCanEdit}}" class="secondary-button task-action" bindtap="editConditions" disabled="{{canceling}}" hover-class="button-hover">调整条件</button>
+        <button wx:if="{{taskCanCancel}}" class="danger-button task-action" bindtap="cancelGeneration" loading="{{canceling}}" disabled="{{canceling}}" hover-class="button-hover">{{canceling ? '正在取消' : '取消生成'}}</button>
+        <button wx:if="{{taskCanRetry}}" class="primary-button task-action" bindtap="retryTask" loading="{{generating}}" disabled="{{generating || canceling}}" hover-class="button-hover">{{generating ? '正在连接' : taskRetryLabel}}</button>
+        <button wx:if="{{generating && !taskCanRetry}}" class="primary-button task-action" loading="true" disabled="true">正在生成</button>
+      </block>
+      <button wx:else class="primary-button next-button" bindtap="generatePlan" loading="{{generating}}" disabled="{{generating || aiStatus !== 'ready'}}" hover-class="button-hover">{{generating ? '正在建立任务' : '生成候选计划'}}</button>
+    </view>
+  </block>
+</view>

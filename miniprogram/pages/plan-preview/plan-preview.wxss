@@ -1,0 +1,65 @@
+page { background: var(--background); color: var(--ink); }
+button { letter-spacing: 0; }
+.preview-page { box-sizing: border-box; width: 100%; max-width: 920rpx; min-height: 100vh; margin: 0 auto; padding: 28rpx 28rpx calc(40rpx + constant(safe-area-inset-bottom)); padding-bottom: calc(40rpx + env(safe-area-inset-bottom)); }
+.hero-section { padding: 10rpx 2rpx 30rpx 20rpx; border-left: 6rpx solid var(--gold); }
+.eyebrow { display: block; color: var(--gold); font-size: 24rpx; font-weight: 700; }
+.page-title { display: block; margin-top: 10rpx; font-size: 42rpx; line-height: 1.28; font-weight: 760; overflow-wrap: anywhere; }
+.date-range { display: block; margin-top: 12rpx; color: var(--muted-strong); font-size: 27rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 8rpx 24rpx; margin-top: 18rpx; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
+.safety-note { display: block; margin-top: 22rpx; padding: 18rpx 20rpx; border-left: 6rpx solid var(--gold); background: var(--gold-soft); color: var(--gold-ink); font-size: 24rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.offline-strip { box-sizing: border-box; min-height: 88rpx; margin-bottom: 18rpx; padding: 18rpx 20rpx; display: flex; align-items: center; border: 1rpx solid var(--warm-line); border-radius: 8rpx; background: var(--warm-soft); color: var(--warm-ink); font-size: 24rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.section-block { margin-top: 22rpx; padding: 26rpx; border: 1rpx solid var(--line); border-radius: 8rpx; background: var(--surface); }
+.section-title { display: block; font-size: 31rpx; line-height: 1.35; font-weight: 740; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.section-count { flex: none; color: var(--primary); font-size: 24rpx; font-weight: 700; }
+.basis-list { margin-top: 18rpx; }
+.basis-row { display: grid; grid-template-columns: minmax(120rpx, 150rpx) minmax(0, 1fr); gap: 18rpx; padding: 16rpx 0; border-top: 1rpx solid var(--line); font-size: 25rpx; line-height: 1.55; }
+.basis-row:first-child { border-top: 0; }
+.basis-label { color: var(--muted); }
+.basis-value { min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.rationale-row { display: grid; grid-template-columns: 14rpx minmax(0, 1fr); gap: 16rpx; align-items: start; margin-top: 18rpx; color: var(--muted-strong); font-size: 25rpx; line-height: 1.65; }
+.rationale-mark { width: 10rpx; height: 10rpx; margin-top: 15rpx; border-radius: 50%; background: var(--primary); }
+.day-block { margin-top: 24rpx; padding-top: 26rpx; border-top: 2rpx solid var(--line); }
+.day-heading { display: grid; grid-template-columns: 56rpx minmax(0, 1fr); gap: 16rpx; align-items: start; }
+.day-index { width: 56rpx; height: 56rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--primary-fill); color: var(--on-primary); font-size: 23rpx; font-weight: 750; }
+.day-copy { min-width: 0; }
+.day-title { display: block; font-size: 29rpx; line-height: 1.42; font-weight: 720; overflow-wrap: anywhere; }
+.day-theme { display: block; margin-top: 4rpx; color: var(--muted); font-size: 23rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.exercise-note { display: block; margin: 16rpx 0 0 72rpx; color: var(--muted); font-size: 23rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.meal-list { margin-top: 20rpx; }
+.meal-block { padding: 22rpx 0; border-top: 1rpx solid var(--line); }
+.meal-block:first-child { border-top: 0; padding-top: 0; }
+.meal-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8rpx 16rpx; }
+.meal-label { flex: none; max-width: 100%; padding: 6rpx 10rpx; border-radius: 6rpx; background: var(--primary-soft); color: var(--primary); font-size: 21rpx; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
+.meal-title { min-width: 0; flex: 1; font-size: 28rpx; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
+.ingredient-list { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 16rpx; }
+.ingredient-item { max-width: 100%; padding: 8rpx 12rpx; border-radius: 6rpx; background: var(--surface-muted); color: var(--muted-strong); font-size: 23rpx; line-height: 1.45; overflow-wrap: anywhere; }
+.meal-method { display: block; margin-top: 16rpx; color: var(--muted-strong); font-size: 24rpx; line-height: 1.65; overflow-wrap: anywhere; }
+.meal-tag { display: block; margin-top: 12rpx; color: var(--gold-ink); font-size: 22rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.action-area { display: grid; gap: 16rpx; margin-top: 28rpx; }
+.primary-action, .secondary-action, .danger-action { box-sizing: border-box; width: 100%; min-height: 96rpx; padding: 18rpx 24rpx; display: flex; align-items: center; justify-content: center; border-radius: 8rpx; font-size: 28rpx; line-height: 1.35; font-weight: 700; }
+.primary-action { background: var(--primary-fill); color: var(--on-primary); }
+.secondary-action { border: 2rpx solid var(--line-strong); background: var(--surface); color: var(--primary); }
+.danger-action { border: 2rpx solid var(--danger-line); background: var(--surface); color: var(--danger); }
+.primary-action::after, .secondary-action::after, .danger-action::after { border: 0; }
+.primary-action[disabled], .secondary-action[disabled], .danger-action[disabled] { opacity: .5; }
+.button-pressed { opacity: .76; }
+.state-panel { box-sizing: border-box; min-height: 560rpx; padding: 80rpx 34rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.state-title { display: block; font-size: 34rpx; line-height: 1.4; font-weight: 750; }
+.state-copy { display: block; max-width: 600rpx; margin-top: 16rpx; color: var(--muted); font-size: 25rpx; line-height: 1.65; overflow-wrap: anywhere; }
+.state-action { margin-top: 30rpx; }
+.loading-line, .loading-block { overflow: hidden; background: var(--skeleton); }
+.loading-line { width: 55%; height: 30rpx; margin-top: 18rpx; border-radius: 6rpx; }
+.loading-line.wide { width: 82%; height: 48rpx; margin-top: 0; }
+.loading-block { width: 100%; max-width: 620rpx; height: 230rpx; margin-top: 30rpx; border-radius: 8rpx; }
+@media (min-width: 700px) {
+  .preview-page { padding-left: 48rpx; padding-right: 48rpx; }
+}
+@media (max-width: 340px), (orientation: landscape) and (max-height: 500px) {
+  .section-block { padding: 20rpx; }
+  .basis-row { grid-template-columns: minmax(0, 1fr); gap: 5rpx; }
+  .exercise-note { margin-left: 0; }
+}
+@media (max-width: 400px) {
+  .offline-strip { min-height: 48px; }
+}

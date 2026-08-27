@@ -4,23 +4,53 @@
 .hero-copy { display: block; color: rgba(255,255,255,.82); font-size: 27rpx; line-height: 1.68; }
 .anchor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18rpx; }
 .anchor { padding: 26rpx; }
-.anchor-number { display: block; color: #a87519; font-weight: 800; font-size: 23rpx; }
+.anchor-number { display: block; color: var(--gold); font-weight: 800; font-size: 23rpx; }
 .anchor-title { display: block; font-size: 29rpx; font-weight: 720; margin: 14rpx 0 10rpx; }
-.anchor-copy { display: block; color: #68766f; font-size: 24rpx; line-height: 1.55; }
+.anchor-copy { display: block; color: var(--muted); font-size: 24rpx; line-height: 1.55; overflow-wrap: anywhere; }
 .setting-list { overflow: hidden; }
-.setting-row { min-height: 128rpx; padding: 24rpx 28rpx; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; border-bottom: 1rpx solid #e8ece9; }
+.setting-row { min-height: 128rpx; padding: 24rpx 28rpx; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; border-bottom: 1rpx solid var(--line); }
+.setting-row > view { min-width: 0; flex: 1; }
 .setting-row:last-child { border-bottom: 0; }
 .setting-title { display: block; font-weight: 700; }
-.setting-copy { display: block; color: #68766f; font-size: 24rpx; margin-top: 6rpx; }
+.setting-copy { display: block; color: var(--muted); font-size: 24rpx; line-height: 1.5; margin-top: 6rpx; overflow-wrap: anywhere; }
 .reminder-form { padding: 24rpx; }
-.reminder-form textarea { width: 100%; min-height: 100rpx; line-height: 1.55; margin-bottom: 18rpx; }
+.reminder-form textarea { width: 100%; min-height: 100rpx; padding: 18rpx 20rpx; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--input-surface); color: var(--ink); line-height: 1.55; margin-bottom: 18rpx; }
 .reminder-list { overflow: hidden; }
-.reminder-row { min-height: 104rpx; padding: 18rpx 24rpx; display: flex; align-items: center; gap: 16rpx; border-bottom: 1rpx solid #e8ece9; }
+.reminder-row { min-height: 104rpx; padding: 18rpx 24rpx; display: flex; align-items: center; gap: 16rpx; border-bottom: 1rpx solid var(--line); }
 .reminder-row:last-child { border-bottom: 0; }
-.reminder-main { flex: 1; display: flex; align-items: center; gap: 16rpx; line-height: 1.5; }
-.reminder-check { flex: none; width: 42rpx; height: 42rpx; border: 2rpx solid #aab7af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; }
-.reminder-main.done .reminder-check { background: #176b46; border-color: #176b46; }
-.reminder-main.done text { color: #87918b; text-decoration: line-through; }
-.remove { min-width: 88rpx; min-height: 72rpx; display: flex; align-items: center; justify-content: flex-end; color: #a34b37; font-size: 25rpx; }
-.warning { margin-top: 30rpx; padding: 26rpx; border-left: 6rpx solid #c85f45; background: #fff0e9; color: #764437; font-size: 26rpx; line-height: 1.65; }
-.warning-title { display: block; color: #633426; font-weight: 750; margin-bottom: 8rpx; }
+.reminder-main { min-width: 0; min-height: 88rpx; flex: 1; display: flex; align-items: center; gap: 16rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.reminder-check { flex: none; width: 42rpx; height: 42rpx; border: 2rpx solid var(--line-strong); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--on-primary); }
+.reminder-main.done .reminder-check { background: var(--primary-fill); border-color: var(--primary-fill); }
+.reminder-main.done text { color: var(--checked-text); text-decoration: line-through; }
+.reminder-main.disabled, .remove.disabled { opacity: .48; }
+.remove { min-width: 88rpx; min-height: 88rpx; display: flex; align-items: center; justify-content: flex-end; color: var(--danger); font-size: 25rpx; }
+.reminder-hover { background: var(--pressed); }
+.remove-hover { opacity: .72; background: var(--danger-soft); }
+.warning { margin-top: 30rpx; padding: 26rpx; border-left: 6rpx solid var(--warm); background: var(--warm-soft); color: var(--warm-ink); font-size: 26rpx; line-height: 1.65; overflow-wrap: anywhere; }
+.warning-title { display: block; color: var(--warm-ink); font-weight: 750; margin-bottom: 8rpx; }
+.vitamin-note { margin-top: 24rpx; padding: 26rpx; border-left: 6rpx solid var(--gold); }
+.block-title { display: block; font-size: 29rpx; line-height: 1.4; font-weight: 730; }
+.block-copy { display: block; margin-top: 8rpx; color: var(--muted); font-size: 24rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.reminder-empty { margin-top: 24rpx; }
+.guide-state { min-height: 560rpx; padding: 56rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.guide-state.error-state { border-color: var(--danger-line); }
+.guide-retry { width: 100%; margin-top: 28rpx; }
+.guide-title-skeleton { width: 58%; height: 44rpx; border-radius: 8rpx; }
+.guide-line-skeleton { width: 82%; height: 28rpx; margin-top: 20rpx; border-radius: 7rpx; }
+.guide-card-skeleton { width: 100%; height: 260rpx; margin-top: 30rpx; border-radius: 12rpx; }
+.sync-strip { min-height: 96rpx; margin-bottom: 20rpx; padding: 18rpx 20rpx; display: flex; align-items: center; gap: 18rpx; border: 1rpx solid var(--line-strong); border-radius: 10rpx; }
+.sync-strip.saving { background: var(--surface-muted); color: var(--muted-strong); }
+.sync-strip.offline { border-color: var(--warm-line); background: var(--warm-soft); color: var(--warm-ink); }
+.sync-message { min-width: 0; flex: 1; }
+.sync-title { display: block; font-size: 25rpx; line-height: 1.4; font-weight: 750; }
+.sync-copy { display: block; margin-top: 4rpx; font-size: 22rpx; line-height: 1.45; overflow-wrap: anywhere; }
+.sync-retry { min-width: 156rpx; min-height: 88rpx; margin: -12rpx -10rpx -12rpx 0; padding: 0 16rpx; display: flex; align-items: center; justify-content: center; background: transparent; color: inherit; font-size: 24rpx; font-weight: 750; }
+@media (max-width: 340px) {
+  .anchor-grid { grid-template-columns: minmax(0, 1fr); }
+  .setting-row { align-items: flex-start; }
+  .sync-strip { align-items: flex-start; flex-wrap: wrap; }
+  .sync-retry { width: 100%; margin: 0; justify-content: flex-start; }
+}
+@media (max-width: 400px) {
+  .reminder-main, .remove { min-height: 48px; }
+}
