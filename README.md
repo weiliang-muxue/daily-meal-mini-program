@@ -2,7 +2,7 @@
 
 微信原生小程序。用户先选择 7/14 天、所需餐次、饮食目标、逐日运动和个人约束，再由云函数调用 AI 生成候选餐单；不是 `web-view` 套壳。
 
-当前开发版本为 `0.2.0-dev.1`，尚未正式发布。当前工作线是 Branch `v0.2.0`，上一源码基线由 Tag `v0.1.0` 保留；开发中能力与正式版本必须以 [CHANGELOG.md](CHANGELOG.md) 和 `release-manifest.json` 为准。Branch 会继续增加提交，Tag 是不可移动的历史快照，两者不要混用。
+当前上传候选版本为 `0.2.0`，状态为 `release-candidate`，尚未通过微信审核或正式发布。当前工作线是 Branch `v0.2.0`，上一源码基线由 Tag `v0.1.0` 保留；候选能力与正式发布状态必须以 [CHANGELOG.md](CHANGELOG.md) 和 `release-manifest.json` 为准。上传、审核及正式发布完成前不创建 `v0.2.0` Tag；审核通过、仓库所有者最终确认并完成微信正式发布后，才在审核通过的完全相同 commit 上创建 annotated Tag。
 
 ## 已实现
 
@@ -24,7 +24,7 @@
 
 部署前请阅读 [docs/DEPLOY.md](docs/DEPLOY.md)、[docs/DATABASE.md](docs/DATABASE.md) 和 [docs/PRIVACY.md](docs/PRIVACY.md)。
 
-版本升级见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/VERSIONING.md](docs/VERSIONING.md)，每次开发、验证和发布证据记录在 [docs/ITERATION_LOG.md](docs/ITERATION_LOG.md)，每次交付按 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) 核对；使用支持见 [SUPPORT.md](SUPPORT.md)，安全问题见 [SECURITY.md](SECURITY.md)。发布后的附近超市、路线和可靠价格数据源研究记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。
+版本升级见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/VERSIONING.md](docs/VERSIONING.md)，每次开发、验证和发布证据记录在 [docs/ITERATION_LOG.md](docs/ITERATION_LOG.md)，每次交付按 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) 核对，微信后台隐私、类目、审核访问和发布操作按 [docs/WECHAT_REVIEW.md](docs/WECHAT_REVIEW.md) 执行；使用支持见 [SUPPORT.md](SUPPORT.md)，安全问题见 [SECURITY.md](SECURITY.md)。发布后的附近超市、路线和可靠价格数据源研究记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 每次推送或 Pull Request 都会运行只读 GitHub Actions，自动检查版本同步、v1-v5 数据迁移、AI 契约、动态餐次和公开仓库安全规则。工作流不配置也不读取任何 GitHub Secret。
 
