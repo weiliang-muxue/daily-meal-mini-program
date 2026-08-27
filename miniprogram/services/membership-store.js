@@ -1,26 +1,43 @@
 const { callFunction, wxLogin } = require('../utils/cloud')
 
-const CACHE_KEY = 'meal_membership_v1'
+function normalizeCacheNamespace(value) {
+  return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value) ? value : ''
+}
+
+function staleIdentityError() {
+  const error = new Error('微信身份验证结果已过期，请重试')
+  error.code = 'STALE_IDENTITY_RESPONSE'
+  return error
+}
 
 class MembershipStore {
   constructor() {
     this.member = null
+    this.cacheNamespace = ''
     this.state = 'idle'
     this.error = ''
     this.initPromise = null
+    this.verifiedInRuntime = false
+    this.namespaceListeners = new Set()
+    this.identityRequestRevision = 0
   }
 
   init(options = {}) {
-    if (!this.member) this.member = wx.getStorageSync(CACHE_KEY) || null
+    if (this.member && this.verifiedInRuntime && !options.force) return Promise.resolve(this.member)
     if (this.initPromise && !options.force) return this.initPromise
     this.state = 'connecting'
+    const requestRevision = ++this.identityRequestRevision
     const request = wxLogin()
       .then(() => callFunction('membership', 'status'))
-      .then((member) => this.save(member))
+      .then((member) => {
+        if (requestRevision !== this.identityRequestRevision) throw staleIdentityError()
+        return this.save(member)
+      })
       .catch((error) => {
+        if (requestRevision !== this.identityRequestRevision) throw error
         this.state = 'offline'
         this.error = error.message || '访问验证失败'
-        if (!this.member) throw error
+        if (!this.member || !this.verifiedInRuntime) throw error
         return this.member
       })
       .finally(() => { if (this.initPromise === request) this.initPromise = null })
@@ -29,17 +46,55 @@ class MembershipStore {
   }
 
   save(member) {
+    const previousNamespace = this.cacheNamespace
+    const nextNamespace = normalizeCacheNamespace(member && member.cacheNamespace)
     this.member = member
+    this.cacheNamespace = nextNamespace
+    this.verifiedInRuntime = true
     this.state = 'ready'
     this.error = ''
-    wx.setStorageSync(CACHE_KEY, member)
+    if (previousNamespace !== nextNamespace) {
+      this.namespaceListeners.forEach((listener) => {
+        try { listener(nextNamespace, previousNamespace) } catch (_) {}
+      })
+    }
     return member
   }
 
-  acceptInvite(code) { return callFunction('membership', 'acceptInvite', { code }).then((member) => this.save(member)) }
-  activateOwner(code) { return callFunction('membership', 'activateOwner', { code }).then((member) => this.save(member)) }
+  onCacheNamespaceChange(listener) {
+    if (typeof listener !== 'function') return () => {}
+    this.namespaceListeners.add(listener)
+    return () => this.namespaceListeners.delete(listener)
+  }
+
+  reset() {
+    const previousNamespace = this.cacheNamespace
+    this.identityRequestRevision += 1
+    this.member = null
+    this.cacheNamespace = ''
+    this.verifiedInRuntime = false
+    this.state = 'idle'
+    this.error = ''
+    this.initPromise = null
+    if (previousNamespace) {
+      this.namespaceListeners.forEach((listener) => {
+        try { listener('', previousNamespace) } catch (_) {}
+      })
+    }
+  }
+
+  runIdentityAction(action, payload) {
+    const requestRevision = ++this.identityRequestRevision
+    return callFunction('membership', action, payload).then((member) => {
+      if (requestRevision !== this.identityRequestRevision) throw staleIdentityError()
+      return this.save(member)
+    })
+  }
+
+  acceptInvite(code) { return this.runIdentityAction('acceptInvite', { code }) }
   createInvite(label) { return callFunction('membership', 'createInvite', { label }) }
   listMembers() { return callFunction('membership', 'listMembers') }
+  transferOwner(memberRef, confirmed) { return this.runIdentityAction('transferOwner', { memberRef, confirmed }) }
 }
 
-module.exports = { membershipStore: new MembershipStore() }
+module.exports = { MembershipStore, membershipStore: new MembershipStore() }
