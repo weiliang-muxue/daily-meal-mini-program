@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "我的餐单",
+  "navigationBarTitleText": "餐单",
   "enablePullDownRefresh": true,
   "backgroundColor": "@backgroundColor",
   "backgroundTextStyle": "@backgroundTextStyle",

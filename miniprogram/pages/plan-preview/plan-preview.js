@@ -6,6 +6,25 @@ const { userStore } = require('../../services/user-store')
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 const SCENARIO_LABELS = { default: '', rest: '不运动', workout: '运动' }
 const INTENSITY_LABELS = { low: '轻松', medium: '适中', high: '较强' }
+const PLAN_URL = '/pages/plan/plan'
+
+function canNavigateBack() {
+  try {
+    return typeof getCurrentPages === 'function' && getCurrentPages().length > 1
+  } catch (_) {
+    return false
+  }
+}
+
+function returnFromSecondaryPage() {
+  const goHome = () => wx.switchTab({ url: PLAN_URL })
+  if (!canNavigateBack() || typeof wx.navigateBack !== 'function') return goHome()
+  try {
+    return wx.navigateBack({ delta: 1, fail: goHome })
+  } catch (_) {
+    return goHome()
+  }
+}
 
 function pad(value) { return String(value).padStart(2, '0') }
 
@@ -88,7 +107,8 @@ function preparePlan(plan) {
     basisRows: generationBasisRows(plan),
     rationale: Array.isArray(plan.rationale) ? plan.rationale : [],
     generatedText: formatTimestamp(plan.generatedAt),
-    versionText: `计划 v${plan.planVersion || 1} · 契约 v${plan.contractVersion || 0}`,
+    versionText: `餐单版本 ${plan.planVersion || 1}`,
+    isAiGenerated: plan.source === 'ai',
   }
 }
 
@@ -103,6 +123,8 @@ function confirmModal(options) {
 
 Page({
   data: {
+    canNavigateBack: false,
+    pageNavigationLabel: '返回餐单首页',
     viewState: 'loading',
     offline: false,
     errorMessage: '',
@@ -110,8 +132,8 @@ Page({
     busyAction: '',
   },
 
-  onLoad() { this.loadData() },
-  onShow() { if (this.data.viewState !== 'loading') this.render() },
+  onLoad() { this.refreshPageNavigation(); this.loadData() },
+  onShow() { this.refreshPageNavigation(); if (this.data.viewState !== 'loading') this.render() },
   onPullDownRefresh() { this.loadData(true) },
 
   async loadData(force = false) {
@@ -123,7 +145,7 @@ Page({
       this.render()
     } catch (error) {
       if (userStore.data && userStore.data.draftPlan) this.render(true)
-      else this.setData({ viewState: 'error', offline: true, errorMessage: error.message || '候选计划加载失败，请重试' })
+      else this.setData({ viewState: 'error', offline: true, errorMessage: error.message || '候选餐单加载失败，请重试' })
     } finally {
       wx.stopPullDownRefresh()
     }
@@ -145,6 +167,18 @@ Page({
 
   retry() { this.loadData(true) },
 
+  refreshPageNavigation() {
+    const canGoBack = canNavigateBack()
+    this.setData({
+      canNavigateBack: canGoBack,
+      pageNavigationLabel: canGoBack ? '返回上一页' : '返回餐单首页',
+    })
+  },
+
+  navigateFromPage() {
+    return returnFromSecondaryPage()
+  },
+
   async refreshAfterConflict() {
     let refreshed = false
     try {
@@ -155,8 +189,8 @@ Page({
       this.render(true)
     }
     wx.showModal({
-      title: '候选状态已变化',
-      content: refreshed ? '已重新载入云端状态，请核对后再操作。当前已确认计划没有被替换。' : '暂时无法刷新云端状态，请恢复网络后重试。当前已确认计划没有被替换。',
+      title: '候选餐单已变化',
+      content: refreshed ? '已重新载入最新餐单，请核对后再操作。当前餐单没有被替换。' : '暂时无法刷新最新餐单，请恢复网络后重试。当前餐单没有被替换。',
       showCancel: false,
       confirmText: '知道了',
     })
@@ -164,14 +198,15 @@ Page({
 
   async confirmPlan() {
     if (this.data.busyAction || !this.data.plan) return
+    const expectedDraftPlanId = this.data.plan.id
     this.setData({ busyAction: 'confirm' })
     try {
-      await userStore.confirmDraft()
-      wx.showToast({ title: '计划已应用', icon: 'success' })
+      await userStore.confirmDraft(expectedDraftPlanId)
+      wx.showToast({ title: '餐单已应用', icon: 'success' })
       setTimeout(() => wx.switchTab({ url: '/pages/plan/plan' }), 350)
     } catch (error) {
       if (isConflict(error)) await this.refreshAfterConflict()
-      else wx.showModal({ title: '确认失败', content: `${error.message || '请稍后重试'}。当前已确认计划没有变化。`, showCancel: false, confirmText: '知道了' })
+      else wx.showModal({ title: '确认失败', content: `${error.message || '请稍后重试'}。当前餐单没有变化。`, showCancel: false, confirmText: '知道了' })
     } finally {
       this.setData({ busyAction: '' })
     }
@@ -179,23 +214,24 @@ Page({
 
   async discardPlan() {
     if (this.data.busyAction || !this.data.plan) return
+    const expectedDraftPlanId = this.data.plan.id
     const confirmed = await confirmModal({
-      title: '丢弃这份候选计划？',
-      content: '丢弃后无法从预览恢复，但不会影响当前已确认计划。',
+      title: '丢弃这份候选餐单？',
+      content: '丢弃后无法从预览恢复，但不会影响当前餐单。',
       confirmText: '继续',
       confirmColor: '#A33F2B',
     })
     if (!confirmed) return
     const confirmedAgain = await confirmModal({
       title: '再次确认丢弃',
-      content: '确定删除这份尚未确认的候选计划吗？',
+      content: '确定删除这份尚未确认的候选餐单吗？',
       confirmText: '确认丢弃',
       confirmColor: '#A33F2B',
     })
     if (!confirmedAgain) return
     this.setData({ busyAction: 'discard' })
     try {
-      await userStore.discardDraft()
+      await userStore.discardDraft(expectedDraftPlanId)
       wx.showToast({ title: '候选已丢弃', icon: 'success' })
       this.render()
     } catch (error) {

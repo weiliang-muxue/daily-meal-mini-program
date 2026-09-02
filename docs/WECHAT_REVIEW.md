@@ -12,6 +12,7 @@
 - [ ] 选择并真机验证一条完整流程：主动调用 `wx.getPrivacySetting`，或全局注册 `wx.onNeedPrivacyAuthorization`。自定义监听触发后必须在用户真实操作后调用 `resolve`；同意按钮使用 `open-type="agreePrivacyAuthorization"`，拒绝也要结束 pending 状态。`wx.requirePrivacyAuthorize` 只用于按需预触发，不代替用户同意。
 - [ ] 用户可查看完整隐私指引。`wx.openPrivacyContract` 不是强制接口，但官方推荐使用；若不使用，页面内必须能完整展示协议，而非只有摘要。
 - [ ] 单独验证昵称输入：用户未同意隐私协议时，`<input type="nickname">` 不会触发 `onNeedPrivacyAuthorization`，而会降级为普通文本输入。
+- [ ] 单独验证可选手机号：只有用户点击 `open-type="getPhoneNumber"` 按钮才产生动态 `code`；拒绝、无资格、无额度或接口不支持时不阻断餐单、资料和健康记录。`code` 仅由 `auth` 云函数调用官方 `phonenumber.getPhoneNumber`，不落库、不缓存、不记录日志，完整号码不保存。
 - [ ] 不把 `app.json.__usePrivacyCheck__` 当作关闭隐私校验的开关。官方指南说明隐私功能已全量启用。
 
 官方同时文档化主动和被动两种流程，没有规定所有小程序必须统一选择其中一种，也没有提供适用于所有页面结构的唯一推荐代码模板。
@@ -19,7 +20,7 @@
 ## 2. 后台隐私指引
 
 - [ ] 发布者本人在“小程序用户隐私保护指引”中按本次提审代码的实际行为填写，不直接沿用旧版本结论。提审页面会把开发版本的接口调用情况与隐私指引比较；不一致或为空时需要在当前提审入口更新。官方说明见 [用户隐私保护指引填写说明](https://developers.weixin.qq.com/miniprogram/dev/framework/user-privacy/)。
-- [ ] 至少核对微信接口自动映射：选择头像和昵称对应“收集你的昵称、头像”；`wx.chooseImage`、`wx.chooseMedia` 或 `wx.chooseVideo` 对应“收集你选中的照片或视频信息”。官方映射见 [小程序用户隐私保护指引内容介绍](https://developers.weixin.qq.com/miniprogram/dev/framework/user-privacy/miniprogram-intro.html)。
+- [ ] 至少核对微信接口自动映射：选择头像和昵称对应“收集你的昵称、头像”；可选手机号按本次提审页面和官方能力说明如实填写；`wx.chooseImage`、`wx.chooseMedia` 或 `wx.chooseVideo` 对应“收集你选中的照片或视频信息”。官方映射见 [小程序用户隐私保护指引内容介绍](https://developers.weixin.qq.com/miniprogram/dev/framework/user-privacy/miniprogram-intro.html)。
 - [ ] 不把用户手工填写的运动记录误写成“微信运动步数”。官方的该类型对应微信运动授权和 `wx.getWeRunData`，不是所有运动数据。
 - [ ] 按后台实际可选项如实覆盖用户手工填写的体重、运动、饮食选择、忌口、健康约束、提醒、AI 生成选择和计划数据，并写清处理目的、存储期限、联系方式及查阅、更正、删除路径。
 - [ ] 核对实际删除闭环与指引一致；账号或成员身份删除后，相应个人数据按承诺处理。官方审核规则要求收集任何用户数据时明确告知用途、取得明确同意，并在注销后删除相关数据，见 [微信小程序平台常见拒绝情形](https://developers.weixin.qq.com/miniprogram/product/reject.html)。

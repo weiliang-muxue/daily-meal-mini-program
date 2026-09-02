@@ -10,6 +10,9 @@ function clone(value) {
 
 const stores = new Map()
 
+function atomicSet(value) { return { $testAtomicSet: true, value: clone(value) } }
+function isAtomicSet(value) { return value && value.$testAtomicSet === true }
+
 function collectionStore(name) {
   if (!stores.has(name)) stores.set(name, new Map())
   return stores.get(name)
@@ -33,7 +36,11 @@ function reference(name, id) {
     async update({ data }) {
       const current = collectionStore(name).get(id)
       if (current === undefined) throw new Error('document does not exist')
-      collectionStore(name).set(id, { ...clone(current), ...clone(data) })
+      const next = { ...clone(current) }
+      Object.entries(data).forEach(([key, value]) => {
+        next[key] = isAtomicSet(value) ? clone(value.value) : clone(value)
+      })
+      collectionStore(name).set(id, next)
       return { stats: { updated: 1 } }
     },
   }
@@ -45,6 +52,7 @@ function collection(name) {
 
 const database = {
   collection,
+  command: { set: atomicSet },
   serverDate() { return { $serverDate: true } },
   async runTransaction(callback) { return callback({ collection }) },
 }
@@ -65,6 +73,8 @@ let userData
 try { userData = require('./index') } finally { Module._load = originalLoad }
 
 const owner = 'openid-user-state-test'
+const cacheNamespace = 'a'.repeat(32)
+const rotatedCacheNamespace = 'b'.repeat(32)
 
 function put(name, id, value) { collectionStore(name).set(id, clone(value)) }
 function get(name, id) { return clone(collectionStore(name).get(id)) }
@@ -143,7 +153,7 @@ function currentState(revision = 0) {
 
 function reset(state = currentState()) {
   stores.clear()
-  put('meal_members', owner, { status: 'active' })
+  put('meal_members', owner, { status: 'active', cacheNamespace })
   put('meal_user_states', owner, state)
 }
 
@@ -159,7 +169,7 @@ function assertNestedFuture(state) {
 
 async function testBootstrapAndSave() {
   reset()
-  const bootstrapped = await userData._test.bootstrap(owner)
+  const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
   assertNestedFuture(bootstrapped)
 
   await userData._test.saveState(owner, {
@@ -180,7 +190,7 @@ async function testBootstrapAndSave() {
     },
     activePlan: { futureClientPlan: 'ignored because plans are not client editable' },
     futureTopLevelField: 'must-not-be-stored',
-  }, 0)
+  }, 0, cacheNamespace)
 
   const stored = get('meal_user_states', owner)
   assertNestedFuture(stored)
@@ -196,16 +206,68 @@ async function testBootstrapAndSave() {
     'top-level future fields remain untouched by the database update patch')
 }
 
+async function testDurationPersistenceBoundaries() {
+  for (const durationDays of [0, 15]) {
+    reset(currentState(20))
+    const before = get('meal_user_states', owner)
+    await assert.rejects(
+      () => userData._test.saveState(owner, {
+        generationPreferences: {
+          ...defaults().generationPreferences,
+          durationDays,
+          mealTypes: ['breakfast'],
+        },
+      }, 20, cacheNamespace),
+      (error) => error && error.code === 'INVALID_USER_STATE',
+      `${durationDays} days must be rejected before persistence`,
+    )
+    assert.deepStrictEqual(get('meal_user_states', owner), before,
+      `${durationDays} days must not advance the revision or alter any stored field`)
+  }
+
+  for (const durationDays of [1, 10, 14]) {
+    reset(currentState(30))
+    const exerciseByDay = Array.from({ length: durationDays }, (_, dayIndex) => ({
+      dayIndex,
+      planned: dayIndex === durationDays - 1,
+      type: dayIndex === durationDays - 1 ? 'walk' : '',
+      durationMinutes: dayIndex === durationDays - 1 ? 30 : 0,
+      intensity: 'medium',
+    }))
+    const saved = await userData._test.saveState(owner, {
+      generationPreferences: {
+        ...defaults().generationPreferences,
+        durationDays,
+        mealTypes: ['breakfast', 'lunch', 'dinner'],
+        exerciseByDay,
+      },
+    }, 30, cacheNamespace)
+    assert.strictEqual(saved.stateRevision, 31,
+      'saveState must return the exact committed expectedStateRevision + 1 token')
+    assert.strictEqual(saved.generationPreferences.durationDays, durationDays)
+    assert.strictEqual(saved.generationPreferences.exerciseByDay.length, durationDays)
+    const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
+    assert.strictEqual(bootstrapped.generationPreferences.durationDays, durationDays,
+      `${durationDays} days must survive a complete database round trip`)
+    assert.strictEqual(bootstrapped.generationPreferences.exerciseByDay.length, durationDays)
+    assert.strictEqual(get('meal_user_states', owner).stateRevision, 31)
+  }
+}
+
 async function testPlanActions() {
   reset(currentState(10))
   const beforeConflict = get('meal_user_states', owner)
   await assert.rejects(
-    userData._test.changePlan(owner, 'confirmDraft', { expectedStateRevision: 9 }),
+    userData._test.changePlan(owner, 'confirmDraft', {
+      expectedDraftPlanId: 'draft', expectedStateRevision: 9, expectedCacheNamespace: cacheNamespace,
+    }),
     (error) => error && error.code === 'STATE_REVISION_CONFLICT',
   )
   assert.deepStrictEqual(get('meal_user_states', owner), beforeConflict,
     'revision conflict must not alter current, draft, or history plans')
-  await userData._test.changePlan(owner, 'confirmDraft', { expectedStateRevision: 10 })
+  await userData._test.changePlan(owner, 'confirmDraft', {
+    expectedDraftPlanId: 'draft', expectedStateRevision: 10, expectedCacheNamespace: cacheNamespace,
+  })
   let stored = get('meal_user_states', owner)
   assert.strictEqual(stored.activePlan.id, 'draft')
   assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'draft-future' })
@@ -213,7 +275,9 @@ async function testPlanActions() {
   assert.strictEqual(stored.planHistory[0].id, 'active')
   assert.deepStrictEqual(stored.planHistory[0].futurePlanField, { value: 'active-future' })
 
-  await userData._test.changePlan(owner, 'restoreHistory', { planId: 'active', expectedStateRevision: 11 })
+  await userData._test.changePlan(owner, 'restoreHistory', {
+    planId: 'active', expectedStateRevision: 11, expectedCacheNamespace: cacheNamespace,
+  })
   stored = get('meal_user_states', owner)
   assert.strictEqual(stored.activePlan.id, 'active')
   assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
@@ -221,7 +285,19 @@ async function testPlanActions() {
   assert.deepStrictEqual(stored.planHistory[0].futurePlanField, { value: 'draft-future' })
 
   put('meal_user_states', owner, currentState(20))
-  await userData._test.changePlan(owner, 'discardDraft', { expectedStateRevision: 20 })
+  const beforeWrongDraft = get('meal_user_states', owner)
+  await assert.rejects(
+    userData._test.changePlan(owner, 'discardDraft', {
+      expectedDraftPlanId: 'another-draft', expectedStateRevision: 20,
+      expectedCacheNamespace: cacheNamespace,
+    }),
+    (error) => error && error.code === 'STATE_REVISION_CONFLICT',
+  )
+  assert.deepStrictEqual(get('meal_user_states', owner), beforeWrongDraft,
+    '另一页面看到的候选不得被当前页面丢弃')
+  await userData._test.changePlan(owner, 'discardDraft', {
+    expectedDraftPlanId: 'draft', expectedStateRevision: 20, expectedCacheNamespace: cacheNamespace,
+  })
   stored = get('meal_user_states', owner)
   assert.strictEqual(stored.draftPlan, null)
   assertNestedFuture(stored)
@@ -232,35 +308,83 @@ async function testPlanActions() {
   }
   reset(capacityState)
   await assert.rejects(
-    userData._test.changePlan(owner, 'confirmDraft', { expectedStateRevision: 30 }),
+    userData._test.changePlan(owner, 'confirmDraft', {
+      expectedDraftPlanId: 'draft', expectedStateRevision: 30, expectedCacheNamespace: cacheNamespace,
+    }),
     (error) => error && error.code === 'STATE_HISTORY_LIMIT',
   )
   assert.deepStrictEqual(get('meal_user_states', owner), capacityState,
     'history capacity failure must leave the entire stored archive unchanged')
 }
 
+async function testDiscardDraftFailsClosedWithoutExactDraftId() {
+  const invalidExpectedIds = [
+    { label: 'missing expectedDraftPlanId', payload: {} },
+    { label: 'empty expectedDraftPlanId', payload: { expectedDraftPlanId: '' } },
+    { label: 'non-string expectedDraftPlanId', payload: { expectedDraftPlanId: 42 } },
+    { label: '121-character expectedDraftPlanId', payload: { expectedDraftPlanId: 'x'.repeat(121) } },
+  ]
+
+  for (const testCase of invalidExpectedIds) {
+    reset(currentState(40))
+    const before = get('meal_user_states', owner)
+    await assert.rejects(
+      userData._test.changePlan(owner, 'discardDraft', {
+        expectedStateRevision: 40,
+        expectedCacheNamespace: cacheNamespace,
+        ...testCase.payload,
+      }),
+      (error) => error && error.code === 'STATE_REVISION_CONFLICT',
+      `${testCase.label} must fail closed`,
+    )
+    const after = get('meal_user_states', owner)
+    assert.strictEqual(after.stateRevision, before.stateRevision,
+      `${testCase.label} must not advance stateRevision`)
+    assert.deepStrictEqual(after, before,
+      `${testCase.label} must leave the entire stored document unchanged`)
+  }
+
+  const noDraft = { ...currentState(41), draftPlan: null }
+  reset(noDraft)
+  const beforeNoDraft = get('meal_user_states', owner)
+  await assert.rejects(
+    userData._test.changePlan(owner, 'discardDraft', {
+      expectedDraftPlanId: 'draft',
+      expectedStateRevision: 41,
+      expectedCacheNamespace: cacheNamespace,
+    }),
+    (error) => error && error.code === 'STATE_REVISION_CONFLICT',
+    'a missing stored draft must fail closed',
+  )
+  const afterNoDraft = get('meal_user_states', owner)
+  assert.strictEqual(afterNoDraft.stateRevision, beforeNoDraft.stateRevision,
+    'a missing stored draft must not advance stateRevision')
+  assert.deepStrictEqual(afterNoDraft, beforeNoDraft,
+    'a missing stored draft must leave the entire stored document unchanged')
+}
+
 async function testMigrations() {
-  for (let schemaVersion = 1; schemaVersion <= 6; schemaVersion += 1) {
+  for (let schemaVersion = 1; schemaVersion <= 7; schemaVersion += 1) {
     const raw = currentState(schemaVersion)
     raw.schemaVersion = schemaVersion
     raw.settings.futureServerSetting = { fromSchema: schemaVersion }
     raw.generationPreferences.futureServerPreference = { fromSchema: schemaVersion }
     const migrated = userData._test.migrateStored(raw)
-    assert.strictEqual(migrated.schemaVersion, 6)
+    assert.strictEqual(migrated.schemaVersion, 7)
     assert.deepStrictEqual(migrated.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(migrated.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     reset(raw)
-    const bootstrapped = await userData._test.bootstrap(owner)
+    const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
     const stored = get('meal_user_states', owner)
-    assert.strictEqual(bootstrapped.schemaVersion, 6)
+    assert.strictEqual(bootstrapped.schemaVersion, 7)
     assert.deepStrictEqual(stored.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
   }
-  const unsupported = { ...currentState(), schemaVersion: 7 }
+  const unsupported = { ...currentState(), schemaVersion: 8 }
   reset(unsupported)
   await assert.rejects(
-    userData._test.bootstrap(owner),
+    userData._test.bootstrap(owner, cacheNamespace),
     (error) => error && error.code === 'STATE_SCHEMA_UNSUPPORTED',
     'states created by a newer schema must still be rejected',
   )
@@ -284,10 +408,72 @@ function testHistoryCapacityErrorIsActionable() {
     'unknown server errors must not expose their raw message')
 }
 
+function testStateWritesUseTopLevelAtomicReplacement() {
+  const state = currentState()
+  state.dinnerModeByDay['week.2026$08'] = 'exercise'
+  state.planUiStateByPlan['plan.with$dynamic-key'] = { selectedDayId: 'day.with.dot' }
+  state.mealOverrides['meal.with$dynamic-key'] = { title: 'Safe nested value' }
+  const replacement = userData._test.atomicStateFields(state)
+  assert.deepStrictEqual(Object.keys(replacement).sort(), [
+    'activePlan', 'activePlanId', 'checkedShoppingIds', 'customReminders', 'defaultDinnerMode',
+    'dinnerModeByDay', 'draftPlan', 'generationPreferences', 'mealOverrides', 'planHistory',
+    'planUiStateByPlan', 'schemaVersion', 'selectedDay', 'selectedDayId', 'settings', 'stateRevision',
+  ])
+  Object.entries(replacement).forEach(([key, value]) => {
+    assert.strictEqual(isAtomicSet(value), true, `${key} must be replaced atomically instead of flattened into field paths`)
+  })
+  assert.strictEqual(isAtomicSet(replacement.activePlan), true)
+  assert.strictEqual(replacement.activePlan.value.days[0].meals[0].id, 'active-meal-0')
+  assert.strictEqual(replacement.dinnerModeByDay.value['week.2026$08'], 'exercise')
+  assert.strictEqual(replacement.planUiStateByPlan.value['plan.with$dynamic-key'].selectedDayId, 'day.with.dot')
+  assert.strictEqual(replacement.mealOverrides.value['meal.with$dynamic-key'].title, 'Safe nested value')
+}
+
+async function testCacheNamespaceGenerationGuard() {
+  reset(currentState(7))
+  const beforeMissing = get('meal_user_states', owner)
+  await assert.rejects(
+    () => userData._test.saveState(owner, { selectedDay: 3 }, 7),
+    (error) => error && error.code === 'STALE_DATA_GENERATION'
+      && error.message === '账号数据版本已变化，请刷新后重试',
+    '缺少 expectedCacheNamespace 的旧客户端不得写入',
+  )
+  assert.deepStrictEqual(get('meal_user_states', owner), beforeMissing)
+
+  put('meal_members', owner, { status: 'active', cacheNamespace: rotatedCacheNamespace })
+  const beforeRotatedWrite = get('meal_user_states', owner)
+  await assert.rejects(
+    () => userData._test.saveState(owner, { selectedDay: 4 }, 7, cacheNamespace),
+    (error) => error && error.code === 'STALE_DATA_GENERATION',
+    '清空轮换 namespace 后旧设备不得写入新世代',
+  )
+  assert.deepStrictEqual(get('meal_user_states', owner), beforeRotatedWrite)
+
+  const legacy = { ...currentState(5), schemaVersion: 5 }
+  put('meal_user_states', owner, legacy)
+  await assert.rejects(
+    () => userData._test.bootstrap(owner, cacheNamespace),
+    (error) => error && error.code === 'STALE_DATA_GENERATION',
+    '旧设备 bootstrap 不得迁移新世代的数据文档',
+  )
+  assert.deepStrictEqual(get('meal_user_states', owner), legacy)
+
+  const failure = userData._test.publicError(Object.assign(new Error('private detail'), {
+    code: 'STALE_DATA_GENERATION',
+  }))
+  assert.deepStrictEqual(failure, {
+    code: 'STALE_DATA_GENERATION', message: '账号数据版本已变化，请刷新后重试',
+  })
+}
+
 ;(async () => {
   await testBootstrapAndSave()
+  await testDurationPersistenceBoundaries()
   await testPlanActions()
+  await testDiscardDraftFailsClosedWithoutExactDraftId()
   await testMigrations()
+  await testCacheNamespaceGenerationGuard()
   testHistoryCapacityErrorIsActionable()
+  testStateWritesUseTopLevelAtomicReplacement()
   console.log('userData future nested field transaction tests passed')
 })().catch((error) => { console.error(error); process.exitCode = 1 })

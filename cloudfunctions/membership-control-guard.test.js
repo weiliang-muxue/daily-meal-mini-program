@@ -43,14 +43,30 @@ assertControlTransaction(owner, 'activate', ['memberReference.set(', 'controlRef
 assertControlTransaction(membership, 'ensureControl', ['reference.set('])
 assertControlTransaction(membership, 'ensureMemberIdentity', ['reference.update(', 'controlReference.update('])
 assertControlTransaction(membership, 'expireInvite', ['inviteReference.update(', 'controlReference.update('])
+assertControlTransaction(membership, 'revokeExcessInvite', ['inviteReference.update(', 'controlReference.update('])
+assertControlTransaction(membership, 'upgradeControlConfiguration', ['controlReference.update('])
 assertControlTransaction(membership, 'createInvite', ['inviteReference.set(', 'controlReference.update('])
 assertControlTransaction(membership, 'acceptInvite', ['inviteReference.update(', 'memberReference.set(', 'controlReference.update('])
+assertControlTransaction(membership, 'revokeInvite', ['inviteReference.update(', 'controlReference.update('])
 assertControlTransaction(membership, 'transferOwner', ['ownerReference.update(', 'targetReference.update(', 'controlReference.update('])
 
-assertControlTransaction(privacy, 'prepareMembershipDeletion', ["transaction.collection('meal_members').doc(openid).update(", 'controlReference.update('])
+assertControlTransaction(privacy, 'prepareMembershipDeletion', [
+  "const freshCurrent = await getDocument('meal_members', openid, transaction)",
+  'memberReference.update(', 'controlReference.update(',
+])
 assertControlTransaction(privacy, 'deactivateOwnedInvite', ['inviteReference.update(', 'controlReference.update('])
 assertControlTransaction(privacy, 'removeRelatedInvite', ['inviteReference.remove(', 'controlReference.update('])
-assertControlTransaction(privacy, 'removeMembershipDocument', ['memberReference.remove(', 'controlReference.update('])
+assertControlTransaction(privacy, 'finalizeMembershipDeletion', [
+  'memberReference.set(', 'memberReference.remove(', 'controlReference.update(',
+])
+const finalizationBody = functionBody(privacy, 'finalizeMembershipDeletion')
+assert(finalizationBody.startsWith('async function finalizeMembershipDeletion(openid, expectedCacheNamespace)'),
+  '成员收尾必须只接收 openid 与客户端确认的 cache namespace')
+assert(!/\bdeletionState\b/.test(finalizationBody), '成员收尾不得信任栈内删除授权态')
+assert(finalizationBody.includes('assertExpectedCacheNamespace(member, expectedCacheNamespace)'),
+  '成员收尾必须在事务内重读并校验确认时的数据代际')
+assert(finalizationBody.includes('member.preserveOwnerAfterClear === true'), '成员收尾必须读取持久化 owner 恢复标记')
+assert(finalizationBody.includes('control.ownerOpenid === openid'), '成员收尾必须核对 control 中的 owner')
 
 const allSources = fs.readdirSync(root, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(root, entry.name, 'index.js')))

@@ -13,8 +13,8 @@
   <block wx:else>
     <view class="heading-row">
       <view class="heading-copy">
-        <text class="eyebrow">{{durationDays ? durationDays + ' 天确认计划' : '确认计划汇总'}}</text>
-        <text class="page-title">采购清单</text>
+        <text class="eyebrow">{{durationDays ? durationDays + ' 天已确认餐单' : '已确认餐单汇总'}}</text>
+        <text class="page-title">食材采购进度</text>
         <text wx:if="{{planTitle}}" class="plan-title">{{planTitle}}</text>
       </view>
       <view wx:if="{{total}}" class="progress" aria-label="已买到 {{checked}} 项，共 {{total}} 项">
@@ -28,11 +28,16 @@
       <text wx:if="{{mealSummaryText}}">{{mealSummaryText}}</text>
     </view>
 
-    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retrySync" hover-class="offline-hover" aria-role="button" aria-label="当前显示本机快照，点此重试云同步">
-      <text>{{saving ? '勾选已保存在本机，尚未同步云端，点此重试' : '当前显示本机快照，点此重试云同步'}}</text>
+    <view wx:if="{{isAiPlan}}" class="ai-origin-notice" aria-label="AI 生成内容">
+      <text class="ai-origin-badge">AI 生成</text>
+      <text class="ai-origin-copy">本采购清单根据 AI 生成的已确认餐单汇总，请按实际人数和家中库存核对。</text>
+    </view>
+
+    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retrySync" hover-class="offline-hover" aria-role="button" aria-label="当前显示已保存内容，点此重试同步">
+      <text>{{saving ? '勾选已保存，尚未同步，点此重试' : '当前显示已保存内容，点此重试同步'}}</text>
     </view>
     <view wx:elif="{{saving}}" class="saving-strip" aria-live="polite">
-      <text>采购进度正在保存到云端</text>
+      <text>正在保存采购进度</text>
     </view>
 
     <view wx:if="{{viewState === 'empty'}}" class="surface status-panel">
@@ -43,8 +48,8 @@
       </block>
       <block wx:else>
         <text class="status-title">当前餐单暂无采购项</text>
-        <text class="status-detail">餐单仍然保留。可以查看计划，或下拉重新读取云端数据。</text>
-        <button class="secondary-button status-action" bindtap="openPlan">查看当前计划</button>
+        <text class="status-detail">餐单仍然保留。可以查看当前餐单，或下拉重新加载。</text>
+        <button class="secondary-button status-action" bindtap="openPlan">查看当前餐单</button>
       </block>
     </view>
 
@@ -68,7 +73,7 @@
           </view>
         </view>
       </view>
-      <button class="secondary-button reset-button" disabled="{{!checked}}" bindtap="resetChecked">重置当前计划勾选</button>
+      <button class="secondary-button reset-button" disabled="{{!checked}}" bindtap="resetChecked">重置采购勾选</button>
     </block>
   </block>
 </view>

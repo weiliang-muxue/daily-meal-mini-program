@@ -3,8 +3,12 @@
 const { callFunction } = require('../utils/cloud')
 const { membershipStore } = require('./membership-store')
 
-const CACHE_PREFIX = 'meal_ai_task_v1_'
-const CACHE_VERSION = 1
+const CACHE_PREFIX = 'meal_ai_task_v2_'
+const CACHE_VERSION = 2
+const CONTRACT_VERSION = 2
+const PLANNER_VERSION = '7'
+const AI_DATA_CONSENT_VERSION = 2
+const PROVIDER_CONTRACT_REVISION = 9
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'finalizing'])
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'conflict'])
 const STATUS_ALIASES = {
@@ -19,6 +23,31 @@ const PHASE_ALIASES = {
   terminal: 'done',
   completed: 'done', succeeded: 'done', done: 'done',
 }
+const FAILURE_CATEGORIES = new Set([
+  'transient', 'provider_configuration', 'response_review', 'data_conflict', 'task_lifecycle', 'unknown',
+])
+const FAILURE_STATUSES = new Set(['failed', 'expired', 'conflict'])
+const TRANSIENT_FAILURE_CODES = new Set([
+  'AI_NETWORK_ERROR', 'AI_TIMEOUT', 'AI_RATE_LIMITED',
+  'AI_UPSTREAM_RATE_LIMITED', 'AI_UPSTREAM_UNAVAILABLE',
+  'AI_RESPONSE_INCOMPLETE', 'AI_RESPONSE_NOT_COMPLETED', 'AI_OUTPUT_INVALID', 'AI_STEP_TIMEOUT',
+])
+const PROVIDER_CONFIGURATION_CODES = new Set([
+  'AI_STORAGE_NOT_READY', 'AI_CONFIGURATION_INVALID',
+  'AI_UPSTREAM_AUTH_REJECTED', 'AI_UPSTREAM_FORBIDDEN', 'AI_UPSTREAM_MODEL_UNAVAILABLE',
+  'AI_UPSTREAM_ENDPOINT_NOT_FOUND', 'AI_UPSTREAM_PARAMETER_REJECTED',
+  'AI_UPSTREAM_POLICY_REJECTED', 'AI_UPSTREAM_REQUEST_REJECTED',
+  'AI_UPSTREAM_REJECTED', 'AI_UPSTREAM_FAILED', 'AI_REQUEST_INVALID',
+])
+const RESPONSE_REVIEW_CODES = new Set([
+  'AI_REQUEST_TOO_LARGE', 'AI_RESPONSE_ERROR', 'AI_RESPONSE_INVALID',
+  'AI_RESPONSE_REFUSED', 'AI_RESPONSE_TOO_LARGE',
+])
+const DATA_CONFLICT_CODES = new Set([
+  'STATE_REVISION_CONFLICT', 'STALE_DATA_GENERATION',
+  'AI_PLANNER_VERSION_UNSUPPORTED', 'AI_CONTRACT_VERSION_UNSUPPORTED',
+  'AI_TASK_SCHEMA_VERSION_UNSUPPORTED', 'AI_TASK_VERSION_INVALID', 'AI_DATA_CONSENT_REQUIRED',
+])
 
 function validNamespace(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
@@ -76,6 +105,9 @@ function normalizeTaskProgress(value) {
       ? container.progress
       : container
   if (!validIdentifier(source.taskId)) throw new Error('生成任务标识无效，请重新发起')
+  if (source.contractVersion !== CONTRACT_VERSION || source.plannerVersion !== PLANNER_VERSION) {
+    throw new Error('生成任务版本不受支持，请升级或重新发起')
+  }
   const status = normalizeStatus(source.status)
   const completedSteps = integer(source.completedSteps, 0, 1000)
   const totalSteps = Math.max(completedSteps, integer(source.totalSteps, 0, 1000))
@@ -86,6 +118,8 @@ function normalizeTaskProgress(value) {
   if (status === 'succeeded') progressPercent = 100
   return {
     taskId: source.taskId,
+    contractVersion: CONTRACT_VERSION,
+    plannerVersion: PLANNER_VERSION,
     status,
     phase: normalizePhase(source.phase, status),
     taskRevision: integer(source.taskRevision),
@@ -118,12 +152,101 @@ function normalizeTaskResponse(value) {
   }
 }
 
+function normalizeServiceStatus(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const contractVersion = Number(source.contractVersion)
+  const plannerVersion = typeof source.plannerVersion === 'string' && /^[1-9][0-9]{0,8}$/.test(source.plannerVersion)
+    ? source.plannerVersion
+    : ''
+  const aiDataConsentVersion = Number(source.aiDataConsentVersion)
+  const providerContractRevision = Number(source.providerContractRevision)
+  return {
+    configured: source.configured === true,
+    storageReady: source.storageReady === true,
+    providerDisplayName: typeof source.providerDisplayName === 'string' ? source.providerDisplayName : '',
+    providerContractRevision: Number.isSafeInteger(providerContractRevision) && providerContractRevision >= 0
+      ? providerContractRevision
+      : 0,
+    providerRevision: Number.isSafeInteger(Number(source.providerRevision))
+      && Number(source.providerRevision) > 0 ? Number(source.providerRevision) : 0,
+    providerConfigVersion: typeof source.providerConfigVersion === 'string'
+      && /^[a-f0-9]{64}$/.test(source.providerConfigVersion) ? source.providerConfigVersion : '',
+    contractVersion: Number.isSafeInteger(contractVersion) && contractVersion >= 0 ? contractVersion : 0,
+    plannerVersion,
+    aiDataConsentVersion: Number.isSafeInteger(aiDataConsentVersion) && aiDataConsentVersion >= 0
+      ? aiDataConsentVersion
+      : 0,
+    apiStyle: typeof source.apiStyle === 'string' ? source.apiStyle : '',
+  }
+}
+
+function failurePolicy(errorCode, status = 'failed') {
+  const code = typeof errorCode === 'string' ? errorCode : ''
+  if (TRANSIENT_FAILURE_CODES.has(code) || status === 'expired') {
+    return {
+      category: status === 'expired' ? 'task_lifecycle' : 'transient',
+      retryable: true,
+      detail: status === 'expired'
+        ? '本次生成已结束。请重新确认发送范围后再生成。'
+        : '生成服务刚才未能稳定完成。请稍后重新确认发送范围后再生成。',
+    }
+  }
+  if (PROVIDER_CONFIGURATION_CODES.has(code)) {
+    return {
+      category: 'provider_configuration', retryable: false,
+      detail: '生成服务需要管理员检查配置，暂时不建议重复尝试。当前餐单没有改变。',
+    }
+  }
+  if (RESPONSE_REVIEW_CODES.has(code)) {
+    return {
+      category: 'response_review', retryable: false,
+      detail: code === 'AI_REQUEST_TOO_LARGE'
+        ? '本次生成条件内容较多。请精简补充说明或缩短周期后再生成，当前餐单没有改变。'
+        : 'AI 返回的内容未通过安全或完整性检查。可以调整条件后再生成，当前餐单没有改变。',
+    }
+  }
+  if (DATA_CONFLICT_CODES.has(code) || status === 'conflict') {
+    return {
+      category: 'data_conflict', retryable: false,
+      detail: '餐单设置或程序版本已经变化。请调整条件并重新确认，当前餐单没有改变。',
+    }
+  }
+  return {
+    category: 'unknown', retryable: false,
+    detail: '本次候选计划没有生效。可以调整条件后再生成，当前餐单没有改变。',
+  }
+}
+
+function normalizeRecentFailure(value) {
+  const container = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  if (container.failure === null || container.failure === undefined) return null
+  const source = container.failure && typeof container.failure === 'object' && !Array.isArray(container.failure)
+    ? container.failure : {}
+  const status = FAILURE_STATUSES.has(source.status) ? source.status : 'failed'
+  const phase = ['outline', 'details', 'validation', 'terminal'].includes(source.phase) ? source.phase : 'terminal'
+  const policy = failurePolicy(source.errorCode, status)
+  const category = FAILURE_CATEGORIES.has(source.category) ? source.category : policy.category
+  const percent = Number(source.progressPercent)
+  return {
+    status,
+    phase,
+    errorCode: typeof source.errorCode === 'string' ? source.errorCode.slice(0, 80) : '',
+    progressPercent: Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0,
+    retryable: source.retryable === true && policy.retryable,
+    category,
+  }
+}
+
 function safeTaskCache(value, now = Date.now()) {
+  if (value && Object.prototype.hasOwnProperty.call(value, 'cacheVersion')
+    && value.cacheVersion !== CACHE_VERSION) return null
   let task
   try { task = normalizeTaskProgress(value) } catch (_) { return null }
   return {
     cacheVersion: CACHE_VERSION,
     taskId: task.taskId,
+    contractVersion: task.contractVersion,
+    plannerVersion: task.plannerVersion,
     status: task.status,
     phase: task.phase,
     taskRevision: task.taskRevision,
@@ -161,10 +284,11 @@ function taskPresentation(value, interrupted = false) {
   const phaseIndex = task.phase === 'outline' ? 0 : task.phase === 'details' ? 1 : task.phase === 'validation' ? 2 : terminalFallbackIndex
   const failed = ['failed', 'expired', 'conflict'].includes(task.status)
   const cancelled = task.status === 'cancelled'
+  const terminalFailure = failed && failurePolicy(task.errorCode, task.status)
   const stages = [
-    { key: 'outline', label: '提纲', detail: '拆分日期与餐次结构' },
-    { key: 'details', label: '明细', detail: '逐片生成餐食与食材' },
-    { key: 'validation', label: '校验', detail: '合并并检查完整性' },
+    { key: 'outline', label: '安排餐次', detail: '安排日期与每餐结构' },
+    { key: 'details', label: '搭配餐食', detail: '生成每餐食材与做法' },
+    { key: 'validation', label: '完整检查', detail: '检查天数、餐次与采购清单' },
   ].map((stage, index) => ({
     ...stage,
     state: index < phaseIndex || task.status === 'succeeded'
@@ -178,23 +302,24 @@ function taskPresentation(value, interrupted = false) {
             : 'pending',
   }))
   const progressDetail = task.totalSteps
-    ? `已完成 ${task.completedSteps} / ${task.totalSteps} 个生成片段`
-    : '正在准备生成任务'
-  let title = task.phase === 'outline' ? '正在整理计划提纲' : task.phase === 'details' ? '正在生成餐食明细' : '正在合并并校验'
+    ? `已完成 ${task.completedSteps} / ${task.totalSteps} 项餐食安排`
+    : '正在准备候选餐单'
+  let title = task.phase === 'outline' ? '正在安排日期与餐次' : task.phase === 'details' ? '正在搭配每餐食物' : '正在检查餐单完整性'
   if (task.status === 'succeeded') title = '候选计划已经生成'
-  else if (task.status === 'failed') title = '生成任务未完成'
-  else if (task.status === 'cancelled') title = '生成任务已取消'
-  else if (task.status === 'expired') title = '生成任务已过期'
-  else if (task.status === 'conflict') title = '云端数据已经更新'
+  else if (task.status === 'failed') title = '本次生成未完成'
+  else if (task.status === 'cancelled') title = '本次生成已取消'
+  else if (task.status === 'expired') title = '本次生成已过期'
+  else if (task.status === 'conflict') title = '你的餐单设置已更新'
   else if (interrupted) title = '生成已暂停，可继续'
   return {
     title,
-    detail: interrupted ? '网络连接中断后任务仍保留在云端，点击继续即可恢复。' : progressDetail,
+    detail: interrupted ? '网络连接中断，生成进度仍已保存，点击继续即可恢复。' : progressDetail,
     percent: task.progressPercent,
     percentText: `${task.progressPercent}%`,
     stages,
     canCancel: isActiveTask(task),
-    canRetry: interrupted || failed || cancelled,
+    canRetry: (interrupted && (isActiveTask(task) || task.status === 'succeeded'))
+      || Boolean(terminalFailure && terminalFailure.retryable),
   }
 }
 
@@ -312,11 +437,14 @@ class AiPlannerService {
     return true
   }
 
-  status() { return this.caller('aiPlanner', 'status') }
+  async status() {
+    const expectedCacheNamespace = this.requireNamespace()
+    return normalizeServiceStatus(await this.caller('aiPlanner', 'status', { expectedCacheNamespace }))
+  }
 
   async currentTask() {
     const namespace = this.requireNamespace()
-    const value = await this.caller('aiPlanner', 'current')
+    const value = await this.caller('aiPlanner', 'current', { expectedCacheNamespace: namespace })
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     if (!value) return null
     const response = normalizeTaskResponse(value)
@@ -325,9 +453,19 @@ class AiPlannerService {
     return response
   }
 
+  async recentFailure() {
+    const namespace = this.requireNamespace()
+    const value = await this.caller('aiPlanner', 'recentFailure', { expectedCacheNamespace: namespace })
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    return normalizeRecentFailure(value)
+  }
+
   async taskAction(action, payload, expectedTaskId = '') {
     const namespace = this.requireNamespace()
-    const response = normalizeTaskResponse(await this.caller('aiPlanner', action, payload))
+    const response = normalizeTaskResponse(await this.caller('aiPlanner', action, {
+      ...payload,
+      expectedCacheNamespace: namespace,
+    }))
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     if (expectedTaskId && response.task.taskId !== expectedTaskId) throw new Error('生成任务返回不一致，请重新加载')
     const cached = this.saveCachedTask(response.task, namespace, { allowTaskSwitch: action === 'start' })
@@ -335,9 +473,26 @@ class AiPlannerService {
     return response
   }
 
-  start(preferences, expectedStateRevision, clientRequestId) {
+  start(preferences, expectedStateRevision, clientRequestId, consentVersion, providerRevision) {
     if (!validIdentifier(clientRequestId)) return Promise.reject(new Error('生成请求标识无效'))
-    return this.taskAction('start', { preferences, expectedStateRevision, clientRequestId })
+    if (consentVersion !== AI_DATA_CONSENT_VERSION) {
+      return Promise.reject(new Error('请重新确认本次 AI 数据发送范围'))
+    }
+    if (!Number.isSafeInteger(providerRevision) || providerRevision < 1) {
+      return Promise.reject(new Error('请重新确认本次 AI 数据发送接收方'))
+    }
+    if (!preferences || !Number.isSafeInteger(preferences.durationDays)
+      || preferences.durationDays < 1 || preferences.durationDays > 14) {
+      return Promise.reject(new Error('计划周期必须是 1–14 天的整数'))
+    }
+    return this.taskAction('start', {
+      preferences, expectedStateRevision, clientRequestId,
+      aiDataConsent: {
+        accepted: true,
+        version: AI_DATA_CONSENT_VERSION,
+        providerRevision,
+      },
+    })
   }
 
   advance(taskId) {
@@ -364,10 +519,17 @@ module.exports = {
   aiPlanner: new AiPlannerService(),
   normalizeTaskProgress,
   normalizeTaskResponse,
+  normalizeServiceStatus,
+  normalizeRecentFailure,
+  failurePolicy,
   safeTaskCache,
   isActiveTask,
   isTerminalTask,
   shouldReplaceCachedTask,
   taskPresentation,
   createClientRequestId,
+  CONTRACT_VERSION,
+  PLANNER_VERSION,
+  AI_DATA_CONSENT_VERSION,
+  PROVIDER_CONTRACT_REVISION,
 }

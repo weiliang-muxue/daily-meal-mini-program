@@ -24,7 +24,7 @@ const TEXT_DIRECTORY_ALLOWLIST = [
   '.github/', '.githooks/', 'cloudfunctions/', 'docs/', 'miniprogram/', 'scripts/', 'shared/', 'tools/',
 ]
 const TEXT_EXTENSIONS = new Set([
-  '.css', '.example', '.html', '.js', '.json', '.md', '.mjs', '.cjs', '.sh', '.txt',
+  '.css', '.example', '.html', '.js', '.json', '.md', '.mjs', '.cjs', '.ps1', '.sh', '.txt',
   '.wxml', '.wxss', '.yaml', '.yml',
 ])
 const ASSET_ALLOWLIST = Object.freeze({
@@ -39,30 +39,67 @@ const ASSET_ALLOWLIST = Object.freeze({
     signature: Buffer.from('ffd8ff', 'hex'),
   }),
 })
+const environmentFilePath = /(^|\/)\.env(?:\..+)?$/i
 const forbiddenPaths = [
   /(^|\/)project\.config\.json$/i,
   /(^|\/)project\.private\.config\.json$/i,
   /(^|\/)miniprogram\/config\.js$/i,
   /(^|\/)miniprogram\/config\.local\.js$/i,
   /(^|\/)\.cloudbaserc\.json$/i,
-  /(^|\/)\.env(?:\..+)?$/i,
+  environmentFilePath,
   /(^|\/)\.local(\/|$)/i,
   /(^|\/)node_modules(\/|$)/i,
   /(^|\/)(?:local-data|private-data|user-data|exports|backups|uploads|health-photos|avatars|logs)(\/|$)/i,
   /(^|\/)[^/]*(?:secret|credentials)[^/]*\.json$/i,
   /\.(?:pem|key|p12|pfx|crt|cer|jks|keystore|db|db-journal|sqlite|sqlite3|dump|log|har)$/i,
 ]
-const allowedExamples = /(?:\.example(?:\.[^/]+)?|\.env\.example)$/i
+const allowedEnvironmentExample = /(?:^|\/)\.env\.example$/i
 const directSecretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\bwx[a-zA-Z0-9]{16}\b/,
   /\bsk-[A-Za-z0-9_-]{20,}\b/,
   /\b(?:gh[opurs]_[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{30,})\b/,
   /\bOWNER_BOOTSTRAP_CODE_HASH\s*=\s*(?!YOUR_|<)[a-f0-9]{64}\b/i,
+  /(^|[^A-Za-z0-9])1[3-9]\d{9}(?![A-Za-z0-9])/,
 ]
-const sensitiveAssignment = /\b(OPENAI_API_KEY|AI_API_KEY|API_KEY|APPSECRET|APP_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PRIVATE_KEY|AI_PROVIDER_HEADER_VALUE|PASSWORD|PASSWD|PASSPHRASE)\b\s*[:=]\s*['"]?([^\s'",}#;]+)/gi
-const identityAssignment = /\b(_?OPENID|UNIONID|SESSION_KEY)\b\s*[:=]\s*['"]?([A-Za-z0-9_/-]{20,})/gi
-const safeValuePrefixes = ['YOUR_', 'PLACEHOLDER', 'TEST_', 'EXAMPLE_', 'MOCK_', 'FAKE_', '<', '${', 'process.env', 'env.']
+const assignmentFieldKinds = new Map([
+  ...[
+    'MEALAILIVETESTKEY', 'OPENAIAPIKEY', 'AIAPIKEY', 'APIKEY', 'APPSECRET',
+    'ACCESSTOKEN', 'REFRESHTOKEN', 'CLIENTSECRET', 'PRIVATEKEY',
+    'AIPROVIDERHEADERVALUE', 'PASSWORD', 'PASSWD', 'PASSPHRASE',
+  ].map((name) => [name, 'secret']),
+  ...[
+    'CLOUDENVID', 'CLOUDENVIRONMENTID', 'CLOUDENV', 'ENVID',
+  ].map((name) => [name, 'cloud']),
+  ...['OPENID', 'UNIONID', 'SESSIONKEY'].map((name) => [name, 'identity']),
+])
+const safePlaceholderValuesByName = new Map([
+  ['AIAPIKEY', new Set(['YOUR_AI_API_KEY', 'YOUR_AI_KEY', 'TEST_PLACEHOLDER_ONLY'])],
+  ['APIKEY', new Set(['YOUR_API_KEY', 'YOUR_KEY_VALUE', 'TEST_PLACEHOLDER_ONLY'])],
+  ['APPSECRET', new Set(['YOUR_APP_SECRET', 'YOUR_APPSECRET'])],
+  ['ACCESSTOKEN', new Set(['YOUR_ACCESS_TOKEN'])],
+  ['REFRESHTOKEN', new Set(['YOUR_REFRESH_TOKEN'])],
+  ['CLIENTSECRET', new Set(['YOUR_CLIENT_SECRET'])],
+  ['PRIVATEKEY', new Set(['YOUR_PRIVATE_KEY'])],
+  ['AIPROVIDERHEADERVALUE', new Set(['TEST_ATTACKER_VALUE'])],
+  ['OPENID', new Set(['YOUR_OPENID'])],
+  ['UNIONID', new Set(['YOUR_UNIONID'])],
+  ['SESSIONKEY', new Set(['YOUR_SESSION_KEY'])],
+  ...['CLOUDENVID', 'CLOUDENVIRONMENTID', 'CLOUDENV', 'ENVID']
+    .map((name) => [name, new Set(['YOUR_CLOUD_ENV_ID'])]),
+])
+const quotedAssignmentField = /(['"`])([A-Za-z_][A-Za-z0-9 _-]{0,63})\1\s*\]?\s*(?::|=(?!=))\s*/g
+const bareAssignmentField = /\b([A-Za-z_][A-Za-z0-9_]*)\b\s*\]?\s*(?::|=(?!=))\s*/g
+const separatedAssignmentField = /\b((?:MEAL[ _-]*AI[ _-]*LIVE[ _-]*TEST[ _-]*KEY|OPENAI[ _-]*API[ _-]*KEY|AI[ _-]*API[ _-]*KEY|API[ _-]*KEY|APP[ _-]*SECRET|ACCESS[ _-]*TOKEN|REFRESH[ _-]*TOKEN|CLIENT[ _-]*SECRET|PRIVATE[ _-]*KEY|AI[ _-]*PROVIDER[ _-]*HEADER[ _-]*VALUE|CLOUD[ _-]*ENV(?:IRONMENT)?[ _-]*ID|CLOUD[ _-]*ENV|ENV[ _-]*ID|OPEN[ _-]*ID|UNION[ _-]*ID|SESSION[ _-]*KEY))\b\s*(?::|=(?!=))\s*/gi
+const PERSONAL_RECORD_WINDOW = 900
+const isoDateLiteral = /['"`](?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])['"`]/g
+const weightLiteral = /(?:['"`])?(?:weightKg|weight_kg|weight)(?:['"`])?\s*:\s*(?:['"`])?(?:[2-9]\d|[1-3]\d{2})(?:\.\d{1,2})?(?:['"`])?/gi
+const weightContainerLiteral = /(?:['"`])?(?:weightRecords|weight_records)(?:['"`])?\s*:\s*\[[\s\S]{0,900}?(?:['"`])?(?:weightKg|weight_kg|weight)(?:['"`])?\s*:\s*(?:['"`])?(?:[2-9]\d|[1-3]\d{2})(?:\.\d{1,2})?(?:['"`])?/gi
+const exerciseDurationLiteral = /(?:['"`])?(?:durationMinutes|duration_minutes|exerciseMinutes|exercise_minutes)(?:['"`])?\s*:\s*(?:['"`])?(?:[1-9]\d{0,2})(?:['"`])?/gi
+const exerciseLiteral = /(?:['"`])?exercise(?:['"`])?\s*:\s*\{[\s\S]{0,500}?(?:(?:['"`])?(?:durationMinutes|duration_minutes|exerciseMinutes|exercise_minutes)(?:['"`])?\s*:\s*(?:['"`])?[1-9]\d{0,2}(?:['"`])?|(?:['"`])?completed(?:['"`])?\s*:\s*true)/gi
+const exerciseContainerLiteral = /(?:['"`])?(?:exerciseRecords|exercise_records|activityRecords|activity_records)(?:['"`])?\s*:\s*\[[\s\S]{0,900}?(?:['"`])?(?:durationMinutes|duration_minutes|exerciseMinutes|exercise_minutes)(?:['"`])?\s*:\s*(?:['"`])?[1-9]\d{0,2}(?:['"`])?/gi
+const mealContainerLiteral = /(?:['"`])?(?:mealRecords|meal_records|dietRecords|diet_records|foodRecords|food_records|foodLogs|food_logs|dietLogs|diet_logs|consumptionRecords|consumption_records)(?:['"`])?\s*:\s*\[[\s\S]{0,900}?(?:['"`])?(?:mealType|meal_type|meal|food|foods|dish|dishes)(?:['"`])?\s*:\s*(?:['"`]|\[\s*['"`])/gi
+const mealLogLiteral = /(?:['"`])?(?:actualMeal|actual_meal|mealLog|meal_log|foodLog|food_log|dietLog|diet_log|eatenFoods|eaten_foods|consumedFoods|consumed_foods|ate|eaten|consumed|实际餐食|饮食记录|餐食记录|吃了什么)(?:['"`])?\s*:\s*(?:['"`][^'"`\r\n]{1,160}['"`]|\[\s*['"`][^'"`\r\n]{1,160}['"`])/gi
 
 function normalizedPath(file) {
   return String(file || '').replace(/\\/g, '/').replace(/^\.\//, '')
@@ -74,8 +111,170 @@ function extension(file) {
   return index > 0 ? name.slice(index) : ''
 }
 
-function safePlaceholder(value) {
-  return safeValuePrefixes.some((prefix) => value.toUpperCase().startsWith(prefix.toUpperCase()))
+function safePlaceholder(value, name = '') {
+  const normalized = String(value || '').trim()
+  const allowed = safePlaceholderValuesByName.get(normalizedAssignmentName(name))
+  return Boolean(allowed && allowed.has(normalized))
+    || /^<[^<>\r\n]{1,80}>$/.test(normalized)
+    || /^\$\{[A-Z][A-Z0-9_]{0,63}\}$/.test(normalized)
+    || /^(?:process\.)?env\.[A-Z][A-Z0-9_]{0,63}$/.test(normalized)
+}
+
+function normalizedAssignmentName(name) {
+  return String(name || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+}
+
+function assignmentFieldKind(name) {
+  const normalized = normalizedAssignmentName(name)
+  const unprefixed = normalized.replace(/^(?:(?:TEST|MOCK|FAKE|EXAMPLE|PLACEHOLDER)+)/, '')
+  const canonical = assignmentFieldKinds.has(normalized) ? normalized : unprefixed
+  const kind = assignmentFieldKinds.get(canonical)
+  return kind ? { canonical, kind } : null
+}
+
+function assignmentExpression(text, offset) {
+  const source = String(text).slice(offset, offset + 8192)
+  let quote = ''
+  let escaped = false
+  let depth = 0
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index]
+    if (quote) {
+      if (escaped) escaped = false
+      else if (character === '\\') escaped = true
+      else if (character === quote) quote = ''
+      continue
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      const before = source.slice(0, index).trimEnd()
+      if (character === '`' && before && !/(?:\|\||\?\?|[=?:([{,+\-*/])$/.test(before)) {
+        return source.slice(0, index)
+      }
+      quote = character
+      continue
+    }
+    if (character === '(' || character === '[' || character === '{') depth += 1
+    else if (character === ')' || character === ']' || character === '}') {
+      if (depth === 0) return source.slice(0, index)
+      depth -= 1
+    } else if (depth === 0 && (character === ',' || character === ';')) return source.slice(0, index)
+    else if (depth === 0 && (character === '\r' || character === '\n')) {
+      const before = source.slice(0, index).trimEnd()
+      const after = source.slice(index + 1).trimStart()
+      const continues = !before
+        || /(?:\|\||\?\?|[=?:([{,+\-*/])$/.test(before)
+        || /^(?:\|\||\?\?|[?:.)\]])/.test(after)
+      if (!continues) return source.slice(0, index)
+    }
+  }
+  return source
+}
+
+function assignmentStarts(text) {
+  const results = []
+  const patterns = [quotedAssignmentField, bareAssignmentField, separatedAssignmentField]
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0
+    let match
+    while ((match = pattern.exec(text))) {
+      const name = match[2] || match[1] || ''
+      const normalized = normalizedAssignmentName(name)
+      const field = assignmentFieldKind(normalized)
+      const previous = String(text).slice(0, match.index).trimEnd().slice(-1)
+      if (field && previous !== '?') {
+        results.push({ name: field.canonical, kind: field.kind, offset: pattern.lastIndex })
+      }
+    }
+  }
+  return results.filter((entry, index, all) => all.findIndex((candidate) => (
+    candidate.name === entry.name && candidate.offset === entry.offset
+  )) === index)
+}
+
+function unsafeAssignmentReason(text) {
+  for (const assignment of assignmentStarts(text)) {
+    const { name, kind } = assignment
+    const expression = assignmentExpression(text, assignment.offset).trim()
+    if (!expression || expression.startsWith('{') || expression.startsWith('[')) continue
+    const literalPattern = /(['"`])((?:\\.|(?!\1)[^\\\r\n])*)\1/g
+    let literal
+    let sawLiteral = false
+    while ((literal = literalPattern.exec(expression))) {
+      sawLiteral = true
+      const value = String(literal[2] || '')
+      const fieldReference = normalizedAssignmentName(value) === name
+      const publicProtocolScalar = name === 'AIPROVIDERHEADERVALUE' && /^\d{1,3}$/.test(value)
+      if (value && !fieldReference && !safePlaceholder(value, name) && !publicProtocolScalar) {
+        if (kind !== 'identity' || /^[A-Za-z0-9_+/=-]{20,}$/.test(value)) {
+          return kind === 'identity' ? '检测到疑似硬编码微信身份标识' : '检测到疑似真实密钥变量赋值'
+        }
+      }
+    }
+    const scalar = expression.match(/^([^\s,;}]+)/)
+    if (!sawLiteral && scalar) {
+      const value = scalar[1]
+      const environmentReference = /^(?:process\.)?env\.[A-Z][A-Z0-9_]*$/i.test(value)
+      const sameFieldReference = normalizedAssignmentName(value) === name
+      const shortDynamicReference = /^(?:[a-z_$][A-Za-z0-9_$]*)(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/.test(value)
+        && value.length <= 20
+      const safeReference = /^(?:null|undefined)$/.test(value)
+        || environmentReference
+        || sameFieldReference
+        || shortDynamicReference
+      const publicProtocolScalar = name === 'AIPROVIDERHEADERVALUE' && /^\d{1,3}$/.test(value)
+      if (!safeReference && !safePlaceholder(value, name) && !publicProtocolScalar
+        && (/^[+-]?\d/.test(value) || /^[A-Za-z0-9_+/-]{12,}$/.test(value))) {
+        return kind === 'identity' ? '检测到疑似硬编码微信身份标识' : '检测到疑似真实密钥变量赋值'
+      }
+    }
+  }
+  return ''
+}
+
+function patternMatches(pattern, text) {
+  pattern.lastIndex = 0
+  const matches = []
+  let match
+  while ((match = pattern.exec(text))) {
+    matches.push({ index: match.index, length: match[0].length })
+    if (!match[0].length) pattern.lastIndex += 1
+  }
+  return matches
+}
+
+function nearbyRecordSignals(text, leftPattern, rightPattern) {
+  const left = patternMatches(leftPattern, text)
+  const right = patternMatches(rightPattern, text)
+  return left.some((first) => right.some((second) => {
+    const firstEnd = first.index + first.length
+    const secondEnd = second.index + second.length
+    return Math.max(first.index, second.index) - Math.min(firstEnd, secondEnd) <= PERSONAL_RECORD_WINDOW
+  }))
+}
+
+function isSyntheticFixture(file, text) {
+  const normalized = normalizedPath(file).toLowerCase()
+  const basename = normalized.split('/').pop()
+  const conventionalTest = /(?:^|[.-])test(?:[.-]|$)/.test(basename)
+    || /\.spec\.[cm]?js$/.test(basename)
+  const validationFixture = normalized === 'scripts/validate.js'
+    || normalized === 'scripts/wx-automator/visual-regression.js'
+  const explicitFixture = /@synthetic-fixture\b|\bsynthetic[ _-]fixture\b|明确合成测试(?:数据|夹具)?/i.test(text)
+  const fixturePath = /(?:^|\/)scripts\/(?:fixtures?|test-data|synthetic)(?:\/|[._-])/.test(normalized)
+  return conventionalTest || validationFixture || (fixturePath && explicitFixture)
+}
+
+function personalDataReason(file, text) {
+  const source = String(text || '')
+  const containsPrivateRecord = patternMatches(weightContainerLiteral, source).length > 0
+    || patternMatches(exerciseContainerLiteral, source).length > 0
+    || patternMatches(mealContainerLiteral, source).length > 0
+    || nearbyRecordSignals(source, isoDateLiteral, weightLiteral)
+    || nearbyRecordSignals(source, isoDateLiteral, exerciseLiteral)
+    || nearbyRecordSignals(source, isoDateLiteral, exerciseDurationLiteral)
+    || nearbyRecordSignals(source, isoDateLiteral, mealLogLiteral)
+  if (!containsPrivateRecord || isSyntheticFixture(file, source)) return ''
+  return '检测到疑似真实个人体重、运动或饮食记录'
 }
 
 function pathReason(file) {
@@ -87,8 +286,11 @@ function pathReason(file) {
     || /^[A-Za-z]:\//.test(normalized)
     || /(^|\/)\.\.(\/|$)/.test(normalized)
   ) return '文件路径无效'
-  if (!allowedExamples.test(normalized) && forbiddenPaths.some((pattern) => pattern.test(normalized))) {
-    return '本机配置、密钥文件或个人数据目录禁止提交'
+  for (const pattern of forbiddenPaths) {
+    if (pattern.test(normalized)) {
+      const environmentExample = pattern === environmentFilePath && allowedEnvironmentExample.test(normalized)
+      if (!environmentExample) return '本机配置、密钥文件或个人数据目录禁止提交'
+    }
   }
   if (Object.prototype.hasOwnProperty.call(ASSET_ALLOWLIST, normalized)) return ''
   if (!ROOT_TEXT_ALLOWLIST.has(normalized) && !TEXT_DIRECTORY_ALLOWLIST.some((prefix) => normalized.startsWith(prefix))) {
@@ -104,19 +306,7 @@ function pathReason(file) {
 
 function secretReason(text) {
   if (directSecretPatterns.some((pattern) => pattern.test(text))) return '检测到疑似真实密钥、AppID 或私钥'
-  for (const pattern of [sensitiveAssignment, identityAssignment]) {
-    pattern.lastIndex = 0
-    let match
-    while ((match = pattern.exec(text))) {
-      const name = String(match[1] || '').toUpperCase()
-      const value = String(match[2] || '')
-      const publicProtocolScalar = name === 'AI_PROVIDER_HEADER_VALUE' && /^\d{1,3}$/.test(value)
-      if (value && !safePlaceholder(value) && !publicProtocolScalar) {
-        return pattern === identityAssignment ? '检测到疑似硬编码微信身份标识' : '检测到疑似真实密钥变量赋值'
-      }
-    }
-  }
-  return ''
+  return unsafeAssignmentReason(text)
 }
 
 function validUtf8(content) {
@@ -139,7 +329,8 @@ function blobReason(file, content) {
   }
   if (content.length > MAX_TEXT_BYTES) return '公开文本源码超过大小上限'
   if (!validUtf8(content)) return '公开文本源码必须是有效 UTF-8 且不能包含二进制内容'
-  return secretReason(content.toString('utf8'))
+  const text = content.toString('utf8')
+  return secretReason(text) || personalDataReason(file, text)
 }
 
 function metadataReason(text) {

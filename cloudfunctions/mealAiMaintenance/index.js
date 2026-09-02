@@ -6,6 +6,8 @@ const {
   QUERY_STATUSES,
   compactExpiredTask,
   controlMatchesTask,
+  validCacheNamespace,
+  taskVersionsSupported,
   safeErrorCode,
 } = require('./core')
 const { notFound } = require('./not-found')
@@ -21,7 +23,7 @@ const MAX_TASKS_PER_RUN = QUERY_STATUSES.length * TASKS_PER_STATUS
 const MAX_PENDING_TASKS_PER_RUN = 20
 const MAX_SHARDS_PER_TASK = 25
 const MAX_SHARDS_PER_RUN = 200
-const RETENTION_TERMINAL_STATUSES = new Set(['expired', 'conflict'])
+const RETENTION_TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'conflict'])
 
 async function readReference(reference) {
   try { return (await reference.get()).data || null }
@@ -114,11 +116,34 @@ async function shardBatch(database, owner, taskId, limit) {
   return Array.isArray(result.data) ? result.data : []
 }
 
-async function markShardCleanupProgress(database, taskId, owner, now, completed) {
+async function removeShardForGeneration(database, shardId, taskId, owner, cacheNamespace) {
+  if (!validDocumentId(shardId) || !validDocumentId(taskId) || !validDocumentId(owner)
+    || !validCacheNamespace(cacheNamespace)) return false
+  return database.runTransaction(async (transaction) => {
+    const taskReference = transaction.collection(TASK_COLLECTION).doc(taskId)
+    const shardReference = transaction.collection(SHARD_COLLECTION).doc(shardId)
+    const [task, shard] = await Promise.all([
+      readReference(taskReference), readReference(shardReference),
+    ])
+    if (!task || task.owner !== owner || task.cacheNamespace !== cacheNamespace
+      || !taskVersionsSupported(task)
+      || !RETENTION_TERMINAL_STATUSES.has(task.status)
+      || task.retentionSchemaVersion !== RETENTION_SCHEMA_VERSION
+      || task.shardCleanupPending !== true
+      || !shard || shard.owner !== owner || shard.taskId !== taskId
+      || shard.cacheNamespace !== cacheNamespace) return false
+    const result = await shardReference.remove()
+    return Number(result && result.stats && result.stats.removed) > 0
+  })
+}
+
+async function markShardCleanupProgress(database, taskId, owner, cacheNamespace, now, completed) {
   return database.runTransaction(async (transaction) => {
     const taskReference = transaction.collection(TASK_COLLECTION).doc(taskId)
     const task = await readReference(taskReference)
-    if (!task || task.owner !== owner || !RETENTION_TERMINAL_STATUSES.has(task.status) ||
+    if (!task || task.owner !== owner || task.cacheNamespace !== cacheNamespace ||
+        !taskVersionsSupported(task) ||
+        !validCacheNamespace(cacheNamespace) || !RETENTION_TERMINAL_STATUSES.has(task.status) ||
         task.retentionSchemaVersion !== RETENTION_SCHEMA_VERSION || task.shardCleanupPending !== true) return false
     await taskReference.update({ data: completed
       ? { shardCleanupPending: false, shardCleanupUpdatedAtMs: now, shardsCleanedAtMs: now }
@@ -130,7 +155,10 @@ async function markShardCleanupProgress(database, taskId, owner, now, completed)
 async function cleanShardTask(database, task, now, limit) {
   const taskId = task && task._id
   const owner = task && task.owner
-  if (!validDocumentId(taskId) || !validDocumentId(owner) || !RETENTION_TERMINAL_STATUSES.has(task.status) ||
+  const cacheNamespace = task && task.cacheNamespace
+  if (!validDocumentId(taskId) || !validDocumentId(owner) || !validCacheNamespace(cacheNamespace) ||
+      !taskVersionsSupported(task) ||
+      !RETENTION_TERMINAL_STATUSES.has(task.status) ||
       task.retentionSchemaVersion !== RETENTION_SCHEMA_VERSION || task.shardCleanupPending !== true) {
     return { state: 'skipped', attempted: 0, deleted: 0 }
   }
@@ -142,19 +170,20 @@ async function cleanShardTask(database, task, now, limit) {
     if (!validDocumentId(shard && shard._id)) continue
     attempted += 1
     try {
-      const result = await database.collection(SHARD_COLLECTION).doc(shard._id).remove()
-      deleted += Number(result && result.stats && result.stats.removed) > 0 ? 1 : 0
+      if (await removeShardForGeneration(
+        database, shard._id, taskId, owner, cacheNamespace,
+      )) deleted += 1
     } catch (error) {
       failure = error
       break
     }
   }
   if (failure) {
-    await markShardCleanupProgress(database, taskId, owner, now, false)
+    await markShardCleanupProgress(database, taskId, owner, cacheNamespace, now, false)
     return { state: 'error', attempted, deleted, error: failure, completed: false }
   }
   const drained = shards.length < limit
-  const updated = await markShardCleanupProgress(database, taskId, owner, now, drained)
+  const updated = await markShardCleanupProgress(database, taskId, owner, cacheNamespace, now, drained)
   const completed = drained && updated
   return { state: 'processed', attempted, deleted, completed }
 }
@@ -229,6 +258,7 @@ exports._test = {
   validDocumentId,
   expiredCandidates,
   compactCandidate,
+  removeShardForGeneration,
   cleanShardTask,
   runMaintenance,
 }

@@ -6,9 +6,89 @@ const net = require('net')
 
 const MAX_REQUEST_BYTES = 256 * 1024
 const MAX_RESPONSE_BYTES = 512 * 1024
+const MAX_ERROR_RESPONSE_BYTES = 16 * 1024
 const DEFAULT_RETRY_DELAY_MS = 1000
 const MIN_RETRY_DELAY_MS = 600
 const MAX_RETRY_AFTER_MS = 30 * 1000
+
+const SAFE_PROVIDER_TYPES = new Set([
+  'api_error',
+  'authentication_error',
+  'authorization_error',
+  'billing_error',
+  'billing_service_error',
+  'invalid_request_error',
+  'model_not_found',
+  'permission_error',
+  'policy_error',
+  'rate_limit_exceeded',
+  'rate_limit_error',
+  'request_forbidden',
+  'server_error',
+  'service_unavailable_error',
+  'upstream_error',
+])
+const SAFE_PROVIDER_CODES = new Set([
+  'access_denied',
+  'access_terminated',
+  'api_key_auth_overloaded',
+  'api_key_disabled',
+  'api_key_expired',
+  'api_key_in_query_deprecated',
+  'api_key_quota_exhausted',
+  'api_key_required',
+  'authentication_error',
+  'endpoint_not_found',
+  'forbidden',
+  'group_deleted',
+  'group_disabled',
+  'group_not_allowed',
+  'internal_error',
+  'invalid_auth_rate_limited',
+  'invalid_api_key',
+  'invalid_model',
+  'invalid_parameter',
+  'invalid_request_argument',
+  'insufficient_balance',
+  'insufficient_quota',
+  'missing_required_parameter',
+  'model_access_denied',
+  'model_not_found',
+  'model_unavailable',
+  'permission_denied',
+  'rate_limit_error',
+  'rate_limit_exceeded',
+  'route_not_found',
+  'server_error',
+  'service_unavailable',
+  'subscription_maintenance_failed',
+  'subscription_invalid',
+  'subscription_not_found',
+  'unauthorized',
+  'unknown_parameter',
+  'unrecognized_request_argument',
+  'unsupported_country_region_territory',
+  'unsupported_endpoint',
+  'unsupported_model',
+  'unsupported_parameter',
+  'usage_limit_exceeded',
+  'user_inactive',
+  'user_not_found',
+])
+const SAFE_PROVIDER_PARAMS = new Set([
+  'input',
+  'instructions',
+  'max_output_tokens',
+  'model',
+  'reasoning',
+  'reasoning.effort',
+  'store',
+  'stream',
+  'temperature',
+  'text',
+  'text.format',
+  'text.format.type',
+])
 
 function transportError(code, message, options = {}) {
   const error = new Error(message)
@@ -16,6 +96,15 @@ function transportError(code, message, options = {}) {
   error.retryable = options.retryable === true
   if (Number.isInteger(options.statusCode)) error.statusCode = options.statusCode
   if (Number.isInteger(options.retryAfterMs)) error.retryAfterMs = options.retryAfterMs
+  const compatibilityParam = allowedParameter(options.compatibilityParam)
+  if (compatibilityParam) {
+    Object.defineProperty(error, 'compatibilityParam', {
+      value: compatibilityParam,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    })
+  }
   return error
 }
 
@@ -186,27 +275,252 @@ function boundedRetryAfter(value, now = Date.now()) {
   return Math.max(MIN_RETRY_DELAY_MS, Math.min(MAX_RETRY_AFTER_MS, Math.ceil(delay)))
 }
 
-function httpFailure(statusCode, headers = {}, now = Date.now()) {
+function safeErrorToken(value) {
+  if (typeof value !== 'string') return ''
+  const token = value.trim().toLowerCase()
+  return /^[a-z0-9][a-z0-9_.\-[\]]{0,127}$/.test(token) ? token : ''
+}
+
+function normalizedMachineToken(value, allowed) {
+  const token = safeErrorToken(value)
+  if (!token) return ''
+  if (allowed.has(token)) return token
+  const normalized = token.replace(/[.-]+/g, '_')
+  return allowed.has(normalized) ? normalized : ''
+}
+
+function safeMessageHint(value) {
+  if (typeof value !== 'string') return ''
+  const message = value.slice(0, 2048).toLowerCase()
+  if (/(?:service|api|access|request)(?:\s+is)?\s+(?:not available|unsupported|restricted|denied|forbidden)\s+(?:in|from|for)\s+(?:your|this|the)?\s*(?:country|region|territory|jurisdiction)/.test(message) ||
+      /(?:country|region|territory|jurisdiction)(?:\s+is)?\s+(?:not supported|restricted|denied|forbidden)/.test(message)) return 'policy'
+  if (/(?:policy|safety policy|access terminated)/.test(message) &&
+      /(?:restricted|violation|denied|forbidden|terminated|not allowed)/.test(message)) return 'policy'
+  if (/\bmodel\b/.test(message) &&
+      /(?:not found|not supported|not available|unsupported|unavailable|does not exist|no configured account|access denied|permission)/.test(message)) {
+    return 'model'
+  }
+  if (/(?:unknown|unsupported|unrecognized|invalid|missing|required|extra)\s+(?:request\s+)?(?:parameter|argument|field)/.test(message) ||
+      /(?:parameter|argument|field)\s+[^\r\n]{0,80}(?:not supported|unsupported|not allowed|required|invalid|unknown)/.test(message)) {
+    return 'parameter'
+  }
+  if (/(?:unsupported|unknown)\s+(?:responses?\s+)?(?:subpath|endpoint|route)|endpoint\s+not\s+found/.test(message)) {
+    return 'endpoint'
+  }
+  return ''
+}
+
+function errorObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null
+}
+
+function descriptorSource(parsed) {
+  const directError = errorObject(parsed.error)
+  if (directError) return directError
+  const detail = errorObject(parsed.detail)
+  if (detail) return detail
+  if (Array.isArray(parsed.detail)) {
+    const item = parsed.detail.slice(0, 8).find((value) => errorObject(value))
+    if (item) return item
+  }
+  const response = errorObject(parsed.response)
+  const responseError = response && errorObject(response.error)
+  return responseError || parsed
+}
+
+function firstText(...values) {
+  return values.find((value) => typeof value === 'string' && value) || ''
+}
+
+function allowedParameter(value) {
+  if (Array.isArray(value)) value = value.filter((part) => typeof part === 'string').join('.')
+  const token = safeErrorToken(value)
+  if (!token) return ''
+  if (SAFE_PROVIDER_PARAMS.has(token)) return token
+  for (const prefix of ['body.', 'request.', 'payload.']) {
+    if (token.startsWith(prefix)) {
+      const unwrapped = token.slice(prefix.length)
+      if (SAFE_PROVIDER_PARAMS.has(unwrapped)) return unwrapped
+    }
+  }
+  return ''
+}
+
+function parameterFromMessage(value) {
+  if (typeof value !== 'string' || !/(?:parameter|argument|field)/i.test(value)) return ''
+  const message = value.slice(0, 2048).toLowerCase()
+  return [...SAFE_PROVIDER_PARAMS]
+    .sort((left, right) => right.length - left.length)
+    .find((param) => {
+      const offset = message.indexOf(param)
+      if (offset < 0) return false
+      const before = offset ? message[offset - 1] : ''
+      const after = message[offset + param.length] || ''
+      return !/[a-z0-9_]/.test(before) && !/[a-z0-9_]/.test(after)
+    }) || ''
+}
+
+function parseErrorDescriptor(payload) {
+  let parsed
+  try { parsed = JSON.parse(Buffer.isBuffer(payload) ? payload.toString('utf8') : String(payload || '')) } catch (_) {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const source = descriptorSource(parsed)
+  const message = firstText(
+    source.message, source.msg, source.error_description,
+    parsed.message, parsed.msg, parsed.error_description,
+    typeof parsed.detail === 'string' ? parsed.detail : '',
+  )
+  const rawCode = firstText(
+    source.code,
+    typeof parsed.code === 'string' ? parsed.code : '',
+    typeof parsed.error === 'string' ? parsed.error : '',
+  )
+  const param = allowedParameter(source.param || source.parameter || source.loc)
+    || allowedParameter(parsed.param || parsed.parameter)
+    || parameterFromMessage(message)
+  const descriptor = {
+    type: normalizedMachineToken(source.type || parsed.type, SAFE_PROVIDER_TYPES),
+    code: normalizedMachineToken(rawCode, SAFE_PROVIDER_CODES),
+    param,
+    hint: safeMessageHint(message),
+  }
+  return descriptor.type || descriptor.code || descriptor.param || descriptor.hint ? descriptor : null
+}
+
+function descriptorCategory(descriptor) {
+  if (!descriptor) return ''
+  const { type = '', code = '', param = '', hint = '' } = descriptor
+  // A provider may pair a broad type such as request_forbidden with a more
+  // precise machine code. Classify the fixed code before falling back to type.
+  if ([
+    'subscription_not_found', 'subscription_invalid',
+    'group_deleted', 'group_disabled', 'group_not_allowed',
+    'insufficient_balance', 'usage_limit_exceeded', 'insufficient_quota',
+    'api_key_quota_exhausted',
+  ].includes(code)) {
+    return 'account_policy'
+  }
+  if (['invalid_auth_rate_limited', 'rate_limit_exceeded'].includes(code)) {
+    return 'rate_limit'
+  }
+  if ([
+    'api_key_auth_overloaded', 'internal_error', 'subscription_maintenance_failed',
+  ].includes(code)) {
+    return 'upstream'
+  }
+  if (code === 'api_key_in_query_deprecated') return 'request_configuration'
+  if (/(?:^|[_.-])(country|region|territory|policy|safety|restricted|restriction)(?:$|[_.-])/.test(code) ||
+      ['unsupported_country_region_territory', 'access_terminated'].includes(code)) {
+    return 'policy'
+  }
+  if (code.includes('model') &&
+      /(not_found|unavailable|unsupported|invalid|access|permission|denied)/.test(code)) {
+    return 'model'
+  }
+  if (['endpoint_not_found', 'route_not_found', 'unsupported_endpoint'].includes(code)) {
+    return 'endpoint'
+  }
+  if ([
+    'invalid_parameter', 'unsupported_parameter', 'unknown_parameter',
+    'unrecognized_request_argument', 'invalid_request_argument',
+  ].includes(code)) return 'parameter'
+  if ([
+    'access_denied', 'api_key_expired', 'invalid_api_key', 'authentication_error',
+    'unauthorized', 'permission_denied', 'forbidden',
+    'api_key_required', 'api_key_disabled', 'user_not_found', 'user_inactive',
+  ].includes(code)) {
+    return 'auth'
+  }
+  if (param === 'model') return 'model'
+  if (param) return 'parameter'
+  if (['billing_error'].includes(type)) return 'account_policy'
+  if (['billing_service_error', 'upstream_error'].includes(type)) return 'upstream'
+  if (type === 'rate_limit_exceeded') return 'rate_limit'
+  if (/(?:^|[_.-])(country|region|territory|policy|safety|restricted|restriction)(?:$|[_.-])/.test(type)) {
+    return 'policy'
+  }
+  if (type.includes('model') &&
+      /(not_found|unavailable|unsupported|invalid|access|permission|denied)/.test(type)) {
+    return 'model'
+  }
+  if ([
+    'authentication_error', 'authorization_error', 'permission_error', 'request_forbidden',
+  ].includes(type)) {
+    return 'auth'
+  }
+  if (['policy', 'model', 'parameter', 'endpoint'].includes(hint)) return hint
+  return ''
+}
+
+function httpFailure(statusCode, headers = {}, now = Date.now(), descriptor = null) {
   const status = Number(statusCode)
   const common = { statusCode: Number.isInteger(status) ? status : 0, retryable: false }
-  if (status === 401 || status === 403) {
-    return transportError('AI_UPSTREAM_AUTH_REJECTED', 'AI 服务拒绝了鉴权', common)
+  const failure = (code, message, options = common) => (
+    transportError(code, message, options)
+  )
+  if (status === 401) {
+    return failure('AI_UPSTREAM_AUTH_REJECTED', 'AI 服务拒绝了鉴权')
   }
-  if ([400, 404, 422].includes(status)) {
-    return transportError('AI_UPSTREAM_REQUEST_REJECTED', 'AI 服务拒绝了请求', common)
+  if (status === 408) return failure('AI_TIMEOUT', 'AI 服务请求超时', { ...common, retryable: true })
+  if (status >= 500 && status <= 599) {
+    return failure('AI_UPSTREAM_UNAVAILABLE', 'AI 服务暂时不可用', { ...common, retryable: true })
   }
-  if (status === 429) {
-    return transportError('AI_UPSTREAM_RATE_LIMITED', 'AI 服务暂时繁忙', {
-      statusCode: status,
+  const category = [400, 403, 404, 422, 429].includes(status) ? descriptorCategory(descriptor) : ''
+  if (category === 'account_policy') {
+    return failure('AI_UPSTREAM_POLICY_REJECTED', 'AI 服务策略不允许当前请求')
+  }
+  if (category === 'auth') {
+    return status === 403
+      ? failure('AI_UPSTREAM_FORBIDDEN', 'AI 服务拒绝了当前访问')
+      : failure('AI_UPSTREAM_AUTH_REJECTED', 'AI 服务拒绝了鉴权')
+  }
+  if (category === 'upstream') {
+    return failure('AI_UPSTREAM_UNAVAILABLE', 'AI 服务暂时不可用', { ...common, retryable: true })
+  }
+  if (category === 'rate_limit') {
+    return failure('AI_UPSTREAM_RATE_LIMITED', 'AI 服务暂时繁忙', {
+      ...common,
       retryable: true,
       retryAfterMs: boundedRetryAfter(headers['retry-after'], now),
     })
   }
-  if (status === 408) return transportError('AI_TIMEOUT', 'AI 服务请求超时', { statusCode: status, retryable: true })
-  if (status >= 500 && status <= 599) {
-    return transportError('AI_UPSTREAM_UNAVAILABLE', 'AI 服务暂时不可用', { statusCode: status, retryable: true })
+  if (category === 'request_configuration') {
+    return failure('AI_CONFIGURATION_INVALID', 'AI 请求配置无效')
   }
-  return transportError('AI_UPSTREAM_REQUEST_REJECTED', 'AI 服务请求失败', common)
+  if (status === 429) {
+    return failure('AI_UPSTREAM_RATE_LIMITED', 'AI 服务暂时繁忙', {
+      ...common,
+      retryable: true,
+      retryAfterMs: boundedRetryAfter(headers['retry-after'], now),
+    })
+  }
+  if (category === 'policy') {
+    return failure('AI_UPSTREAM_POLICY_REJECTED', 'AI 服务策略不允许当前请求')
+  }
+  if (category === 'model') {
+    return failure('AI_UPSTREAM_MODEL_UNAVAILABLE', 'AI 服务不支持当前模型')
+  }
+  if (category === 'parameter') {
+    return failure('AI_UPSTREAM_PARAMETER_REJECTED', 'AI 服务不支持当前请求参数', {
+      ...common,
+      compatibilityParam: descriptor && descriptor.param,
+    })
+  }
+  if (category === 'endpoint') {
+    return failure('AI_UPSTREAM_ENDPOINT_NOT_FOUND', 'AI 服务接口不存在')
+  }
+  if (status === 403) {
+    return failure('AI_UPSTREAM_FORBIDDEN', 'AI 服务拒绝了当前访问')
+  }
+  if (status === 404) {
+    return failure('AI_UPSTREAM_ENDPOINT_NOT_FOUND', 'AI 服务接口不存在')
+  }
+  if ([400, 422].includes(status)) {
+    return failure('AI_UPSTREAM_REQUEST_REJECTED', 'AI 服务拒绝了请求')
+  }
+  return failure('AI_UPSTREAM_REQUEST_REJECTED', 'AI 服务请求失败')
 }
 
 function normalizeNetworkError(error) {
@@ -266,7 +580,6 @@ function requestJson(config, body, endpoint, options = {}) {
       request = requestImpl(config.url, {
         method: 'POST',
         headers: {
-          ...(config.extraHeaders || {}),
           Authorization: `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
           'Content-Length': payload.length,
@@ -274,10 +587,41 @@ function requestJson(config, body, endpoint, options = {}) {
         lookup: (_hostname, _lookupOptions, callback) => callback(null, endpoint.address, endpoint.family),
       }, (response) => {
         const statusCode = Number(response && response.statusCode || 0)
+        if (typeof options.onResponseStatus === 'function') {
+          try { options.onResponseStatus(statusCode) } catch (_) {}
+        }
         if (statusCode < 200 || statusCode >= 300) {
-          const failure = httpFailure(statusCode, response && response.headers || {}, now())
-          if (response && typeof response.resume === 'function') response.resume()
-          finish(reject, failure)
+          const headers = response && response.headers || {}
+          const declaredLength = Number(headers['content-length'])
+          if (!response || typeof response.on !== 'function' ||
+              (Number.isFinite(declaredLength) && declaredLength > MAX_ERROR_RESPONSE_BYTES)) {
+            const failure = httpFailure(statusCode, headers, now())
+            finish(reject, failure)
+            if (request && typeof request.destroy === 'function') request.destroy(failure)
+            return
+          }
+          const errorChunks = []
+          let errorBytes = 0
+          response.on('aborted', () => finish(reject, httpFailure(statusCode, headers, now())))
+          response.on('error', () => finish(reject, httpFailure(statusCode, headers, now())))
+          response.on('data', (chunk) => {
+            if (settled) return
+            const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+            errorBytes += value.length
+            if (errorBytes > MAX_ERROR_RESPONSE_BYTES) {
+              const failure = httpFailure(statusCode, headers, now())
+              finish(reject, failure)
+              if (request && typeof request.destroy === 'function') request.destroy(failure)
+              return
+            }
+            errorChunks.push(value)
+          })
+          response.on('end', () => {
+            if (settled) return
+            const descriptor = parseErrorDescriptor(Buffer.concat(errorChunks))
+            finish(reject, httpFailure(statusCode, headers, now(), descriptor))
+          })
+          if (typeof response.resume === 'function') response.resume()
           return
         }
 
@@ -328,6 +672,7 @@ function requestJson(config, body, endpoint, options = {}) {
 module.exports = {
   MAX_REQUEST_BYTES,
   MAX_RESPONSE_BYTES,
+  MAX_ERROR_RESPONSE_BYTES,
   DEFAULT_RETRY_DELAY_MS,
   MIN_RETRY_DELAY_MS,
   MAX_RETRY_AFTER_MS,
@@ -338,6 +683,9 @@ module.exports = {
   withDeadline,
   resolvePublicEndpoint,
   boundedRetryAfter,
+  parseErrorDescriptor,
+  safeMessageHint,
+  descriptorCategory,
   httpFailure,
   normalizeNetworkError,
   serializeBody,

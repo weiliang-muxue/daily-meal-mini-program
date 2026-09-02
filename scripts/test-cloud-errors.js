@@ -24,7 +24,7 @@ async function run() {
   })
   let error = await rejected(api.callFunction('membership', 'status'))
   assert.strictEqual(error.code, 'CLOUD_FUNCTION_NOT_DEPLOYED')
-  assert.strictEqual(error.message, '云服务尚未部署完成，请联系管理员后重试')
+  assert.strictEqual(error.message, '服务尚未准备好，请稍后再试')
   assert(!/callId|https?:|FunctionName|-501000/.test(error.message), '底层云错误不得显示给用户')
 
   api = loadWithWx({
@@ -42,6 +42,29 @@ async function run() {
   error = await rejected(api.callFunction('membership', 'acceptInvite'))
   assert.strictEqual(error.code, 'INVITE_EXPIRED')
   assert.strictEqual(error.message, '邀请码已过期', '云函数返回的受控业务提示必须保留')
+
+  api = loadWithWx({
+    cloud: { callFunction: () => Promise.resolve({
+      result: {
+        success: false,
+        code: 'AI_STORAGE_NOT_READY',
+        message: 'AI 存储服务尚未准备好，请稍后再试',
+        stage: 'ADVANCE_SETTLE_FAILURE',
+      },
+    }) },
+    login() {},
+  })
+  error = await rejected(api.callFunction('aiPlanner', 'advance'))
+  assert.strictEqual(error.stage, 'ADVANCE_SETTLE_FAILURE', '受控诊断阶段必须保留')
+
+  api = loadWithWx({
+    cloud: { callFunction: () => Promise.resolve({
+      result: { success: false, code: 'AI_GENERATION_FAILED', message: '生成失败', stage: 'PRIVATE_DETAIL' },
+    }) },
+    login() {},
+  })
+  error = await rejected(api.callFunction('aiPlanner', 'advance'))
+  assert.strictEqual(error.stage, undefined, '未知诊断阶段不得透传到客户端')
 
   api = loadWithWx({
     cloud: {},

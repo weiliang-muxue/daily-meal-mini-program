@@ -1,29 +1,33 @@
 <view class="history-page">
-  <view wx:if="{{viewState === 'loading'}}" class="state-panel" aria-label="正在加载历史计划">
+  <button class="page-navigation" bindtap="navigateFromPage" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+    <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+  </button>
+  <view wx:if="{{viewState === 'loading'}}" class="state-panel" aria-label="正在加载餐单历史">
     <view class="loading-line wide"></view>
     <view class="loading-line"></view>
     <view class="loading-block"></view>
-    <text class="state-copy">正在从云端读取计划历史</text>
+    <text class="state-copy">正在读取餐单历史</text>
   </view>
 
   <view wx:elif="{{viewState === 'error'}}" class="state-panel" aria-role="alert">
-    <text class="state-title">历史计划暂时无法加载</text>
+    <text class="state-title">餐单历史暂时无法加载</text>
     <text class="state-copy">{{errorMessage}}</text>
     <button class="primary-action state-action" bindtap="retry" hover-class="button-pressed">重新加载</button>
   </view>
 
   <view wx:elif="{{viewState === 'empty'}}" class="state-panel">
-    <text class="state-title">还没有历史计划</text>
-    <text class="state-copy">确认新计划或恢复旧计划后，被替换的计划会保留在这里，当前容量上限为 {{historyCapacity}} 份。</text>
+    <text class="state-title">还没有历史餐单</text>
+    <text class="state-copy">确认新餐单或恢复旧餐单后，被替换的餐单会保留在这里，当前容量上限为 {{historyCapacity}} 份。</text>
+    <button class="primary-action state-action" bindtap="openPlanner" hover-class="button-pressed">去定制餐单</button>
   </view>
 
   <block wx:else>
-    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retry" hover-class="button-pressed" aria-role="button" aria-label="当前显示本机历史快照，点此重试连接">
-      <text>当前显示本机快照，恢复计划前请点此重新连接云端</text>
+    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retry" hover-class="button-pressed" aria-role="button" aria-label="当前显示已保存内容，点此重试连接">
+      <text>当前显示已保存内容，恢复餐单前请重新连接</text>
     </view>
     <view class="page-heading">
-      <text class="page-title">计划历史</text>
-      <text class="page-copy">已保存 {{plans.length}} 份。恢复后，当前计划会自动回到历史中。</text>
+      <text class="page-title">餐单历史</text>
+      <text class="page-copy">已保存 {{plans.length}} 份。恢复后，当前餐单会自动回到历史中。</text>
     </view>
 
     <view class="history-list">
@@ -36,7 +40,7 @@
           <text class="date-range">{{item.dateRange}}</text>
           <view class="meta-row">
             <text>{{item.days.length}} 天 · {{item.mealCount}} 个餐次</text>
-            <text>计划 v{{item.planVersion || 1}} · 契约 v{{item.contractVersion || 0}}</text>
+            <text>餐单版本 {{item.planVersion || 1}}</text>
             <text>{{item.generatedText}}</text>
           </view>
         </view>
@@ -55,7 +59,7 @@
           </view>
         </view>
 
-        <button class="restore-action" data-id="{{item.id}}" loading="{{restoringPlanId === item.id}}" disabled="{{restoringPlanId}}" bindtap="restorePlan" hover-class="button-pressed">恢复为当前计划</button>
+        <button class="restore-action" data-id="{{item.id}}" loading="{{restoringPlanId === item.id}}" disabled="{{restoringPlanId}}" bindtap="restorePlan" hover-class="button-pressed">设为当前餐单</button>
       </view>
     </view>
   </block>

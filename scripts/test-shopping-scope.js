@@ -1,6 +1,7 @@
 'use strict'
 
 const assert = require('assert')
+const fs = require('fs')
 const path = require('path')
 
 const root = path.resolve(__dirname, '..')
@@ -8,6 +9,19 @@ const shoppingPath = path.join(root, 'miniprogram', 'pages', 'shopping', 'shoppi
 const userStorePath = path.join(root, 'miniprogram', 'services', 'user-store.js')
 const authStorePath = path.join(root, 'miniprogram', 'services', 'auth-store.js')
 const membershipStorePath = path.join(root, 'miniprogram', 'services', 'membership-store.js')
+const shoppingMarkup = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'shopping', 'shopping.wxml'), 'utf8')
+assert(shoppingMarkup.includes('AI 生成') && !shoppingMarkup.includes('AI生成'),
+  '采购页的 AI 来源标识必须保留中英文空格')
+assert(!shoppingMarkup.includes('结构化食材'), '采购页不能向用户暴露内部食材结构术语')
+assert(!shoppingMarkup.includes('本机快照') && !shoppingMarkup.includes('云同步'),
+  '采购页同步提示必须使用面向用户的表达')
+assert(shoppingMarkup.includes('食材采购进度'), '页面内容标题必须说明用户任务，避免与导航栏重复“采购清单”')
+for (const wording of ['已确认餐单', '查看当前餐单', '重置采购勾选']) {
+  assert(shoppingMarkup.includes(wording), `采购页缺少统一餐单文案：${wording}`)
+}
+for (const wording of ['确认计划', '当前计划', 'AI 餐单']) {
+  assert(!shoppingMarkup.includes(wording), `采购页仍混用旧计划文案：${wording}`)
+}
 
 const namespaceA = 'a'.repeat(32)
 const namespaceB = 'b'.repeat(32)

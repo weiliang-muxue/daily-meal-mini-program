@@ -5,6 +5,8 @@ const CONTROL_SCHEMA = 2
 const CONTROL_PHASE_ACTIVE = 'active'
 const CONTROL_PHASE_BOOTSTRAP_PENDING = 'bootstrap_pending'
 const CONTROL_PHASE_BOOTSTRAP_APPROVED = 'bootstrap_approved'
+const INVITE_SLOTS = 3
+const INVITE_TTL_HOURS = 168
 
 function fail(message, code = 'MEMBERSHIP_INVALID') {
   const error = new Error(message)
@@ -12,15 +14,9 @@ function fail(message, code = 'MEMBERSHIP_INVALID') {
   throw error
 }
 
-function boundedInteger(value, fallback, minimum, maximum) {
-  const parsed = Number(value)
-  if (!Number.isSafeInteger(parsed)) return fallback
-  return Math.max(minimum, Math.min(maximum, parsed))
-}
-
-function configuration(env = {}) {
-  const inviteSlots = boundedInteger(env.INVITE_SLOTS, 6, 0, 19)
-  const inviteTtlHours = boundedInteger(env.INVITE_TTL_HOURS, 24, 1, 168)
+function configuration() {
+  const inviteSlots = INVITE_SLOTS
+  const inviteTtlHours = INVITE_TTL_HOURS
   return {
     inviteSlots,
     inviteTtlHours,
@@ -60,7 +56,7 @@ function normalizeControl(raw = {}) {
   }
 }
 
-function assertOperationalControl(raw, config) {
+function assertOperationalControl(raw) {
   if (!raw || typeof raw !== 'object') {
     fail('成员服务尚未初始化，请联系管理员', 'MEMBERSHIP_NOT_INITIALIZED')
   }
@@ -76,11 +72,11 @@ function assertOperationalControl(raw, config) {
   if (state.phase !== CONTROL_PHASE_ACTIVE || state.bootstrapRequestId) {
     fail('成员控制状态异常，请联系管理员', 'MEMBERSHIP_INVARIANT_FAILED')
   }
-  return config ? assertWithinCapacity(state, config) : state
+  return state
 }
 
-function reviseOperationalControl(control, config) {
-  const state = assertOperationalControl(control, config)
+function reviseOperationalControl(control) {
+  const state = assertOperationalControl(control)
   return { ...state, revision: state.revision + 1 }
 }
 
@@ -92,8 +88,13 @@ function assertWithinCapacity(control, config) {
   return state
 }
 
+function capacityExceeded(control, config) {
+  const state = normalizeControl(control)
+  return state.activeMemberCount + state.reservedInviteCount > config.maxMembers
+}
+
 function reserveInvite(control, config) {
-  const state = assertOperationalControl(control, config)
+  const state = assertOperationalControl(control)
   if (state.activeMemberCount + state.reservedInviteCount >= config.maxMembers) {
     fail('成员名额已满或已有待使用邀请码', 'MEMBERSHIP_FULL')
   }
@@ -101,8 +102,11 @@ function reserveInvite(control, config) {
 }
 
 function consumeInvite(control, config) {
-  const state = assertOperationalControl(control, config)
+  const state = assertOperationalControl(control)
   if (state.reservedInviteCount < 1) fail('邀请码容量状态异常，请重试', 'MEMBERSHIP_INVARIANT_FAILED')
+  if (capacityExceeded(state, config) || state.activeMemberCount >= config.maxMembers) {
+    fail('成员名额已满或已有待使用邀请码', 'MEMBERSHIP_FULL')
+  }
   return {
     ...state,
     activeMemberCount: state.activeMemberCount + 1,
@@ -171,6 +175,19 @@ function isMemberRef(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
 }
 
+function isInviteRef(value) {
+  return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
+}
+
+function publicInvite(record) {
+  if (!record || !isInviteRef(record._id)) fail('邀请引用无效', 'INVITE_REFERENCE_INVALID')
+  return {
+    inviteRef: record._id,
+    label: typeof record.label === 'string' ? record.label.trim().slice(0, 20) : '',
+    expiresAt: record.expiresAt || null,
+  }
+}
+
 function publicMember(record, index = 0) {
   if (!record || !isMemberRef(record.memberRef)) fail('成员引用尚未初始化，请重试', 'MEMBER_REFERENCE_MISSING')
   const role = record.role === 'owner' ? 'owner' : 'member'
@@ -189,10 +206,13 @@ module.exports = {
   CONTROL_PHASE_ACTIVE,
   CONTROL_PHASE_BOOTSTRAP_PENDING,
   CONTROL_PHASE_BOOTSTRAP_APPROVED,
+  INVITE_SLOTS,
+  INVITE_TTL_HOURS,
   configuration,
   normalizeControl,
   assertOperationalControl,
   reviseOperationalControl,
+  capacityExceeded,
   reserveInvite,
   consumeInvite,
   releaseInvite,
@@ -202,5 +222,7 @@ module.exports = {
   assertReactivationAllowed,
   controlFromSnapshot,
   isMemberRef,
+  isInviteRef,
   publicMember,
+  publicInvite,
 }

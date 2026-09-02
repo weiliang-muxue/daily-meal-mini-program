@@ -63,7 +63,7 @@ class AuthStore {
     if (this.initPromise && this.initNamespace === namespace && !options.force) return this.initPromise
     this.state = 'connecting'
     const request = wxLogin()
-      .then(() => callFunction('auth', 'login'))
+      .then(() => callFunction('auth', 'login', { expectedCacheNamespace: namespace }))
       .then((profile) => {
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         this.profile = profile
@@ -92,10 +92,25 @@ class AuthStore {
 
   async updateProfile(profile) {
     const namespace = this.requireCacheNamespace()
-    const result = await callFunction('auth', 'updateProfile', { profile })
+    const result = await callFunction('auth', 'updateProfile', {
+      profile, expectedCacheNamespace: namespace,
+    })
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     this.profile = result
     this.state = 'ready'
+    wx.setStorageSync(this.cacheKey(namespace), result)
+    return result
+  }
+
+  async bindPhoneNumber(code) {
+    const namespace = this.requireCacheNamespace()
+    const result = await callFunction('auth', 'bindPhoneNumber', {
+      code, expectedCacheNamespace: namespace,
+    })
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    this.profile = result
+    this.state = 'ready'
+    this.error = ''
     wx.setStorageSync(this.cacheKey(namespace), result)
     return result
   }

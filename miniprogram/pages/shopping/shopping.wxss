@@ -1,4 +1,4 @@
-.shopping-screen { width: 100%; max-width: 920rpx; margin: 0 auto; }
+.shopping-screen { width: 100%; max-width: 680px; margin: 0 auto; }
 .heading-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20rpx 28rpx; padding: 12rpx 4rpx 24rpx; }
 .heading-copy { min-width: 0; flex: 1; }
 .eyebrow { display: block; color: var(--gold); font-size: 24rpx; line-height: 1.5; font-weight: 700; margin-bottom: 7rpx; }

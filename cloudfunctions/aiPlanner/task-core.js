@@ -3,11 +3,13 @@
 const crypto = require('crypto')
 const { buildChunkLayout, normalizeRequest, preferencesHash: computePreferencesHash } = require('./lib')
 
-const TASK_SCHEMA_VERSION = 2
+const TASK_SCHEMA_VERSION = 3
+const AI_DATA_CONSENT_VERSION = 2
 const TASK_TTL_MS = 2 * 60 * 60 * 1000
 const LEASE_MS = 70 * 1000
 const MAX_ATTEMPTS = 2
 const MAX_CONCURRENT_DETAILS = 1
+const RETENTION_SCHEMA_VERSION = 1
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'finalizing'])
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'conflict'])
 const TERMINAL = TERMINAL_STATUSES
@@ -15,6 +17,7 @@ const TASK_ID_PATTERN = /^task_[A-Za-z0-9_-]{43}$/
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 const HASH_PATTERN = /^[a-f0-9]{64}$/
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/
+const PROVIDER_CONFIG_VERSION_PATTERN = /^[a-f0-9]{64}$/
 
 function clone(value) { return value === undefined ? undefined : JSON.parse(JSON.stringify(value)) }
 
@@ -22,6 +25,22 @@ function taskError(code, message) {
   const error = new Error(message)
   error.code = code
   return error
+}
+
+function taskSchemaVersionState(task) {
+  const version = task && task.taskSchemaVersion
+  if (!Number.isSafeInteger(version) || version < 1) return 'invalid'
+  if (version > TASK_SCHEMA_VERSION) return 'future'
+  return version === TASK_SCHEMA_VERSION ? 'current' : 'legacy'
+}
+
+function assertSupportedTaskSchema(task) {
+  const state = taskSchemaVersionState(task)
+  if (state === 'future') {
+    throw taskError('AI_TASK_SCHEMA_VERSION_UNSUPPORTED', '生成任务来自更新版本，请升级后重试')
+  }
+  if (state === 'invalid') throw taskError('AI_TASK_VERSION_INVALID', '生成任务版本无效')
+  return { state, version: task.taskSchemaVersion }
 }
 
 function safeInteger(value, field, minimum = 0) {
@@ -128,11 +147,28 @@ function requestFingerprint(options = {}) {
   const preferencesHash = normalizePreferencesHash(options.preferencesHash)
   const baseStateRevision = safeInteger(options.baseStateRevision, 'baseStateRevision')
   const contractVersion = safeInteger(options.contractVersion, 'contractVersion', 1)
+  const aiDataConsentVersion = options.aiDataConsentVersion
+  if (aiDataConsentVersion !== AI_DATA_CONSENT_VERSION) {
+    throw taskError('AI_DATA_CONSENT_REQUIRED', '请重新确认本次 AI 数据发送范围')
+  }
   const plannerVersion = typeof options.plannerVersion === 'string' ? options.plannerVersion.trim() : ''
   if (!plannerVersion || plannerVersion.length > 40 || !/^[A-Za-z0-9._-]+$/.test(plannerVersion)) {
     throw taskError('INVALID_TASK_INPUT', 'plannerVersion无效')
   }
-  return digestParts('meal-ai-request-v1', { preferencesHash, baseStateRevision, contractVersion, plannerVersion })
+  const providerRevision = safeInteger(options.providerRevision, 'providerRevision', 1)
+  const providerConfigVersion = typeof options.providerConfigVersion === 'string'
+    ? options.providerConfigVersion.toLowerCase() : ''
+  if (!PROVIDER_CONFIG_VERSION_PATTERN.test(providerConfigVersion)) {
+    throw taskError('INVALID_TASK_INPUT', 'providerConfigVersion无效')
+  }
+  return digestParts('meal-ai-request-v3', {
+    preferencesHash, baseStateRevision, contractVersion, plannerVersion, aiDataConsentVersion,
+    providerRevision, providerConfigVersion,
+  })
+}
+
+function hasAiDataConsent(task) {
+  return Boolean(task && task.aiDataConsentVersion === AI_DATA_CONSENT_VERSION)
 }
 
 function sameIdempotentRequest(task, expected = {}) {
@@ -202,12 +238,25 @@ function createTask(options = {}) {
   const contractVersion = safeInteger(options.contractVersion || normalizedInput.contractVersion, 'contractVersion', 1)
   if (contractVersion !== normalizedInput.contractVersion) throw taskError('REQUEST_FINGERPRINT_MISMATCH', '契约版本不匹配')
   const plannerVersion = typeof options.plannerVersion === 'string' && options.plannerVersion ? options.plannerVersion : '1'
+  const aiDataConsentVersion = options.aiDataConsentVersion
+  if (aiDataConsentVersion !== AI_DATA_CONSENT_VERSION) {
+    throw taskError('AI_DATA_CONSENT_REQUIRED', '请重新确认本次 AI 数据发送范围')
+  }
+  const providerRevision = safeInteger(options.providerRevision, 'providerRevision', 1)
+  const providerConfigVersion = typeof options.providerConfigVersion === 'string'
+    ? options.providerConfigVersion.toLowerCase() : ''
+  if (!PROVIDER_CONFIG_VERSION_PATTERN.test(providerConfigVersion)) {
+    throw taskError('INVALID_TASK_INPUT', 'providerConfigVersion无效')
+  }
   const clientRequestId = validateClientRequestId(options.clientRequestId)
   const idempotencyHash = idempotencyFingerprint(owner, clientRequestId)
   if (options.idempotencyHash && normalizeHash(options.idempotencyHash, 'idempotencyHash') !== idempotencyHash) {
     throw taskError('IDEMPOTENCY_FINGERPRINT_MISMATCH', '幂等指纹不匹配')
   }
-  const fingerprint = requestFingerprint({ preferencesHash, baseStateRevision, contractVersion, plannerVersion })
+  const fingerprint = requestFingerprint({
+    preferencesHash, baseStateRevision, contractVersion, plannerVersion, aiDataConsentVersion,
+    providerRevision, providerConfigVersion,
+  })
   if (options.requestFingerprint && normalizeHash(options.requestFingerprint, 'requestFingerprint') !== fingerprint) {
     throw taskError('REQUEST_FINGERPRINT_MISMATCH', '请求指纹不匹配')
   }
@@ -219,6 +268,7 @@ function createTask(options = {}) {
     clientRequestIdHash: digestParts('meal-ai-client-request-v1', clientRequestId),
     idempotencyHash, requestFingerprint: fingerprint, preferencesHash, requestHash: preferencesHash,
     baseStateRevision, stateRevision, input: normalizedInput, contractVersion, plannerVersion,
+    aiDataConsentVersion, providerRevision, providerConfigVersion,
     planId: typeof options.planId === 'string' ? options.planId : '',
     planStateFingerprint: planStateFingerprint(options.activePlan, options.draftPlan),
     generatedAt: typeof options.generatedAt === 'string' ? options.generatedAt : '',
@@ -252,6 +302,7 @@ function expireRunningStep(value, now) {
 }
 
 function transitionTerminal(rawTask, status, now, extra = {}) {
+  assertSupportedTaskSchema(rawTask)
   const task = clone(rawTask)
   const nextStatus = canonicalStatus(status)
   if (!TERMINAL_STATUSES.has(nextStatus)) throw taskError('INVALID_TASK_STATUS', '任务终态无效')
@@ -284,6 +335,7 @@ function transitionTerminal(rawTask, status, now, extra = {}) {
 function finishTask(task, status, now, extra = {}) { return transitionTerminal(task, status, safeTime(now, 'now'), extra) }
 
 function expireTask(rawTask, now) {
+  assertSupportedTaskSchema(rawTask)
   const instant = safeTime(now, 'now')
   if (terminal(rawTask.status) || Number(rawTask.expiresAt || 0) > instant) return clone(rawTask)
   return transitionTerminal(rawTask, 'expired', instant, { errorCode: 'AI_TASK_EXPIRED' })
@@ -291,6 +343,7 @@ function expireTask(rawTask, now) {
 
 function cancelTask(rawTask, owner, expectedTaskRevision, now) {
   assertTaskOwner(rawTask, owner)
+  assertSupportedTaskSchema(rawTask)
   const revision = safeInteger(expectedTaskRevision, 'expectedTaskRevision')
   if (Number(rawTask.taskRevision || 0) !== revision) throw taskError('TASK_REVISION_CONFLICT', '任务状态已变化，请刷新后重试')
   if (terminal(rawTask.status)) return clone(rawTask)
@@ -317,9 +370,16 @@ function claimStep(task, value, kind, index, token, now) {
 function markFailed(task, code, now) { return transitionTerminal(task, 'failed', now, { errorCode: safeErrorCode(code) }) }
 
 function claimNext(rawTask, token, now) {
+  assertSupportedTaskSchema(rawTask)
   const instant = safeTime(now, 'now')
   let task = clone(rawTask)
   if (terminal(task.status)) return { task, claim: null }
+  if (!hasAiDataConsent(task)) {
+    return {
+      task: transitionTerminal(task, 'failed', instant, { errorCode: 'AI_DATA_CONSENT_REQUIRED' }),
+      claim: null,
+    }
+  }
   if (!hasPlanStateFingerprint(task)) {
     return {
       task: transitionTerminal(task, 'conflict', instant, { errorCode: 'STATE_REVISION_CONFLICT' }),
@@ -382,6 +442,7 @@ function completionHash(claim, token, contentHash) {
 }
 
 function completeClaim(rawTask, claim, token, result, now, options = {}) {
+  assertSupportedTaskSchema(rawTask)
   const instant = safeTime(now, 'now')
   let task = clone(rawTask)
   if (terminal(task.status)) return { task, accepted: false, reason: 'TASK_TERMINAL' }
@@ -418,6 +479,7 @@ function completeClaim(rawTask, claim, token, result, now, options = {}) {
 }
 
 function failClaim(rawTask, claim, token, code, now, options = {}) {
+  assertSupportedTaskSchema(rawTask)
   const instant = safeTime(now, 'now')
   let task = clone(rawTask)
   if (terminal(task.status)) return { task, accepted: false, reason: 'TASK_TERMINAL' }
@@ -447,6 +509,7 @@ function progressCounts(task) {
 
 function publicTask(task, now = Date.now(), owner) {
   if (owner !== undefined) assertTaskOwner(task, owner)
+  assertSupportedTaskSchema(task)
   const instant = safeTime(now, 'now')
   const expired = !terminal(task.status) && Number(task.expiresAt || 0) <= instant
   const status = expired ? 'expired' : canonicalStatus(task.status)
@@ -457,6 +520,8 @@ function publicTask(task, now = Date.now(), owner) {
       : ''
   return {
     taskId: typeof task._id === 'string' ? task._id : '', status,
+    contractVersion: safeInteger(task.contractVersion, 'contractVersion', 1),
+    plannerVersion: typeof task.plannerVersion === 'string' ? task.plannerVersion : '',
     phase: terminal(status) ? 'terminal' : task.phase,
     taskRevision: Number(task.taskRevision || 0), completedSteps, totalSteps,
     progressPercent: status === 'succeeded' ? 100 : Math.min(99, Math.round((completedSteps / Math.max(1, totalSteps)) * 100)),
@@ -466,16 +531,31 @@ function publicTask(task, now = Date.now(), owner) {
 }
 
 function compactTask(rawTask, status, now, extra = {}) {
+  assertSupportedTaskSchema(rawTask)
   const terminalTask = terminal(rawTask.status) ? clone(rawTask) : transitionTerminal(rawTask, status, safeTime(now, 'now'), extra)
   const progress = publicTask(terminalTask, now)
+  const currentRetention = terminalTask.retentionSchemaVersion === RETENTION_SCHEMA_VERSION
+  const shardCleanupCompleted = currentRetention && terminalTask.shardCleanupPending === false
+  const compactedAtMs = currentRetention && Number.isSafeInteger(terminalTask.compactedAtMs) && terminalTask.compactedAtMs >= 0
+    ? terminalTask.compactedAtMs : now
+  const shardCleanupUpdatedAtMs = currentRetention && Number.isSafeInteger(terminalTask.shardCleanupUpdatedAtMs) && terminalTask.shardCleanupUpdatedAtMs >= 0
+    ? terminalTask.shardCleanupUpdatedAtMs : now
   return {
-    _id: terminalTask._id, taskSchemaVersion: terminalTask.taskSchemaVersion || TASK_SCHEMA_VERSION,
-    owner: terminalTask.owner, status: progress.status, phase: 'terminal', taskRevision: terminalTask.taskRevision,
+    _id: terminalTask._id, taskSchemaVersion: terminalTask.taskSchemaVersion,
+    owner: terminalTask.owner,
+    ...(typeof terminalTask.cacheNamespace === 'string' ? { cacheNamespace: terminalTask.cacheNamespace } : {}),
+    status: progress.status, phase: 'terminal', taskRevision: terminalTask.taskRevision,
     ...(Number.isSafeInteger(terminalTask.generationEpoch) && terminalTask.generationEpoch >= 0
       ? { generationEpoch: terminalTask.generationEpoch }
       : {}),
     idempotencyHash: terminalTask.idempotencyHash, requestFingerprint: terminalTask.requestFingerprint,
     preferencesHash: terminalTask.preferencesHash, contractVersion: terminalTask.contractVersion,
+    ...(hasAiDataConsent(terminalTask) ? { aiDataConsentVersion: terminalTask.aiDataConsentVersion } : {}),
+    ...(Number.isSafeInteger(terminalTask.providerRevision) && terminalTask.providerRevision > 0
+      ? { providerRevision: terminalTask.providerRevision } : {}),
+    ...(typeof terminalTask.providerConfigVersion === 'string'
+      && PROVIDER_CONFIG_VERSION_PATTERN.test(terminalTask.providerConfigVersion)
+      ? { providerConfigVersion: terminalTask.providerConfigVersion } : {}),
     plannerVersion: terminalTask.plannerVersion, planId: terminalTask.planId,
     ...(hasPlanStateFingerprint(terminalTask) ? { planStateFingerprint: terminalTask.planStateFingerprint } : {}),
     baseStateRevision: terminalTask.baseStateRevision,
@@ -488,15 +568,24 @@ function compactTask(rawTask, status, now, extra = {}) {
     failedAtMs: terminalTask.failedAtMs || 0, cancelledAtMs: terminalTask.cancelledAtMs || 0,
     expiredAtMs: terminalTask.expiredAtMs || 0, conflictedAtMs: terminalTask.conflictedAtMs || 0,
     errorCode: progress.errorCode, failureCode: progress.errorCode,
+    retentionSchemaVersion: RETENTION_SCHEMA_VERSION,
+    compactedAtMs,
+    shardCleanupPending: !shardCleanupCompleted,
+    shardCleanupUpdatedAtMs,
+    ...(shardCleanupCompleted && Number.isSafeInteger(terminalTask.shardsCleanedAtMs) && terminalTask.shardsCleanedAtMs >= 0
+      ? { shardsCleanedAtMs: terminalTask.shardsCleanedAtMs }
+      : {}),
   }
 }
 
 module.exports = {
-  TASK_SCHEMA_VERSION, TASK_TTL_MS, LEASE_MS, MAX_ATTEMPTS, MAX_CONCURRENT_DETAILS,
+  TASK_SCHEMA_VERSION, AI_DATA_CONSENT_VERSION, TASK_TTL_MS, LEASE_MS, MAX_ATTEMPTS, MAX_CONCURRENT_DETAILS,
+  RETENTION_SCHEMA_VERSION,
   ACTIVE_STATUSES, TERMINAL_STATUSES, TERMINAL,
   generateTaskId, validateTaskId, generateLeaseToken, validateLeaseToken,
   validateClientRequestId, idempotencyFingerprint, requestFingerprint, sameIdempotentRequest,
-  planStateFingerprint, hasPlanStateFingerprint,
+  planStateFingerprint, hasPlanStateFingerprint, hasAiDataConsent,
+  taskSchemaVersionState, assertSupportedTaskSchema,
   createTask, claimNext, completeClaim, failClaim, verifyLease,
   assertTaskOwner, cancelTask, expireTask, finishTask,
   publicTask, compactTask, terminal,

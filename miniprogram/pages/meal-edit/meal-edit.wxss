@@ -1,4 +1,12 @@
-.screen { max-width: 920rpx; margin: 0 auto; }
+.screen { max-width: 680px; margin: 0 auto; }
+.page-navigation { box-sizing: border-box; width: 48px; min-width: 48px; max-width: 48px; height: 48px; min-height: 48px; margin: 0 0 12rpx; padding: 0; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--primary); }
+.page-navigation::after { border: 0; }
+.page-navigation-pressed { background: var(--pressed); opacity: .78; }
+.page-navigation-icon { position: relative; width: 24px; height: 24px; color: inherit; }
+.page-navigation-icon.back::before { content: ""; position: absolute; left: 5px; top: 6px; width: 10px; height: 10px; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; transform: rotate(45deg); }
+.page-navigation-icon.back::after { content: ""; position: absolute; left: 6px; top: 11px; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
+.page-navigation-icon.home::before { content: ""; position: absolute; left: 6px; top: 3px; width: 11px; height: 11px; border-top: 2px solid currentColor; border-left: 2px solid currentColor; transform: rotate(45deg); }
+.page-navigation-icon.home::after { content: ""; position: absolute; left: 5px; bottom: 3px; width: 14px; height: 11px; border: 2px solid currentColor; border-top: 0; border-radius: 0 0 2px 2px; }
 .error-panel { border-color: var(--danger-line); }
 .retry { margin-top: 24rpx; }
 .intro { padding: 28rpx; background: var(--primary-soft); }

@@ -1,4 +1,7 @@
 <view class="screen">
+  <button class="page-navigation" bindtap="navigateFromPage" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+    <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+  </button>
   <view wx:if="{{loading}}" class="status-panel surface">
     <text class="status-title">正在读取餐食</text>
     <text class="status-detail">从当前已确认计划中查找这份餐食。</text>
@@ -7,10 +10,16 @@
   <view wx:elif="{{error}}" class="status-panel surface error-panel" aria-role="alert">
     <text class="status-title">无法编辑</text>
     <text class="status-detail">{{error}}</text>
-    <button class="secondary-button retry" bindtap="retry" hover-class="button-hover">重新读取</button>
+    <button wx:if="{{errorAction === 'back'}}" class="secondary-button retry" bindtap="backToPlan" hover-class="button-hover">返回餐单</button>
+    <button wx:else class="secondary-button retry" bindtap="retry" hover-class="button-hover">重新读取</button>
   </view>
 
   <block wx:else>
+    <view wx:if="{{isAiPlan}}" class="ai-origin-notice" aria-label="AI 生成内容">
+      <text class="ai-origin-badge">AI 生成</text>
+      <text class="ai-origin-copy">下方原计划餐食由人工智能生成；你的修改只作为个人显示内容保存。</text>
+    </view>
+
     <view class="intro surface">
       <view class="meal-meta">
         <text class="meal-type">{{mealLabel}}</text>
@@ -18,12 +27,12 @@
       </view>
       <text class="day-label">{{dayLabel}}</text>
       <text class="intro-title">调整个人显示内容</text>
-      <text class="intro-copy">调整按稳定餐食 ID 保存在你的账户中，不改变餐次、运动场景或已确认计划结构，也不会影响其他成员。</text>
+      <text class="intro-copy">调整只保存在你的账户中，不会改变餐次、运动场景或其他成员的内容。</text>
     </view>
 
     <view wx:if="{{hasStructuredIngredients}}" class="original surface">
-      <text class="block-title">原计划食材结构</text>
-      <text class="block-copy">以下名称、数量、单位和分类来自已确认计划，保持只读。</text>
+      <text class="block-title">餐单原有食材</text>
+      <text class="block-copy">以下食材来自当前餐单，仅供查看。</text>
       <view class="ingredient-table">
         <view wx:for="{{originalIngredients}}" wx:key="id" class="ingredient-row">
           <view class="ingredient-main">
@@ -43,7 +52,7 @@
       <view class="field vertical">
         <text class="field-label">个人食材说明</text>
         <textarea maxlength="500" value="{{form.ingredients}}" data-field="ingredients" bindinput="input" placeholder="按你的实际调整填写食材与份量" auto-height="false" />
-        <text class="field-help">这是个人显示文本，不会改写原计划的结构化食材或自动重算采购清单。</text>
+        <text class="field-help">这里的修改只影响你看到的餐食说明，不会自动调整采购清单。</text>
       </view>
       <view class="field vertical">
         <text class="field-label">个人做法</text>
@@ -56,8 +65,8 @@
     </view>
 
     <view class="contract-note">
-      <text class="contract-title">采购边界</text>
-      <text class="contract-copy">采购清单继续以已确认计划中的结构化食材为准。需要同步改变采购量时，请重新定制并确认一份计划。</text>
+      <text class="contract-title">采购清单说明</text>
+      <text class="contract-copy">采购清单仍按当前餐单原有食材计算。需要调整采购数量时，请重新定制并确认餐单。</text>
     </view>
 
     <button class="primary-button save" loading="{{saving}}" disabled="{{saving || resetting}}" bindtap="save" hover-class="button-hover">保存个人调整</button>

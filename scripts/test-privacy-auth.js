@@ -219,9 +219,32 @@ async function testAccessAndProfileLegalRoutes() {
 
   const accessWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/access/access.wxml'), 'utf8')
   const profileWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/profile/profile.wxml'), 'utf8')
+  const agreementWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/legal/user-agreement.wxml'), 'utf8')
+  const privacyWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/legal/privacy.wxml'), 'utf8')
+  for (const internalTerm of ['openid', 'unionid', 'session_key', 'auth 云函数', '门禁审计', '真源', '命名空间']) {
+    assert(!privacyWxml.includes(internalTerm), `隐私说明不能向用户暴露内部术语：${internalTerm}`)
+  }
+  assert(privacyWxml.includes('AI 生成') && !privacyWxml.includes('AI生成'),
+    '隐私说明中的 AI 来源标识必须与业务页面一致')
+  for (const markup of [agreementWxml, privacyWxml]) {
+    assert(markup.includes('微信平台《隐私保护指引》'), '法律页面必须统一使用微信平台正式名称')
+  }
+  for (const internalTerm of ['公开、可审计', '自绘弹窗', '平台合同', '随代码发布', '不冒充']) {
+    assert(!agreementWxml.includes(internalTerm) && !privacyWxml.includes(internalTerm),
+      `法律页面不能向普通用户暴露工程化说明：${internalTerm}`)
+  }
   assert(accessWxml.includes('bindtap="openUserAgreement"') && accessWxml.includes('bindtap="openPrivacyGuide"'))
   assert(profileWxml.includes('bindtap="openUserAgreement"') && profileWxml.includes('bindtap="openPrivacyGuide"'))
   assert(profileWxml.includes('open-type="chooseAvatar"'), '头像恢复路径必须保留微信原生 chooseAvatar 控件')
+  for (const [name, markup] of [
+    ['个人页', profileWxml],
+    ['用户协议', agreementWxml],
+    ['隐私说明', privacyWxml],
+  ]) {
+    assert(markup.includes('清空我的私人数据'), `${name} 必须使用与实际按钮一致的清空操作名称`)
+    assert(!markup.includes('清空我的全部私人数据'), `${name} 不能保留旧清空操作名称`)
+    assert(!markup.includes('删除我的全部数据和成员身份'), `${name} 不能保留更早的删除操作名称`)
+  }
 }
 
 async function testAccessAndProfileShowPrivacyOpenFailure() {
@@ -247,22 +270,26 @@ async function testAccessAndProfileShowPrivacyOpenFailure() {
 
 async function testAvatarTwoStepAuthorizationRecovery() {
   let authorized = false
+  const toastCalls = []
   installPageDependencies({
     getPrivacyAuthorizationState: async () => ({ supported: true, authorized: false, needAuthorization: true }),
     ensurePrivacyAuthorized: async () => { authorized = true; return { authorized: true } },
     navigateToUserAgreement: async () => {},
     openPrivacyContractOrLocal: async () => ({}),
   })
-  global.wx = { showModal() {}, showToast() {}, showLoading() {}, hideLoading() {} }
+  global.wx = { showModal() {}, showToast(options) { toastCalls.push(options) }, showLoading() {}, hideLoading() {} }
   const profile = makePage(loadPage(profilePath))
+  profile.data.profileLoading = false
   await profile.checkAvatarPrivacy()
   assert.strictEqual(profile.data.avatarPrivacyMode, 'authorize')
   assert.strictEqual(profile.data.avatarPrivacyTone, 'hint')
   await profile.authorizeAvatarPrivacy()
   assert.strictEqual(authorized, true)
   assert.strictEqual(profile.data.avatarPrivacyMode, 'native')
-  assert.strictEqual(profile.data.avatarPrivacyTone, 'success')
-  assert(profile.data.avatarPrivacyError.includes('再次点击头像'))
+  assert.strictEqual(profile.data.avatarPrivacyTone, 'hint')
+  assert.strictEqual(profile.data.avatarPrivacyError, '', '授权成功后不应保留常驻提示卡')
+  assert(toastCalls.some((item) => item.title === '已授权，请点头像选择' && item.icon === 'none'),
+    '授权成功后应用短提示告知下一步')
 }
 
 async function main() {

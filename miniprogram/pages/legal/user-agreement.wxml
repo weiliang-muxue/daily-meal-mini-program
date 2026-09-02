@@ -1,6 +1,9 @@
 <view class="legal-screen">
   <view class="legal-header">
     <view class="legal-header-inner">
+      <button class="page-navigation" bindtap="navigateFromPage" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+        <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+      </button>
       <text class="legal-kicker">每天怎么吃</text>
       <text class="legal-title">用户协议</text>
       <text class="legal-summary" user-select="{{true}}">本协议说明邀请制服务的使用边界、健康与 AI 风险、账号数据隔离、删除和支持路径。</text>
@@ -8,7 +11,7 @@
   </view>
 
   <view class="legal-document" user-select="{{true}}">
-    <view class="legal-notice">本页面用于公开、可审计地说明服务规则，不替代微信平台的隐私授权，也不会通过自绘弹窗取得隐私同意。</view>
+    <view class="legal-notice">请在使用前了解本协议中的服务规则和重要提醒。头像、照片等隐私相关功能只会在你主动操作时，按照微信平台规则请求授权。</view>
 
     <view class="legal-section">
       <text class="legal-section-title">一、服务范围与成员资格</text>
@@ -44,13 +47,13 @@
     <view class="legal-section">
       <text class="legal-section-title">六、隐私能力与选择</text>
       <text class="legal-paragraph">头像、相机和相册等敏感能力只在用户主动点击相应操作时按微信平台规则请求授权。拒绝授权不会阻止查看本协议或使用不依赖该能力的功能，用户可以稍后重试或打开微信平台《隐私保护指引》。</text>
-      <button class="legal-action" bindtap="openPrivacyGuide" hover-class="button-hover">查看《隐私保护指引》</button>
+      <button class="legal-action" bindtap="openPrivacyGuide" hover-class="button-hover">打开微信平台《隐私保护指引》</button>
     </view>
 
     <view class="legal-section">
       <text class="legal-section-title">七、删除与退出</text>
-      <text class="legal-paragraph">“我的”页提供“删除我的全部数据和成员身份”。操作需要二次确认，完成后当前微信身份的资料、餐单、采购、提醒、健康记录、图片及关联任务将按产品删除流程清理，已删除内容不可恢复。</text>
-      <text class="legal-paragraph">仍有其他活跃成员时，唯一管理员必须先明确选择接任成员并完成管理员交接，不能由系统自动指定。删除失败时应按页面提示重试；删除完成后再次使用核心功能需要重新获得邀请。</text>
+      <text class="legal-paragraph">“我的”页提供“清空我的私人数据”。操作需要二次确认，完成后当前微信身份的资料、餐单、采购、提醒、健康记录、图片、关联任务及邀请将按产品删除流程清理，已删除内容不可恢复。</text>
+      <text class="legal-paragraph">普通成员清理后退出成员资格，再次使用核心功能需要重新获得邀请。唯一且无其他成员的管理员仅保留全新随机引用、不含个人资料的最小管理员身份；仍有其他活跃成员时，必须先明确选择接任成员并完成管理员交接，不能由系统自动指定。删除失败时应按页面提示重试。</text>
     </view>
 
     <view class="legal-section">

@@ -1,12 +1,21 @@
 'use strict'
 
 const assert = require('assert')
+const fs = require('fs')
 const path = require('path')
 
 const root = path.resolve(__dirname, '..')
 const pagePath = path.join(root, 'miniprogram', 'pages', 'plan-history', 'plan-history.js')
 const membershipPath = path.join(root, 'miniprogram', 'services', 'membership-store.js')
 const userStorePath = path.join(root, 'miniprogram', 'services', 'user-store.js')
+const pageWxml = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'plan-history', 'plan-history.wxml'), 'utf8')
+assert(/viewState === 'empty'[\s\S]*bindtap="openPlanner"[\s\S]*去定制餐单/.test(pageWxml),
+  '历史空态必须提供可执行的下一步')
+assert(pageWxml.includes('餐单历史') && pageWxml.includes('设为当前餐单'),
+  '历史页必须统一使用面向用户的餐单术语')
+assert(!pageWxml.includes('契约 v'), '历史页不能展示内部契约版本')
+assert(!pageWxml.includes('本机快照'), '历史页离线提示不能使用内部快照术语')
+assert(!pageWxml.includes('AI生成'), 'AI 来源标识必须保留中英文空格')
 
 let pageDefinition
 const modals = []
@@ -35,6 +44,7 @@ global.wx = {
   },
   showToast() {},
   switchTab() {},
+  navigateTo() {},
   reLaunch() {},
   stopPullDownRefresh() {},
 }
@@ -79,7 +89,7 @@ async function main() {
   modalResponses.push({ confirm: true }, { confirm: true })
   await page.restorePlan({ currentTarget: { dataset: { id: target.id } } })
   assert.deepStrictEqual(restored, [target.id], 'a plan beyond the former five-item view must be restorable')
-  assert(modals[0].content.includes('恢复这份计划自己的采购勾选和晚餐选择'))
+  assert(modals[0].content.includes('恢复这份餐单自己的采购勾选和晚餐选择'))
 
   const historyLimit = new Error('历史计划已达 64 份上限。为避免删除旧计划，本次计划更新未生效，请完成分页归档后重试')
   historyLimit.code = 'STATE_HISTORY_LIMIT'
@@ -89,7 +99,7 @@ async function main() {
   const failure = modals[modals.length - 1]
   assert.strictEqual(failure.title, '恢复失败')
   assert(failure.content.includes('64 份上限'))
-  assert(failure.content.includes('当前计划没有变化'))
+  assert(failure.content.includes('当前餐单没有变化'))
 
   let restoreAttempts = 0
   let refreshOptions = null
@@ -102,8 +112,8 @@ async function main() {
   const conflictModal = modals[modals.length - 1]
   assert.strictEqual(restoreAttempts, 1, 'revision conflict must not trigger an automatic overwrite retry')
   assert.deepStrictEqual(refreshOptions, { force: true })
-  assert.strictEqual(conflictModal.title, '计划历史已变化')
-  assert(conflictModal.content.includes('当前计划没有被替换'))
+  assert.strictEqual(conflictModal.title, '餐单历史已变化')
+  assert(conflictModal.content.includes('当前餐单没有被替换'))
 
   console.log('plan history page tests passed')
 }

@@ -62,11 +62,33 @@ function displayMeal(plan, dayId, meal, index, state) {
   }
 }
 
-function selectedDinnerMode(state, dayId) {
+function hasOwn(object, key) {
+  return Boolean(object) && Object.prototype.hasOwnProperty.call(object, key)
+}
+
+function hasExerciseMetadata(plan, day, dayIndex) {
+  const exercise = day && day.exercise
+  if (!exercise || typeof exercise.planned !== 'boolean') return false
+  if (plan && plan.source !== 'legacy') return true
+
+  // schema v1-v5 legacy plans received an empty exercise object while migrating.
+  // A matching generation-basis row (or meaningful exercise values) distinguishes
+  // a real per-day choice from that compatibility placeholder.
+  const basis = plan && plan.generationBasis
+  const basisRows = basis && Array.isArray(basis.exerciseByDay) ? basis.exerciseByDay : []
+  return basisRows.some((item) => item && number(item.dayIndex, -1) === dayIndex)
+    || exercise.planned === true
+    || Boolean(text(exercise.type))
+    || number(exercise.durationMinutes, 0) > 0
+}
+
+function selectedDinnerMode(plan, day, dayIndex, state, dayId) {
   const byDay = state && state.dinnerModeByDay && typeof state.dinnerModeByDay === 'object'
     ? state.dinnerModeByDay : {}
-  const mode = byDay[dayId] || (state && state.defaultDinnerMode)
-  return mode === 'workout' ? 'workout' : 'rest'
+  if (hasOwn(byDay, dayId) && ['rest', 'workout'].includes(byDay[dayId])) return byDay[dayId]
+  if (hasExerciseMetadata(plan, day, dayIndex)) return day.exercise.planned ? 'workout' : 'rest'
+  if (plan && plan.source === 'legacy') return state && state.defaultDinnerMode === 'workout' ? 'workout' : 'rest'
+  return 'rest'
 }
 
 function buildDay(plan, day, dayIndex, state) {
@@ -76,7 +98,7 @@ function buildDay(plan, day, dayIndex, state) {
   const dinners = meals.filter((meal) => meal.type === 'dinner')
   const hasRest = dinners.some((meal) => meal.scenario === 'rest')
   const hasWorkout = dinners.some((meal) => meal.scenario === 'workout')
-  const mode = selectedDinnerMode(state, dayId)
+  const mode = selectedDinnerMode(plan, day, dayIndex, state, dayId)
   const visibleMeals = dinners.length && hasRest && hasWorkout
     ? meals.filter((meal) => meal.type !== 'dinner' || meal.scenario === 'default' || meal.scenario === mode)
     : meals
@@ -110,9 +132,96 @@ function mealSummary(days) {
   return { counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0), text: parts.join(' · ') }
 }
 
+function ingredientIdentity(value) {
+  const source = String(value || '')
+  const normalized = typeof source.normalize === 'function' ? source.normalize('NFKC') : source
+  return normalized
+    .toLocaleLowerCase('zh-CN')
+    .replace(/\s/gu, '')
+}
+
+function formatQuantity(value) {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+function amountUnit(item) {
+  const direct = text(item && item.unit)
+  if (direct) return direct
+  const match = text(item && item.amount).match(/^\d+(?:\.\d+)?\s+(.+)$/u)
+  return match ? match[1].trim() : ''
+}
+
+function shoppingItemKey(category, name, unit) {
+  return `${category}\u0000${ingredientIdentity(name)}\u0000${unit}`
+}
+
+function selectedShoppingGroups(plan, state) {
+  if (!plan || !Array.isArray(plan.days) || !Array.isArray(plan.shoppingGroups)) return null
+  const selectedMeals = plan.days.flatMap((day, dayIndex) => buildDay(plan, day, dayIndex, state).meals)
+  if (!selectedMeals.length || selectedMeals.some((meal) => !Array.isArray(meal.ingredientItems) || !meal.ingredientItems.length)) return null
+
+  const totals = new Map()
+  for (const meal of selectedMeals) {
+    for (const ingredient of meal.ingredientItems) {
+      const name = text(ingredient && ingredient.name)
+      const unit = text(ingredient && ingredient.unit)
+      const category = text(ingredient && ingredient.category)
+      const quantity = number(ingredient && ingredient.quantity, 0)
+      if (!name || !unit || !category || quantity <= 0) return null
+      const key = shoppingItemKey(category, name, unit)
+      const previous = totals.get(key)
+      totals.set(key, {
+        category,
+        name,
+        unit,
+        quantity: Math.round(((previous ? previous.quantity : 0) + quantity) * 1000) / 1000,
+      })
+    }
+  }
+
+  const descriptors = []
+  plan.shoppingGroups.forEach((group, groupIndex) => {
+    const category = text(group && group.name)
+    const items = Array.isArray(group && group.items) ? group.items : []
+    items.forEach((item, itemIndex) => descriptors.push({
+      group,
+      groupIndex,
+      item,
+      itemIndex,
+      category,
+      identity: ingredientIdentity(item && item.name),
+      unit: amountUnit(item),
+    }))
+  })
+
+  const matched = new Map()
+  for (const [key, total] of totals) {
+    let descriptor = descriptors.find((item) => (
+      item.category === total.category && item.identity === ingredientIdentity(total.name) && item.unit === total.unit
+    ))
+    if (!descriptor) {
+      const compatible = descriptors.filter((item) => (
+        item.category === total.category && item.identity === ingredientIdentity(total.name)
+      ))
+      if (compatible.length === 1) descriptor = compatible[0]
+    }
+    if (!descriptor) return null
+    matched.set(`${descriptor.groupIndex}:${descriptor.itemIndex}`, { ...total, key })
+  }
+
+  return plan.shoppingGroups.map((group, groupIndex) => {
+    const items = (Array.isArray(group && group.items) ? group.items : []).flatMap((item, itemIndex) => {
+      const total = matched.get(`${groupIndex}:${itemIndex}`)
+      return total ? [{ ...item, quantity: total.quantity, unit: total.unit, amount: `${formatQuantity(total.quantity)} ${total.unit}` }] : []
+    })
+    return items.length ? { ...group, items } : null
+  }).filter(Boolean)
+}
+
 function shoppingView(plan, state) {
   const checked = new Set(uniqueStrings(state && state.checkedShoppingIds))
-  const groups = Array.isArray(plan && plan.shoppingGroups) ? plan.shoppingGroups.map((group, groupIndex) => {
+  const sourceGroups = selectedShoppingGroups(plan, state) || (Array.isArray(plan && plan.shoppingGroups) ? plan.shoppingGroups : [])
+  const groups = sourceGroups.map((group, groupIndex) => {
     const groupId = text(group && group.id, `${text(plan && plan.id, 'plan')}:shopping:g${groupIndex + 1}`)
     const items = Array.isArray(group && group.items) ? group.items.map((item, itemIndex) => {
       const itemId = text(item && (item.id || item.itemId), `${groupId}:i${itemIndex + 1}`)
@@ -127,7 +236,7 @@ function shoppingView(plan, state) {
       totalCount: items.length,
       allChecked: items.length > 0 && checkedCount === items.length,
     }
-  }) : []
+  })
   const totalCount = groups.reduce((sum, group) => sum + group.totalCount, 0)
   const checkedCount = groups.reduce((sum, group) => sum + group.checkedCount, 0)
   return {

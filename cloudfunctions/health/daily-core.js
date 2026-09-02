@@ -37,11 +37,14 @@ function assertExpectedRecordRevision(current = {}, expectedRecordRevision) {
   if (!Number.isSafeInteger(expectedRecordRevision) || expectedRecordRevision < 0) {
     throw revisionError('INVALID_HEALTH_RECORD_REVISION', '请先刷新当天记录后再保存')
   }
-  const currentRevision = currentRecordRevision(current)
-  if (currentRevision !== expectedRecordRevision) {
+  const storedRevision = currentRecordRevision(current)
+  // Empty records are returned as content-free revision markers. Comparing the
+  // stored revision prevents an initial rev-0 form from passing after another
+  // device has created and then cleared the same date (empty -> data -> empty).
+  if (storedRevision !== expectedRecordRevision) {
     throw revisionError('HEALTH_RECORD_REVISION_CONFLICT', '这一天已在其他设备更新，请刷新后重新确认')
   }
-  return currentRevision
+  return storedRevision
 }
 
 function mergedExercise(currentExercise, inputExercise) {
@@ -55,6 +58,13 @@ function mergedExercise(currentExercise, inputExercise) {
     durationMinutes: inputExercise.durationMinutes,
     intensity: inputExercise.intensity,
   }
+}
+
+function hasDailyContent(record = {}) {
+  return typeof record.weight === 'number'
+    || Boolean(fileId(record.photoFileId))
+    || Boolean(record.exercise && record.exercise.completed === true)
+    || Boolean(typeof record.note === 'string' && record.note.trim())
 }
 
 function planDailyUpdate(current = {}, input = {}) {
@@ -78,9 +88,12 @@ function planDailyUpdate(current = {}, input = {}) {
       : (current.exercise || null),
     note: Object.prototype.hasOwnProperty.call(input, 'note') ? input.note : (current.note || ''),
   }
+  const tombstoneRecord = !hasDailyContent(data)
+  data.tombstone = tombstoneRecord
 
   return {
     data,
+    tombstoneRecord,
     activePhotoFileId,
     replacedPhotoFileId: previousPhotoFileId !== activePhotoFileId ? previousPhotoFileId : '',
   }
@@ -102,6 +115,7 @@ module.exports = {
   assertSupportedHealthSchema,
   assertExpectedRecordRevision,
   currentRecordRevision,
+  hasDailyContent,
   planDailyUpdate,
   photoTicketCleanupFiles,
 }

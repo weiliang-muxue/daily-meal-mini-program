@@ -28,10 +28,30 @@
     "backgroundColor": "@tabBarBackgroundColor",
     "borderStyle": "@tabBarBorderStyle",
     "list": [
-      { "pagePath": "pages/plan/plan", "text": "餐单" },
-      { "pagePath": "pages/health/health", "text": "记录" },
-      { "pagePath": "pages/shopping/shopping", "text": "采购" },
-      { "pagePath": "pages/profile/profile", "text": "我的" }
+      {
+        "pagePath": "pages/plan/plan",
+        "text": "餐单",
+        "iconPath": "assets/icons/tabbar/plan.png",
+        "selectedIconPath": "assets/icons/tabbar/plan-selected.png"
+      },
+      {
+        "pagePath": "pages/health/health",
+        "text": "记录",
+        "iconPath": "assets/icons/tabbar/record.png",
+        "selectedIconPath": "assets/icons/tabbar/record-selected.png"
+      },
+      {
+        "pagePath": "pages/shopping/shopping",
+        "text": "采购",
+        "iconPath": "assets/icons/tabbar/shopping.png",
+        "selectedIconPath": "assets/icons/tabbar/shopping-selected.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "assets/icons/tabbar/profile.png",
+        "selectedIconPath": "assets/icons/tabbar/profile-selected.png"
+      }
     ]
   },
   "darkmode": true,

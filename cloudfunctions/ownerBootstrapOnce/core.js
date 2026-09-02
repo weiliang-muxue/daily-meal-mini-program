@@ -9,6 +9,8 @@ const CONTROL_SCHEMA = 2
 const CONTROL_PHASE_PENDING = 'bootstrap_pending'
 const CONTROL_PHASE_APPROVED = 'bootstrap_approved'
 const CONTROL_PHASE_ACTIVE = 'active'
+const INVITE_SLOTS = 3
+const INVITE_TTL_HOURS = 168
 const REQUEST_TTL_MS = 30 * 60 * 1000
 const REQUEST_ID_PATTERN = /^[a-f0-9]{32}$/
 const IDENTITY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
@@ -110,7 +112,7 @@ function bootstrapControl(request, phase = CONTROL_PHASE_PENDING, revision = 1) 
     kind: 'control', status: 'control', schemaVersion: CONTROL_SCHEMA,
     phase, bootstrapRequestId: validated.requestId,
     ownerOpenid: '', activeMemberCount: 0, reservedInviteCount: 0,
-    revision, inviteSlots: 6, inviteTtlHours: 24,
+    revision, inviteSlots: INVITE_SLOTS, inviteTtlHours: INVITE_TTL_HOURS,
   }
 }
 
@@ -214,6 +216,7 @@ function publicRequest(rawRequest) {
 
 module.exports = {
   CONTROL_ID, REQUEST_DOCUMENT_ID, REQUEST_SCHEMA, REQUEST_TTL_MS,
+  INVITE_SLOTS, INVITE_TTL_HOURS,
   CONTROL_SCHEMA, CONTROL_PHASE_PENDING, CONTROL_PHASE_APPROVED, CONTROL_PHASE_ACTIVE,
   normalizedControl, assertOperationalActivationContext, approvalDigest, validatedRequest,
   bootstrapControl, assertBootstrapControl, assertEmptyBootstrapSnapshot,

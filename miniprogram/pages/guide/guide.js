@@ -1,11 +1,64 @@
 const { userStore } = require('../../services/user-store')
 const { membershipStore } = require('../../services/membership-store')
+const PLAN_URL = '/pages/plan/plan'
+
+function canNavigateBack() {
+  try {
+    return typeof getCurrentPages === 'function' && getCurrentPages().length > 1
+  } catch (_) {
+    return false
+  }
+}
+
+function returnFromSecondaryPage() {
+  const goHome = () => wx.switchTab({ url: PLAN_URL })
+  if (!canNavigateBack() || typeof wx.navigateBack !== 'function') return goHome()
+  try {
+    return wx.navigateBack({ delta: 1, fail: goHome })
+  } catch (_) {
+    return goHome()
+  }
+}
 
 Page({
-  data: { settings: {}, reminders: [], newReminder: '', saving: false, offline: false, saveError: '', loading: true, error: '' },
-  onLoad() { return this.connect() },
-  onShow() { if (!this.data.loading && !this.data.error) this.render() },
+  data: {
+    canNavigateBack: false, pageNavigationLabel: '返回餐单首页',
+    settings: {}, reminders: [], newReminder: '', saving: false, offline: false,
+    saveError: '', loading: true, error: '', nativeControlColor: '#176B46',
+  },
+  onLoad() {
+    this.refreshPageNavigation()
+    this.applyTheme()
+    this.themeChangeHandler = (event) => this.applyTheme(event)
+    if (typeof wx.onThemeChange === 'function') wx.onThemeChange(this.themeChangeHandler)
+    return this.connect()
+  },
+  refreshPageNavigation() {
+    const canGoBack = canNavigateBack()
+    this.setData({
+      canNavigateBack: canGoBack,
+      pageNavigationLabel: canGoBack ? '返回上一页' : '返回餐单首页',
+    })
+  },
+  navigateFromPage() { return returnFromSecondaryPage() },
+  onShow() { this.refreshPageNavigation(); if (!this.data.loading && !this.data.error) this.render() },
   onHide() { userStore.flush().catch(() => {}) },
+  onUnload() {
+    if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
+    this.themeChangeHandler = null
+  },
+
+  applyTheme(event = {}) {
+    let theme = event && event.theme
+    if (theme !== 'dark' && theme !== 'light') {
+      try {
+        if (typeof wx.getAppBaseInfo === 'function') theme = (wx.getAppBaseInfo() || {}).theme
+      } catch (_) {}
+    }
+    if (theme !== 'dark' && theme !== 'light') theme = this.currentTheme || 'light'
+    this.currentTheme = theme
+    this.setData({ nativeControlColor: theme === 'dark' ? '#72D49E' : '#176B46' })
+  },
 
   async connect(force = false) {
     this.setData({ loading: true, error: '', saveError: '' })

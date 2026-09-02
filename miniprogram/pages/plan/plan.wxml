@@ -4,7 +4,7 @@
     <view class="skeleton skeleton-line"></view>
     <view class="skeleton skeleton-card"></view>
     <view class="skeleton skeleton-card short"></view>
-    <text class="loading-copy">正在从云端读取你的餐单</text>
+    <text class="loading-copy">正在同步你的餐单</text>
   </view>
 
   <view wx:elif="{{error && !hasPlan}}" class="status-panel error-panel" aria-role="alert">
@@ -32,30 +32,43 @@
       <text class="strip-link">去预览</text>
     </view>
 
-    <view class="sync-strip {{offline ? 'touch-target offline' : ''}}" bindtap="{{offline ? 'retrySync' : ''}}" hover-class="{{offline ? 'strip-hover' : 'none'}}" aria-role="{{offline ? 'button' : ''}}" aria-label="{{syncText}}">
-      <view class="sync-dot"></view>
+    <view wx:if="{{hasPlan && isAiPlan}}" class="ai-origin-notice" aria-label="AI 生成内容">
+      <text class="ai-origin-badge">AI 生成</text>
+      <text class="ai-origin-copy">当前餐单由人工智能生成，请结合实际食材、份量和个人情况使用。</text>
+    </view>
+
+    <view class="sync-status {{syncState}} {{syncState === 'offline' || syncState === 'error' ? 'touch-target' : ''}}" bindtap="{{syncState === 'offline' || syncState === 'error' ? 'retrySync' : ''}}" hover-class="{{syncState === 'offline' || syncState === 'error' ? 'strip-hover' : 'none'}}" aria-role="{{syncState === 'offline' || syncState === 'error' ? 'button' : ''}}" aria-label="{{syncText}}">
+      <view wx:if="{{syncState !== 'ready'}}" class="sync-dot"></view>
       <text>{{syncText}}</text>
-      <text wx:if="{{offline}}" class="retry">重试</text>
+      <text wx:if="{{syncState === 'offline' || syncState === 'error'}}" class="retry">重试</text>
     </view>
 
     <view wx:if="{{!hasPlan}}" class="empty-state">
       <image class="empty-image" src="/assets/meal-plan-cover.jpg" mode="aspectFill" aria-label="餐食搭配参考图"></image>
       <view class="empty-content">
         <text class="empty-title">这里还没有已确认餐单</text>
-        <text class="empty-copy">你可以按需勾选早餐、午餐、晚餐或加餐，生成 7 天或 14 天方案。AI 失败不会写入静态预设，也不会影响之后已有的计划。</text>
+        <text class="empty-copy">你可以按需选择早餐、午餐、晚餐或加餐，生成 1–14 天餐单。生成失败不会替换已经确认的餐单。</text>
         <button class="primary-button" bindtap="openPlanner" hover-class="button-hover">定制第一份餐单</button>
       </view>
     </view>
 
     <block wx:else>
-      <scroll-view class="day-scroll" scroll-x enhanced show-scrollbar="{{false}}" aria-label="切换餐单日期">
-        <view class="day-list">
-          <view wx:for="{{days}}" wx:key="id" class="day-button touch-target {{item.selected ? 'active' : ''}}" data-index="{{index}}" bindtap="selectDay" hover-class="day-hover" aria-role="button" aria-selected="{{item.selected}}" aria-label="{{item.name}} {{item.date}}">
-            <text class="day-short">{{item.short || (index + 1)}}</text>
-            <text class="day-full">{{item.date || item.name}}</text>
+      <view class="plan-period" aria-label="选择餐单周和日期">
+        <view wx:if="{{weeks.length > 1}}" class="week-selector" aria-role="group" aria-label="选择餐单周">
+          <view wx:for="{{weeks}}" wx:key="index" class="week-button touch-target {{item.index === selectedWeekIndex ? 'active' : ''}}" data-index="{{item.index}}" bindtap="selectWeek" hover-class="segment-hover" aria-role="button" aria-pressed="{{item.index === selectedWeekIndex}}">
+            <text wx:if="{{item.index === selectedWeekIndex}}" class="selection-mark" aria-hidden="true">✓</text>
+            <text>{{item.label}}</text>
           </view>
         </view>
-      </scroll-view>
+        <text class="period-label">{{selectedWeekLabel}} · 选择日期</text>
+        <view class="day-list">
+          <view wx:for="{{displayedDays}}" wx:key="id" class="day-button touch-target {{item.selected ? 'active' : ''}}" data-index="{{item.originalIndex}}" bindtap="selectDay" hover-class="day-hover" aria-role="button" aria-pressed="{{item.selected}}" aria-label="{{item.name}} {{item.date}}">
+            <text wx:if="{{item.selected}}" class="selection-mark" aria-hidden="true">✓</text>
+            <text class="day-short">{{item.name || item.short}}</text>
+            <text class="day-full">{{item.dateLabel}}</text>
+          </view>
+        </view>
+      </view>
 
       <view class="day-summary">
         <view class="day-copy">
@@ -66,16 +79,18 @@
       </view>
 
       <view wx:if="{{selectedDay.hasDinnerAlternatives}}" class="dinner-control">
-        <text class="control-title">今晚的运动安排</text>
-        <text class="control-copy">切换后只改变今天显示的晚餐方案，不会修改其他日期。</text>
+        <text class="control-title">选择今天的晚餐方案</text>
+        <text class="control-copy">仅切换今天的晚餐，不会记录运动。</text>
         <view class="segment" aria-role="group" aria-label="选择晚餐方案">
           <view class="segment-button touch-target {{selectedDay.dinnerMode === 'rest' ? 'active' : ''}}" data-mode="rest" bindtap="selectDinnerMode" hover-class="segment-hover" aria-role="button" aria-pressed="{{selectedDay.dinnerMode === 'rest'}}">
-            <text>今晚不运动</text>
-            <text class="segment-sub">显示日常晚餐</text>
+            <text wx:if="{{selectedDay.dinnerMode === 'rest'}}" class="selection-mark" aria-hidden="true">✓</text>
+            <text>日常晚餐</text>
+            <text class="segment-sub">适合普通活动量</text>
           </view>
-          <view class="segment-button workout touch-target {{selectedDay.dinnerMode === 'workout' ? 'active' : ''}}" data-mode="workout" bindtap="selectDinnerMode" hover-class="segment-hover" aria-role="button" aria-pressed="{{selectedDay.dinnerMode === 'workout'}}">
-            <text>今晚有运动</text>
-            <text class="segment-sub">显示运动日晚餐</text>
+          <view class="segment-button touch-target {{selectedDay.dinnerMode === 'workout' ? 'active' : ''}}" data-mode="workout" bindtap="selectDinnerMode" hover-class="segment-hover" aria-role="button" aria-pressed="{{selectedDay.dinnerMode === 'workout'}}">
+            <text wx:if="{{selectedDay.dinnerMode === 'workout'}}" class="selection-mark" aria-hidden="true">✓</text>
+            <text>运动日晚餐</text>
+            <text class="segment-sub">适合当天有运动</text>
           </view>
         </view>
       </view>
@@ -90,14 +105,14 @@
         </view>
         <view wx:else class="status-panel compact">
           <text class="status-title">当天暂无餐次</text>
-          <text class="status-detail">请重新定制餐单或检查候选计划。</text>
+          <text class="status-detail">请重新定制餐单或检查候选餐单。</text>
         </view>
       </view>
 
       <view class="plan-actions">
-        <button class="secondary-button" bindtap="openHistory" hover-class="button-hover">查看历史计划</button>
+        <button class="secondary-button" bindtap="openHistory" hover-class="button-hover">查看餐单历史</button>
         <button class="text-button" bindtap="openBasis" hover-class="action-hover">查看生成依据与健康说明</button>
-        <text class="version-text">计划版本 {{planVersion}}</text>
+        <text class="version-text">餐单版本 {{planVersion}}</text>
       </view>
     </block>
   </block>

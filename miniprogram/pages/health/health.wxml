@@ -17,27 +17,68 @@
       <view><text class="month-title">{{monthText}}</text><text class="month-subtitle">体重与运动日历</text></view>
       <view class="month-button touch-target" bindtap="nextMonth" hover-class="control-hover" aria-role="button" aria-label="下个月">›</view>
     </view>
-    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retryLoad" hover-class="control-hover" aria-role="button"><text>当前显示本机快照，点此重试</text></view>
+    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retryLoad" hover-class="control-hover" aria-role="button"><text>当前显示最近保存的记录，点此重试</text></view>
 
     <view class="calendar surface">
-      <view class="week-row"><text wx:for="{{weekdays}}" wx:key="*this">{{item}}</text></view>
-      <view class="calendar-grid">
-        <block wx:for="{{cells}}" wx:key="key">
-          <view wx:if="{{item.empty}}" class="day-cell empty" aria-hidden="true"></view>
-          <view wx:else class="day-cell touch-target {{item.exercised ? 'exercised' : ''}} {{item.isToday ? 'today' : ''}} {{selectedDate === item.date ? 'selected' : ''}}" data-date="{{item.date}}" bindtap="selectDate" hover-class="day-hover" aria-role="button" aria-selected="{{selectedDate === item.date}}" aria-label="{{item.date}}">
-            <text class="day-number">{{item.day}}</text>
-            <text wx:if="{{item.weightText}}" class="weight-number">{{item.weightText}} kg</text>
-            <view wx:if="{{item.exercised}}" class="exercise-dot"></view>
-            <view wx:if="{{item.hasPhoto}}" class="photo-mark"></view>
+      <view class="calendar-scroll">
+        <view class="calendar-content">
+          <view class="week-row"><text wx:for="{{weekdays}}" wx:key="*this">{{item}}</text></view>
+          <view class="calendar-grid">
+            <block wx:for="{{cells}}" wx:key="key">
+              <view wx:if="{{item.empty}}" class="day-cell empty" aria-hidden="true"></view>
+              <view wx:else class="day-cell touch-target {{item.exercised ? 'exercised' : ''}} {{item.isToday ? 'today' : ''}} {{selectedDate === item.date ? 'selected' : ''}}" data-date="{{item.date}}" bindtap="selectDate" hover-class="day-hover" aria-role="button" aria-selected="{{selectedDate === item.date}}" aria-label="{{item.date}}，{{selectedDate === item.date ? '已选中' : '未选中'}}，{{item.weightText ? '已记录体重' : '未记录体重'}}，{{item.exercised ? '已运动打卡' : '未运动打卡'}}，{{item.hasPhoto ? '有体重照片' : '无体重照片'}}">
+                <text class="day-number">{{item.day}}</text>
+                <text wx:if="{{item.weightText}}" class="weight-number">{{item.weightText}} kg</text>
+                <view wx:if="{{item.exercised}}" class="exercise-mark" aria-hidden="true">
+                  <view class="exercise-dot"></view>
+                  <text>运动</text>
+                </view>
+                <view wx:if="{{item.hasPhoto}}" class="photo-mark"></view>
+              </view>
+            </block>
           </view>
-        </block>
+        </view>
       </view>
       <view class="legend"><view><view class="legend-dot"></view><text>运动打卡</text></view><view><view class="legend-photo"></view><text>体重照片</text></view></view>
     </view>
 
     <view class="record-card surface">
-      <view class="record-heading"><view><text class="record-date">{{selectedDate}}</text><text class="record-caption">当天记录可随时补充或修改</text></view><view wx:if="{{selectedRecord}}" class="saved-badge">已记录</view></view>
-      <view class="weight-row"><view><text class="field-label">体重</text><view class="weight-input"><input type="digit" value="{{weight}}" bindinput="inputWeight" placeholder="例如 61.8" /><text>kg</text></view></view><view class="photo-wrap"><view class="photo-button touch-target {{choosingPhoto ? 'disabled' : ''}}" bindtap="choosePhoto" hover-class="control-hover" aria-role="button" aria-disabled="{{choosingPhoto}}" aria-label="{{photoPreview ? '更换照片' : '添加照片'}}"><image wx:if="{{photoPreview}}" src="{{photoPreview}}" mode="aspectFill" /><text wx:else>{{choosingPhoto ? '正在检查' : '添加照片'}}</text></view><view wx:if="{{photoPreview}}" class="remove-photo touch-target" bindtap="removePhoto" hover-class="control-hover" aria-role="button">移除</view></view></view>
+      <view class="record-heading"><view><text class="record-date">{{selectedDate}}</text><text class="record-caption">当天记录可随时补充或修改</text></view><view wx:if="{{selectedRecord}}" class="saved-badge">当天有记录</view></view>
+      <view class="exercise-card {{exerciseStatusTone}}">
+        <label class="exercise-row" aria-label="运动打卡，当前{{exerciseStatus}}">
+          <view class="activity-ring {{exerciseStatusTone}}" aria-hidden="true">
+            <view class="activity-ring-core"><text>{{exerciseStatusSymbol}}</text></view>
+          </view>
+          <view class="exercise-heading-copy">
+            <view class="exercise-title-line">
+              <text class="field-label">运动打卡</text>
+              <text class="exercise-state {{exerciseStatusTone}}">{{exerciseStatus}}</text>
+            </view>
+            <text class="field-hint">{{exerciseStatusHint}}</text>
+          </view>
+          <view class="exercise-switch-target">
+            <switch checked="{{exerciseCompleted}}" color="{{exerciseSwitchColor}}" bindchange="toggleExercise" aria-label="运动打卡开关，当前{{exerciseStatus}}" />
+          </view>
+        </label>
+        <view wx:if="{{exerciseCompleted}}" class="exercise-fields">
+          <view class="exercise-field">
+            <text class="field-label">运动类型</text>
+            <picker range="{{exerciseTypes}}" value="{{exerciseTypeIndex < 0 ? 0 : exerciseTypeIndex}}" bindchange="pickExerciseType" aria-label="运动类型，当前{{exerciseTypeIndex < 0 ? '未选择' : exerciseTypes[exerciseTypeIndex]}}" aria-invalid="{{exerciseTypeError ? 'true' : 'false'}}" aria-describedby="exercise-type-error"><view class="picker-field {{exerciseTypeError ? 'field-invalid' : ''}}" aria-role="button">{{exerciseTypeIndex < 0 ? '选择运动类型' : exerciseTypes[exerciseTypeIndex]}}</view></picker>
+            <text wx:if="{{exerciseTypeError}}" id="exercise-type-error" class="field-error" aria-role="alert">{{exerciseTypeError}}</text>
+          </view>
+          <view class="exercise-field">
+            <text class="field-label">运动时长</text>
+            <view class="duration-field {{exerciseDurationError ? 'field-invalid' : ''}}"><input type="number" value="{{exerciseDuration}}" bindinput="inputDuration" placeholder="请输入" aria-label="运动时长（分钟）" aria-invalid="{{exerciseDurationError ? 'true' : 'false'}}" aria-describedby="exercise-duration-error" /><text>分钟</text></view>
+            <text wx:if="{{exerciseDurationError}}" id="exercise-duration-error" class="field-error" aria-role="alert">{{exerciseDurationError}}</text>
+          </view>
+          <view class="intensity-field">
+            <text class="field-label">运动强度</text>
+            <view class="intensity {{exerciseIntensityError ? 'field-invalid' : ''}}" aria-role="group" aria-label="运动强度" aria-invalid="{{exerciseIntensityError ? 'true' : 'false'}}" aria-describedby="exercise-intensity-error"><view class="touch-target {{exerciseIntensity === 'low' ? 'active' : ''}}" data-value="low" bindtap="selectIntensity" hover-class="control-hover" aria-role="button" aria-pressed="{{exerciseIntensity === 'low'}}"><text class="intensity-check {{exerciseIntensity === 'low' ? 'visible' : ''}}" aria-hidden="true">✓</text><text>轻松</text></view><view class="touch-target {{exerciseIntensity === 'medium' ? 'active' : ''}}" data-value="medium" bindtap="selectIntensity" hover-class="control-hover" aria-role="button" aria-pressed="{{exerciseIntensity === 'medium'}}"><text class="intensity-check {{exerciseIntensity === 'medium' ? 'visible' : ''}}" aria-hidden="true">✓</text><text>适中</text></view><view class="touch-target {{exerciseIntensity === 'high' ? 'active' : ''}}" data-value="high" bindtap="selectIntensity" hover-class="control-hover" aria-role="button" aria-pressed="{{exerciseIntensity === 'high'}}"><text class="intensity-check {{exerciseIntensity === 'high' ? 'visible' : ''}}" aria-hidden="true">✓</text><text>较强</text></view></view>
+            <text wx:if="{{exerciseIntensityError}}" id="exercise-intensity-error" class="field-error" aria-role="alert">{{exerciseIntensityError}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="weight-row"><view><text class="field-label">体重</text><view class="weight-input {{weightError ? 'field-invalid' : ''}}"><input type="digit" value="{{weight}}" bindinput="inputWeight" placeholder="例如 61.8" aria-label="当天体重（千克）" aria-invalid="{{weightError ? 'true' : 'false'}}" aria-describedby="weight-error" /><text>kg</text></view><text wx:if="{{weightError}}" id="weight-error" class="field-error" aria-role="alert">{{weightError}}</text></view><view class="photo-wrap"><view class="photo-button touch-target {{choosingPhoto ? 'disabled' : ''}}" bindtap="choosePhoto" hover-class="control-hover" aria-role="button" aria-disabled="{{choosingPhoto}}" aria-label="{{photoPreview ? '更换照片' : '添加照片'}}"><image wx:if="{{photoPreview}}" src="{{photoPreview}}" mode="aspectFill" /><text wx:else>{{choosingPhoto ? '正在检查' : '添加照片'}}</text></view><view wx:if="{{photoPreview}}" class="remove-photo touch-target" bindtap="removePhoto" hover-class="control-hover" aria-role="button">移除</view></view></view>
       <view wx:if="{{photoPrivacyError}}" class="photo-privacy-error" aria-role="alert">
         <text>{{photoPrivacyError}}</text>
         <view class="photo-error-actions">
@@ -45,25 +86,31 @@
           <button class="photo-error-button" bindtap="openPrivacyGuide">查看《隐私保护指引》</button>
         </view>
       </view>
-      <view class="exercise-row"><view><text class="field-label">运动打卡</text><text class="field-hint">完成后月历显示绿色标记</text></view><switch checked="{{exerciseCompleted}}" color="#176B46" bindchange="toggleExercise" /></view>
-      <view wx:if="{{exerciseCompleted}}" class="exercise-fields">
-        <picker range="{{exerciseTypes}}" value="{{exerciseTypeIndex}}" bindchange="pickExerciseType"><view class="picker-field">{{exerciseTypes[exerciseTypeIndex]}}</view></picker>
-        <view class="duration-field"><input type="number" value="{{exerciseDuration}}" bindinput="inputDuration" /><text>分钟</text></view>
-        <view class="intensity" aria-role="group" aria-label="运动强度"><view class="touch-target {{exerciseIntensity === 'low' ? 'active' : ''}}" data-value="low" bindtap="selectIntensity" hover-class="control-hover" aria-role="button" aria-pressed="{{exerciseIntensity === 'low'}}">轻松</view><view class="touch-target {{exerciseIntensity === 'medium' ? 'active' : ''}}" data-value="medium" bindtap="selectIntensity" hover-class="control-hover" aria-role="button" aria-pressed="{{exerciseIntensity === 'medium'}}">适中</view><view class="touch-target {{exerciseIntensity === 'high' ? 'active' : ''}}" data-value="high" bindtap="selectIntensity" hover-class="control-hover" aria-role="button" aria-pressed="{{exerciseIntensity === 'high'}}">较强</view></view>
-      </view>
-      <textarea class="note" maxlength="200" value="{{note}}" bindinput="inputNote" placeholder="当天感受、睡眠或其他备注（可选）" auto-height />
-      <button class="primary-button" loading="{{saving}}" disabled="{{saving}}" bindtap="saveRecord">保存当天记录</button>
+      <textarea class="note" maxlength="200" value="{{note}}" bindinput="inputNote" placeholder="当天感受、睡眠或其他备注（可选）" aria-label="当天备注（可选）" auto-height />
+      <text wx:if="{{formError}}" class="form-error" aria-role="alert">{{formError}}</text>
+      <button class="primary-button" loading="{{saving}}" disabled="{{saving}}" bindtap="saveRecord">{{saveButtonText}}</button>
     </view>
 
     <view class="trend-card surface">
       <view class="trend-heading"><view><text class="trend-title">趋势对比</text><text class="trend-copy" aria-live="polite">{{trendSummary}}</text></view><view class="trend-switch" aria-role="group" aria-label="趋势周期"><view class="touch-target {{trendMode === 'week' ? 'active' : ''}}" data-mode="week" bindtap="selectTrendMode" hover-class="control-hover" aria-role="button" aria-pressed="{{trendMode === 'week'}}">近 7 天</view><view class="touch-target {{trendMode === 'month' ? 'active' : ''}}" data-mode="month" bindtap="selectTrendMode" hover-class="control-hover" aria-role="button" aria-pressed="{{trendMode === 'month'}}">本月</view></view></view>
+      <view wx:if="{{weekTrendNotice}}" class="trend-notice touch-target" bindtap="retryWeekTrend" hover-class="control-hover" aria-role="button" aria-label="{{weekTrendNotice}}"><text>{{weekTrendNotice}}</text></view>
       <view class="metric-switch" aria-role="group" aria-label="趋势指标"><view class="touch-target {{trendMetric === 'weight' ? 'active' : ''}}" data-metric="weight" bindtap="selectTrendMetric" hover-class="control-hover" aria-role="button" aria-pressed="{{trendMetric === 'weight'}}">体重</view><view class="touch-target {{trendMetric === 'exercise' ? 'active' : ''}}" data-metric="exercise" bindtap="selectTrendMetric" hover-class="control-hover" aria-role="button" aria-pressed="{{trendMetric === 'exercise'}}">运动时长</view></view>
       <canvas id="weightChart" type="2d" class="weight-chart" aria-hidden="true" />
-      <view class="exercise-summary">
-        <view><text class="summary-value">{{weekExerciseCount}}</text><text class="summary-label">近 7 天次数</text></view>
-        <view><text class="summary-value">{{weekExerciseMinutes}}</text><text class="summary-label">近 7 天分钟</text></view>
-        <view><text class="summary-value">{{monthExerciseCount}}</text><text class="summary-label">本月次数</text></view>
-        <view><text class="summary-value">{{monthExerciseMinutes}}</text><text class="summary-label">本月分钟</text></view>
+      <view class="exercise-summary" aria-label="运动汇总">
+        <view class="summary-period" aria-label="近 7 天运动 {{weekTrendIncomplete ? '数据可能不完整' : weekExerciseCount + ' 次，共 ' + weekExerciseMinutes + ' 分钟'}}">
+          <text class="summary-period-title">近 7 天</text>
+          <view class="summary-rings">
+            <view class="metric-ring count {{hasWeekExercise ? 'active' : 'zero'}}"><text class="summary-value">{{weekExerciseCountDisplay}}</text><text class="ring-unit">次</text></view>
+            <view class="metric-ring minutes {{hasWeekExercise ? 'active' : 'zero'}}"><text class="summary-value">{{weekExerciseMinutesDisplay}}</text><text class="ring-unit">分钟</text></view>
+          </view>
+        </view>
+        <view class="summary-period" aria-label="本月运动 {{monthExerciseCount}} 次，共 {{monthExerciseMinutes}} 分钟">
+          <text class="summary-period-title">本月</text>
+          <view class="summary-rings">
+            <view class="metric-ring count {{hasMonthExercise ? 'active' : 'zero'}}"><text class="summary-value">{{monthExerciseCount}}</text><text class="ring-unit">次</text></view>
+            <view class="metric-ring minutes {{hasMonthExercise ? 'active' : 'zero'}}"><text class="summary-value">{{monthExerciseMinutes}}</text><text class="ring-unit">分钟</text></view>
+          </view>
+        </view>
       </view>
     </view>
   </block>

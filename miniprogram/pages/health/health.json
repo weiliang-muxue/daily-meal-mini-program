@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "健康记录",
+  "navigationBarTitleText": "记录",
   "enablePullDownRefresh": true,
   "backgroundColor": "@backgroundColor",
   "backgroundTextStyle": "@backgroundTextStyle"

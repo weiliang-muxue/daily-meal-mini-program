@@ -7,34 +7,160 @@ const fs = require('fs')
 
 const root = path.resolve(__dirname, '..')
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const EXPECTED_DATABASE_RULES = {
+  meal_users: { read: false, write: false },
+  meal_user_states: { read: false, write: false },
+  meal_avatar_uploads: { read: false, write: false },
+  meal_members: { read: false, write: false },
+  meal_invites: { read: false, write: false },
+  health_daily: { read: false, write: false },
+  health_photo_uploads: { read: false, write: false },
+  meal_ai_tasks: { read: false, write: false },
+  meal_ai_shards: { read: false, write: false },
+  meal_ai_controls: { read: false, write: false },
+}
+
+function validateDatabaseRules(rules) {
+  assert.deepStrictEqual(rules, EXPECTED_DATABASE_RULES,
+    '数据库安全规则必须恰好覆盖十个正式集合且全部拒绝客户端读写')
+}
+
+if (process.argv[2] === '--validate-database-rules-stdin') {
+  try {
+    validateDatabaseRules(JSON.parse(fs.readFileSync(0, 'utf8')))
+    process.exit(0)
+  } catch (_) {
+    process.stderr.write('数据库安全规则验证失败\n')
+    process.exit(1)
+  }
+}
+
 const releaseManifest = JSON.parse(read('release-manifest.json'))
 const { validateReleaseGate } = require(path.join(root, 'scripts/release-gate'))
 const stateSchema = require(path.join(root, 'shared/user-state'))
 const aiPlanner = require(path.join(root, 'cloudfunctions/aiPlanner/lib'))
+const aiTaskCore = require(path.join(root, 'cloudfunctions/aiPlanner/task-core'))
+const aiMaintenanceCore = require(path.join(root, 'cloudfunctions/mealAiMaintenance/core'))
+const aiPlannerClient = require(path.join(root, 'miniprogram/services/ai-planner'))
+const aiProviderConfig = require(path.join(root, 'cloudfunctions/aiPlanner/provider-config'))
 const membershipCore = require(path.join(root, 'cloudfunctions/membership/core'))
 const { calendarCells } = require(path.join(root, 'miniprogram/utils/date'))
 const CLOUD_FUNCTIONS = [
   'aiPlanner', 'auth', 'health', 'mealAiMaintenance',
   'membership', 'ownerBootstrapOnce', 'privacy', 'userData',
 ]
+const DEPLOYED_CLOUD_FUNCTIONS = CLOUD_FUNCTIONS.filter((name) => name !== 'ownerBootstrapOnce')
 const WX_SERVER_SDK_VERSION = '4.0.2'
+const RETIRED_PROVIDER_DIAGNOSTIC_FILES = [
+  'cloudfunctions/aiPlanner/provider-diagnostic.js',
+  'cloudfunctions/aiPlanner/provider-diagnostic.test.js',
+  'cloudfunctions/aiPlanner/provider-capability.js',
+  'cloudfunctions/aiPlanner/provider-capability.test.js',
+  'cloudfunctions/aiPlanner/provider-stream-capability.js',
+  'cloudfunctions/aiPlanner/provider-stream-capability.test.js',
+  'scripts/wx-automator/provider-capability-probe.js',
+  'scripts/wx-automator/provider-capability-probe.test.js',
+  'scripts/wx-automator/provider-stream-capability-probe.js',
+  'scripts/wx-automator/provider-stream-capability-probe.test.js',
+  'cloudfunctions/aiPlanner/providerCapabilityV1.js',
+  'cloudfunctions/aiPlanner/providerCapabilityV1.test.js',
+  'cloudfunctions/aiPlanner/providerStreamCapabilityV1.js',
+  'cloudfunctions/aiPlanner/providerStreamCapabilityV1.test.js',
+  'scripts/wx-automator/ai-provider-capability-v1.js',
+  'scripts/wx-automator/ai-provider-capability-v1.test.js',
+  'scripts/wx-automator/ai-provider-stream-capability-v1.js',
+  'scripts/wx-automator/ai-provider-stream-capability-v1.test.js',
+]
+const RETIRED_PROVIDER_DIAGNOSTIC_MARKERS = [
+  'providerDiagnostic', 'PROVIDER_DIAGNOSTIC', 'diagnosticVersion', 'diagnosticRevision',
+  'providerDiagnostics', 'safeProviderDiagnostic', 'projectProviderDiagnostic', 'providerHttpError',
+  'providerCapabilityV1', 'providerStreamCapabilityV1',
+  'PROVIDER_CAPABILITY', 'PROVIDER_STREAM_CAPABILITY',
+  'probeProviderCapability', 'probeProviderStreamCapability',
+  'AI_PROVIDER_CAPABILITY_PROBE', 'AI_PROVIDER_STREAM_CAPABILITY_PROBE',
+]
+
+function gitOutput(args, options = {}) {
+  try {
+    return childProcess.execFileSync('git', args, {
+      cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch (_) { return options.fallback === undefined ? '' : options.fallback }
+}
+
+function releaseRefName() {
+  const supplied = String(process.env.RELEASE_GATE_REF || '').trim()
+  if (supplied) return supplied
+  return gitOutput(['symbolic-ref', '-q', 'HEAD'])
+}
+
+function versionTag(version) {
+  const refName = `refs/tags/v${version}`
+  const objectType = gitOutput(['cat-file', '-t', refName])
+  if (!objectType) return null
+  return {
+    refName,
+    objectType,
+    objectOid: gitOutput(['rev-parse', '--verify', refName]),
+    peeledCommitOid: gitOutput(['rev-parse', '--verify', `${refName}^{commit}`]),
+  }
+}
+
+const requestedCommit = String(process.env.RELEASE_GATE_COMMIT || '').trim()
+const currentCommit = gitOutput(['rev-parse', '--verify', requestedCommit || 'HEAD'])
+const parentLine = gitOutput(['rev-list', '--parents', '-n', '1', currentCommit]).split(/\s+/).filter(Boolean)
 
 validateReleaseGate({
   manifest: releaseManifest,
   changelog: read('CHANGELOG.md'),
   readme: read('README.md'),
-  tagTypeForVersion(version) {
-    try {
-      return childProcess.execFileSync('git', ['cat-file', '-t', `refs/tags/v${version}`], {
-        cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim()
-    } catch (_) { return '' }
+  refContext: {
+    refName: releaseRefName(),
+    commitOid: currentCommit,
+    parentOids: parentLine[0] === currentCommit ? parentLine.slice(1) : [],
   },
+  versionTag: versionTag(releaseManifest.workingVersion),
 })
-assert.strictEqual(releaseManifest.stateSchemaVersion, 6, '当前发布清单必须使用 schema v6')
+assert.strictEqual(releaseManifest.stateSchemaVersion, 7, '当前发布清单必须使用 schema v7')
 assert.strictEqual(stateSchema.CURRENT_SCHEMA, releaseManifest.stateSchemaVersion, '共享 schema 与版本清单不一致')
 assert.strictEqual(aiPlanner.CONTRACT_VERSION, releaseManifest.aiContractVersion, 'AI 契约与版本清单不一致')
 assert.strictEqual(aiPlanner.PLANNER_VERSION, releaseManifest.aiPlannerVersion, 'AI 生成器与版本清单不一致')
+assert.strictEqual(aiPlannerClient.CONTRACT_VERSION, releaseManifest.aiContractVersion, '小程序 AI 契约与版本清单不一致')
+assert.strictEqual(aiPlannerClient.PLANNER_VERSION, releaseManifest.aiPlannerVersion, '小程序 AI 生成器与版本清单不一致')
+assert.strictEqual(aiMaintenanceCore.AI_CONTRACT_VERSION, releaseManifest.aiContractVersion,
+  'AI 维护契约与版本清单不一致')
+assert.strictEqual(aiMaintenanceCore.AI_PLANNER_VERSION, releaseManifest.aiPlannerVersion,
+  'AI 维护生成器与版本清单不一致')
+assert.strictEqual(aiTaskCore.TASK_SCHEMA_VERSION, releaseManifest.aiTaskSchemaVersion,
+  'AI 任务 schema 与版本清单不一致')
+assert.strictEqual(aiTaskCore.AI_DATA_CONSENT_VERSION, releaseManifest.aiDataConsentVersion,
+  'AI 任务同意协议与版本清单不一致')
+assert.strictEqual(aiMaintenanceCore.AI_DATA_CONSENT_VERSION, releaseManifest.aiDataConsentVersion,
+  'AI 维护同意协议与版本清单不一致')
+assert.strictEqual(aiPlannerClient.AI_DATA_CONSENT_VERSION, releaseManifest.aiDataConsentVersion,
+  '小程序 AI 同意协议与版本清单不一致')
+assert.strictEqual(aiProviderConfig.PROVIDER_CONTRACT_REVISION, releaseManifest.aiProviderContractRevision,
+  '云函数 provider 契约版本与版本清单不一致')
+assert.strictEqual(aiPlannerClient.PROVIDER_CONTRACT_REVISION, releaseManifest.aiProviderContractRevision,
+  '小程序 provider 契约版本与版本清单不一致')
+RETIRED_PROVIDER_DIAGNOSTIC_FILES.forEach((file) => {
+  assert.strictEqual(fs.existsSync(path.join(root, file)), false, `正式部署树不得包含临时诊断文件 ${file}`)
+})
+const aiPlannerRuntimeFiles = fs.readdirSync(path.join(root, 'cloudfunctions/aiPlanner'))
+  .filter((file) => file.endsWith('.js'))
+  .map((file) => `cloudfunctions/aiPlanner/${file}`)
+const providerAutomationFiles = fs.readdirSync(path.join(root, 'scripts/wx-automator'))
+  .filter((file) => file.endsWith('.js'))
+  .map((file) => `scripts/wx-automator/${file}`)
+const providerReleaseSource = [...aiPlannerRuntimeFiles, ...providerAutomationFiles]
+  .map((file) => read(file)).join('\n')
+RETIRED_PROVIDER_DIAGNOSTIC_MARKERS.forEach((marker) => {
+  assert.strictEqual(providerReleaseSource.includes(marker), false,
+    `正式部署树不得包含已退役的 provider 临时诊断标识 ${marker}`)
+})
+const aiPlannerIndexSource = read('cloudfunctions/aiPlanner/index.js')
+assert(/providerContractRevision:\s*PROVIDER_CONTRACT_REVISION/.test(aiPlannerIndexSource),
+  '移除临时诊断后仍必须保留 providerContractRevision 服务握手')
 assert(releaseManifest.minimumMigratableStateSchemaVersion <= releaseManifest.stateSchemaVersion, '最低可迁移 schema 不能高于当前版本')
 
 const sharedSource = read('shared/user-state.js')
@@ -46,11 +172,11 @@ const sharedSource = read('shared/user-state.js')
 assert.strictEqual(read('cloudfunctions/privacy/membership-core.js'), read('cloudfunctions/membership/core.js'), 'privacy 成员控制逻辑未同步')
 
 const fresh = stateSchema.defaults()
-assert.strictEqual(fresh.schemaVersion, 6)
+assert.strictEqual(fresh.schemaVersion, 7)
 assert.strictEqual(fresh.activePlan, null, '新用户不能自动获得静态计划')
 assert.strictEqual(fresh.draftPlan, null, '新用户默认不应存在候选计划')
 assert.deepStrictEqual(fresh.planHistory, [], '新用户历史计划必须为空')
-assert.strictEqual(fresh.generationPreferences.durationDays, 7)
+assert.strictEqual(fresh.generationPreferences.durationDays, 1, '新用户计划周期必须默认 1 天')
 assert.deepStrictEqual(fresh.generationPreferences.mealTypes, [], '餐次必须由用户主动选择')
 
 const preferenceBase = {
@@ -58,11 +184,12 @@ const preferenceBase = {
   startDate: '2026-08-26',
   mealTypes: ['breakfast', 'lunch', 'snack'],
   doubleDinner: false,
-  goals: [], styles: [], customGoal: '', restrictions: '', healthNotes: '', exerciseNotes: '', exerciseByDay: [],
+  goals: ['均衡饮食'], styles: [], customGoal: '', restrictions: '', healthNotes: '', exerciseIntent: 'none', exerciseNotes: '', exerciseByDay: [],
 }
-assert.strictEqual(aiPlanner.normalizeRequest({ ...preferenceBase, durationDays: 7 }).durationDays, 7)
-assert.strictEqual(aiPlanner.normalizeRequest({ ...preferenceBase, durationDays: 14 }).durationDays, 14)
-assert.deepStrictEqual(aiPlanner.expectedMealKeys(aiPlanner.normalizeRequest({ ...preferenceBase, durationDays: 7 })), [
+;[1, 10, 14].forEach((durationDays) => {
+  assert.strictEqual(aiPlanner.normalizeRequest({ ...preferenceBase, durationDays }).durationDays, durationDays)
+})
+assert.deepStrictEqual(aiPlanner.expectedMealKeys(aiPlanner.normalizeRequest({ ...preferenceBase, durationDays: 10 })), [
   'breakfast:default', 'lunch:default', 'snack:default',
 ])
 assert.deepStrictEqual(aiPlanner.expectedMealKeys(aiPlanner.normalizeRequest({
@@ -90,6 +217,7 @@ const requiredFiles = [
   'cloudfunctions/aiPlanner/index.js', 'cloudfunctions/aiPlanner/lib.js', 'cloudfunctions/aiPlanner/lib.test.js',
   'cloudfunctions/aiPlanner/task-core.js', 'cloudfunctions/aiPlanner/task-core.test.js',
   'cloudfunctions/aiPlanner/provider-config.js', 'cloudfunctions/aiPlanner/provider-config.test.js',
+  'cloudfunctions/aiPlanner/provider-compat.js', 'cloudfunctions/aiPlanner/provider-compat.test.js',
   'cloudfunctions/aiPlanner/transport.js', 'cloudfunctions/aiPlanner/transport.test.js',
   'cloudfunctions/aiPlanner/index.test.js', 'cloudfunctions/late-write-guard.test.js',
   'cloudfunctions/mealAiMaintenance/index.js', 'cloudfunctions/mealAiMaintenance/core.js',
@@ -106,12 +234,37 @@ const requiredFiles = [
   'database.rules.json', 'database.indexes.json', 'storage.rules.json',
   'cloudfunctions/membership/.env.example', 'cloudfunctions/aiPlanner/.env.example',
   'release-manifest.json', 'CHANGELOG.md', 'SUPPORT.md', 'SECURITY.md',
-  'scripts/test-ai-provider-live.js', 'scripts/check-staged-safety.test.js',
+  'scripts/test-ai-provider-live.js', 'scripts/test-access-page.js', 'scripts/database-rules.test.js',
+  'scripts/check-ai-storage-readiness.js',
+  'scripts/check-ai-storage-readiness.test.js', 'scripts/check-staged-safety.test.js',
+  'scripts/wx-automator/automation-runtime.js', 'scripts/wx-automator/automation-runtime.test.js',
+  'scripts/wx-automator/automator-client.js', 'scripts/wx-automator/smoke.js',
+  'scripts/wx-automator/visual-regression.js', 'scripts/wx-automator/interactive-smoke.js',
+  'scripts/wx-automator/run-mainline-smoke.js', 'scripts/wx-automator/ai-safe-release-core.js',
+  'scripts/wx-automator/ai-safe-release-core.test.js', 'scripts/wx-automator/ai-safe-release-probe.js',
+  'scripts/wx-automator/plan-preview-evidence.js', 'scripts/wx-automator/plan-preview-evidence.test.js',
+  'scripts/wx-automator/entrypoints.test.js', 'scripts/wx-automator/package.json',
+  'scripts/wx-automator/package-lock.json',
   '.github/workflows/validate.yml', '.github/PULL_REQUEST_TEMPLATE.md',
   'docs/DEPLOY.md', 'docs/DATABASE.md', 'docs/PRIVACY.md', 'docs/VERSIONING.md', 'docs/RELEASE_CHECKLIST.md',
   'source-assets/meal-plan-gpt-image-2.png', 'miniprogram/assets/meal-plan-cover.jpg',
 ]
 requiredFiles.forEach((file) => assert(fs.existsSync(path.join(root, file)), `缺少 ${file}`))
+
+const automatorPackage = JSON.parse(read('scripts/wx-automator/package.json'))
+const automatorLock = JSON.parse(read('scripts/wx-automator/package-lock.json'))
+assert.strictEqual(automatorPackage.private, true, '微信自动化工具包必须禁止发布到 npm')
+assert.deepStrictEqual(automatorPackage.dependencies, {
+  'miniprogram-automator': '0.12.1',
+  pngjs: '3.4.0',
+}, '微信自动化运行依赖必须精确固定')
+assert.strictEqual(automatorLock.lockfileVersion, 3, '微信自动化 lockfile 必须使用 v3')
+assert.deepStrictEqual(automatorLock.packages[''].dependencies, automatorPackage.dependencies,
+  '微信自动化 lockfile 根依赖与 package.json 不一致')
+assert.strictEqual(automatorLock.packages['node_modules/miniprogram-automator'].version, '0.12.1',
+  '微信自动化未解析到 miniprogram-automator 0.12.1')
+assert.strictEqual(automatorLock.packages['node_modules/pngjs'].version, '3.4.0',
+  '微信自动化未解析到 pngjs 3.4.0')
 
 CLOUD_FUNCTIONS.forEach((functionName) => {
   const directory = `cloudfunctions/${functionName}`
@@ -124,6 +277,14 @@ CLOUD_FUNCTIONS.forEach((functionName) => {
     `${functionName} lockfile 根依赖与 package.json 不一致`)
   assert.strictEqual(lock.packages['node_modules/wx-server-sdk'].version, WX_SERVER_SDK_VERSION,
     `${functionName} lockfile 未解析到 wx-server-sdk ${WX_SERVER_SDK_VERSION}`)
+})
+
+DEPLOYED_CLOUD_FUNCTIONS.forEach((functionName) => {
+  const runtimeConfig = JSON.parse(read(`cloudfunctions/${functionName}/config.json`))
+  assert.strictEqual(runtimeConfig.timeout, 60,
+    `${functionName} 必须显式配置 60 秒云端超时`)
+  assert.strictEqual(runtimeConfig.memorySize, 256,
+    `${functionName} 必须显式配置 256 MB 云端内存`)
 })
 
 const ownerBootstrapSource = read('cloudfunctions/ownerBootstrapOnce/index.js')
@@ -141,41 +302,41 @@ const aiPlaceholders = Object.fromEntries(aiPlaceholderLines.map((line) => {
   return [line.slice(0, separator), line.slice(separator + 1)]
 }))
 assert.deepStrictEqual(Object.keys(aiPlaceholders).sort(), [
-  'AI_API_KEY', 'AI_MAX_TOKENS', 'AI_TIMEOUT_MS',
+  'AI_API_BASE_URL', 'AI_API_KEY', 'AI_MAX_TOKENS',
+  'AI_PROVIDER_DISPLAY_NAME', 'AI_PROVIDER_REVISION', 'AI_TIMEOUT_MS',
 ])
 assert.strictEqual(aiPlaceholders.AI_API_KEY, 'YOUR_AI_API_KEY')
-const aiProviderConfig = require(path.join(root, 'cloudfunctions/aiPlanner/provider-config'))
-assert.strictEqual(aiProviderConfig.DEFAULT_ENDPOINT, 'https://gptpro.live/v1/responses')
+assert.strictEqual(aiPlaceholders.AI_API_BASE_URL, 'https://www.modelhub.shop')
+assert.strictEqual(aiPlaceholders.AI_PROVIDER_DISPLAY_NAME, 'ModelHub AI 服务')
+assert.strictEqual(aiPlaceholders.AI_PROVIDER_REVISION, '8')
+assert.strictEqual(aiPlaceholders.AI_TIMEOUT_MS, '45000')
+assert.strictEqual(aiPlaceholders.AI_MAX_TOKENS, '16000')
+assert.strictEqual(aiProviderConfig.DEFAULT_ENDPOINT, 'https://www.modelhub.shop/responses')
 assert.strictEqual(aiProviderConfig.DEFAULT_MODEL, 'gpt-5.6')
 assert.strictEqual(aiProviderConfig.DEFAULT_API_STYLE, 'responses')
-assert.strictEqual(aiProviderConfig.DEFAULT_REASONING_EFFORT, 'xhigh')
+assert.strictEqual(aiProviderConfig.DEFAULT_REASONING_EFFORT, '')
 assert.deepStrictEqual(aiProviderConfig.configuration({ AI_API_KEY: 'TEST_PLACEHOLDER_ONLY' }), {
   configured: true,
-  url: new URL('https://gptpro.live/v1/responses'),
+  providerDisplayName: 'ModelHub AI 服务',
+  providerContractRevision: 9,
+  providerRevision: 8,
+  providerConfigVersion: '0e0371163d386b43dda8f7c6117cd6b8354fd90e20a864ff6a49665820cdcd8f',
+  url: new URL('https://www.modelhub.shop/responses'),
   apiKey: 'TEST_PLACEHOLDER_ONLY',
   model: 'gpt-5.6',
   apiStyle: 'responses',
-  extraHeaders: { 'x-openai-actor-authorization': 'local-image-extension' },
   temperature: undefined,
-  reasoningEffort: 'xhigh',
+  reasoningEffort: '',
   timeoutMs: 45000,
   maxTokens: 16000,
 })
 
-const membershipPlaceholderLines = read('cloudfunctions/membership/.env.example').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-const membershipPlaceholders = Object.fromEntries(membershipPlaceholderLines.map((line) => {
-  const separator = line.indexOf('=')
-  assert(separator > 0, '成员环境变量占位文件格式无效')
-  return [line.slice(0, separator), line.slice(separator + 1)]
-}))
-assert.deepStrictEqual(Object.keys(membershipPlaceholders).sort(), [
-  'INVITE_SLOTS', 'INVITE_TTL_HOURS',
-])
-assert.strictEqual(membershipPlaceholders.INVITE_SLOTS, '6')
-assert.strictEqual(membershipPlaceholders.INVITE_TTL_HOURS, '24')
-assert.deepStrictEqual(membershipCore.configuration(membershipPlaceholders), {
-  inviteSlots: 6, inviteTtlHours: 24, maxMembers: 7, inviteTtlMs: 86400000,
-})
+const membershipEnvironmentGuide = read('cloudfunctions/membership/.env.example')
+assert(!/^\s*(?:INVITE_SLOTS|INVITE_TTL_HOURS)\s*=/m.test(membershipEnvironmentGuide),
+  '成员容量和邀请码有效期不得再由云端环境变量覆盖')
+assert.deepStrictEqual(membershipCore.configuration({ INVITE_SLOTS: '19', INVITE_TTL_HOURS: '24' }), {
+  inviteSlots: 3, inviteTtlHours: 168, maxMembers: 4, inviteTtlMs: 604800000,
+}, '云端遗留配置不得改变当前邀请制规则')
 
 const membershipFiles = [
   'cloudfunctions/membership/core.js', 'cloudfunctions/membership/index.js', 'cloudfunctions/membership/.env.example',
@@ -227,9 +388,7 @@ assert(!/OPENID|event\.expiresAt|event\.now/.test(maintenanceSource), 'AI 维护
 assert(!/meal_user_states/.test(maintenanceSource), 'AI 维护函数不能访问候选、当前或历史计划集合')
 
 const databaseRules = JSON.parse(read('database.rules.json'))
-;['meal_ai_tasks', 'meal_ai_shards', 'meal_ai_controls'].forEach((collectionName) => {
-  assert.deepStrictEqual(databaseRules[collectionName], { read: false, write: false }, `${collectionName} 必须拒绝客户端读写`)
-})
+validateDatabaseRules(databaseRules)
 
 const storageRules = JSON.parse(read('storage.rules.json'))
 assert.deepStrictEqual(storageRules, { read: false, write: false }, '云存储必须拒绝全部客户端读写')
@@ -241,6 +400,23 @@ assert(!/wx\.cloud\.uploadFile|prepareAvatar|preparePhoto|avatar-inbox|health-in
   '客户端不能直接写云存储或请求 inbox 上传票据')
 assert(/wxApi\.cloud\.CDN/.test(read('miniprogram/utils/private-image.js')),
   '私有图片必须通过微信临时 CDN 交给成员校验后的云函数')
+const profilePageSource = read('miniprogram/pages/profile/profile.wxml')
+const authSource = read('cloudfunctions/auth/index.js')
+const authProfileCoreSource = read('cloudfunctions/auth/profile-core.js')
+assert(/open-type="chooseAvatar"/.test(profilePageSource), '头像必须使用微信 chooseAvatar 原生能力')
+assert(/<input[^>]+type="nickname"[^>]+name="nickname"/.test(profilePageSource), '昵称必须使用微信 nickname 输入能力并随表单提交')
+assert(/<form[^>]+bindsubmit="saveProfile"/.test(profilePageSource) && /form-type="submit"/.test(profilePageSource),
+  '昵称资料必须通过表单提交')
+assert(/open-type="getPhoneNumber"/.test(profilePageSource) && /bindgetphonenumber="onGetPhoneNumber"/.test(profilePageSource),
+  '可选手机号必须由用户点击微信 getPhoneNumber 原生按钮')
+assert(!/getUserInfo/.test(`${profilePageSource}\n${read('miniprogram/pages/profile/profile.js')}`),
+  '资料页不能使用已废弃 getUserInfo 获取完整用户资料')
+assert(/cloud\.openapi\.phonenumber\.getPhoneNumber\(\{ code, openid \}\)/.test(authSource),
+  '手机号动态 code 必须由 auth 云函数携可信 OPENID 兑换')
+assert.deepStrictEqual(JSON.parse(read('cloudfunctions/auth/config.json')).permissions.openapi,
+  ['phonenumber.getPhoneNumber'], 'auth 云函数必须声明微信官方手机号云调用权限')
+assert(!/console\.(?:log|info|warn|error)\([^\n]*(?:event\.code|rawCode|phoneInfo|phoneNumber|purePhoneNumber|maskedPhone)/.test(`${authSource}\n${authProfileCoreSource}`),
+  '手机号动态 code、号码或掩码不得进入云函数日志')
 
 const runtimeFiles = [
   'miniprogram/pages/plan/plan.js', 'miniprogram/pages/planner/planner.js', 'miniprogram/pages/shopping/shopping.js',
@@ -285,15 +461,26 @@ wxmlFiles.forEach((file) => {
   })
 })
 const globalStyles = read('miniprogram/app.wxss')
-assert(/@media \(max-width: 400px\)[\s\S]*button, input, picker \{ min-height: 48px !important; \}/.test(globalStyles),
-  '窄屏原生交互控件必须保持至少 48px 高度')
+assert(/@media \(max-width: 400px\)[\s\S]*button, input, textarea, picker \{ min-height: 48px !important; \}/.test(globalStyles),
+  '窄屏原生交互控件和多行输入必须保持至少 48px 高度')
 assert(/\.touch-target \{ min-width: 48px; min-height: 48px; \}/.test(globalStyles),
   '窄屏自定义点击区域必须保持至少 48px 热区')
+assert(/\.screen\s*\{[\s\S]*?max-width:\s*680px;/.test(globalStyles), '全局 screen 必须使用 680px 内容上限')
+assert(/constant\(safe-area-inset-left\)/.test(globalStyles) && /env\(safe-area-inset-left\)/.test(globalStyles)
+  && /constant\(safe-area-inset-right\)/.test(globalStyles) && /env\(safe-area-inset-right\)/.test(globalStyles),
+'全局 screen 必须兼容横屏左右安全区')
 const healthStyles = read('miniprogram/pages/health/health.wxss')
-assert(/repeat\(7, minmax\(44px, 1fr\)\)/.test(healthStyles), '窄屏健康月历必须保持七列 44px 点击热区')
+const healthMarkup = read('miniprogram/pages/health/health.wxml')
+assert(/repeat\(7, minmax\(0, 1fr\)\)/.test(healthStyles), '健康月历必须按可用宽度均分七列')
+assert(!/repeat\(7,\s*minmax\((?:44px|88rpx),/.test(healthStyles), '健康月历不得使用会造成窄屏横溢的固定列宽')
+assert(/<view class="calendar-scroll">/.test(healthMarkup)
+  && !/<scroll-view class="calendar-scroll"/.test(healthMarkup)
+  && !/\.calendar-content\s*\{[^}]*min-width:\s*336px;/.test(healthStyles),
+  '健康月历必须在 320px 内完整显示七列，不得依赖横向滚动或 336px 裁切')
 
 const testScripts = [
   'scripts/release-gate.test.js',
+  'scripts/deploy-production-function.test.js',
   'shared/user-state.test.js',
   'cloudfunctions/userData/index.test.js',
   'shared/image-file.test.js',
@@ -305,11 +492,13 @@ const testScripts = [
   'cloudfunctions/auth/profile-core.test.js',
   'cloudfunctions/auth/index.test.js',
   'cloudfunctions/health/daily-core.test.js',
+  'cloudfunctions/health/storage-delete.test.js',
   'cloudfunctions/health/index.test.js',
   'cloudfunctions/ownerBootstrapOnce/core.test.js',
   'cloudfunctions/ownerBootstrapOnce/index.test.js',
   'cloudfunctions/aiPlanner/lib.test.js',
   'cloudfunctions/aiPlanner/provider-config.test.js',
+  'cloudfunctions/aiPlanner/provider-compat.test.js',
   'cloudfunctions/aiPlanner/not-found.test.js',
   'cloudfunctions/aiPlanner/transport.test.js',
   'cloudfunctions/aiPlanner/task-core.test.js',
@@ -317,6 +506,8 @@ const testScripts = [
   'cloudfunctions/mealAiMaintenance/core.test.js',
   'cloudfunctions/mealAiMaintenance/index.test.js',
   'cloudfunctions/late-write-guard.test.js',
+  'scripts/test-ai-provider-live.test.js',
+  'scripts/test-access-page.js',
   'scripts/test-plan-view.js',
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',
@@ -324,13 +515,22 @@ const testScripts = [
   'scripts/test-private-image.js',
   'scripts/test-cloud-errors.js',
   'scripts/test-ai-planner-client.js',
+  'scripts/test-planner-contract-pipeline.js',
   'scripts/test-planner-page.js',
   'scripts/test-plan-history-page.js',
   'scripts/test-health-guide-pages.js',
+  'scripts/test-health-responsive.js',
+  'scripts/test-color-contrast.js',
+  'scripts/test-page-responsive.js',
   'scripts/test-profile-transfer.js',
+  'scripts/test-profile-native.js',
+  'scripts/test-tabbar-ui.js',
   'scripts/test-privacy-auth.js',
+  'scripts/database-rules.test.js',
+  'scripts/check-ai-storage-readiness.test.js',
   'scripts/check-staged-safety.test.js',
   'cloudfunctions/privacy/core.test.js',
+  'cloudfunctions/privacy/storage-delete.test.js',
   'cloudfunctions/privacy/index.test.js',
 ]
 testScripts.forEach((script) => {
@@ -339,4 +539,4 @@ testScripts.forEach((script) => {
   assert.strictEqual(result.status, 0, `${script} 未通过`)
 })
 
-console.log(`验证通过：schema v${stateSchema.CURRENT_SCHEMA}、AI 契约 v${aiPlanner.CONTRACT_VERSION}、7/14 天动态餐次、${appConfig.pages.length} 个路由、${jsFiles.length} 个 JS 文件、${wxmlFiles.length} 个 WXML 文件及 ${testScripts.length} 组测试正常。`)
+console.log(`验证通过：schema v${stateSchema.CURRENT_SCHEMA}、AI 契约 v${aiPlanner.CONTRACT_VERSION}、任意 1–14 天动态餐次（默认 1 天）、${appConfig.pages.length} 个路由、${jsFiles.length} 个 JS 文件、${wxmlFiles.length} 个 WXML 文件及 ${testScripts.length} 组测试正常。`)

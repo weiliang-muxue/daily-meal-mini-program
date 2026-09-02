@@ -1,7 +1,7 @@
 const { authStore } = require('../../services/auth-store')
 const { userStore } = require('../../services/user-store')
 const { formatUpdatedAt } = require('../../utils/date')
-const { membershipStore } = require('../../services/membership-store')
+const { membershipStore, deletionRecoveryState } = require('../../services/membership-store')
 const { callFunction } = require('../../utils/cloud')
 const { clearPrivateCache } = require('../../services/private-cache')
 const { MAX_AVATAR_BYTES, privateImagePayload } = require('../../utils/private-image')
@@ -12,7 +12,18 @@ const {
   openPrivacyContractOrLocal,
 } = require('../../utils/privacy-auth')
 
+const DEFAULT_MAX_MEMBERS = 4
+const DEFAULT_INVITE_TTL_HOURS = 168
+
 function pad(value) { return String(value).padStart(2, '0') }
+
+function positiveSafeInteger(value, fallback) {
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback
+}
+
+function inviteTtlText(hours) {
+  return hours % 24 === 0 ? `${hours / 24} 天` : `${hours} 小时`
+}
 
 function formatBeijingDateTime(value) {
   const timestamp = new Date(value).getTime()
@@ -38,6 +49,24 @@ function visibleTransferMembers(summary) {
   }, [])
 }
 
+function visibleActiveInvites(summary) {
+  const source = summary && Array.isArray(summary.activeInvites) ? summary.activeInvites : []
+  const seen = new Set()
+  return source.reduce((result, item) => {
+    const inviteRef = item && typeof item.inviteRef === 'string' ? item.inviteRef.toLowerCase() : ''
+    const expiresAt = Number(item && item.expiresAt)
+    if (!/^[a-f0-9]{32}$/.test(inviteRef) || seen.has(inviteRef) || !Number.isFinite(expiresAt)) return result
+    seen.add(inviteRef)
+    result.push({
+      inviteRef,
+      label: cleanMemberName(item.label) || '未备注邀请',
+      expiresAt,
+      expiresText: formatBeijingDateTime(expiresAt),
+    })
+    return result
+  }, [])
+}
+
 function confirmModal(options) {
   return new Promise((resolve) => wx.showModal({
     ...options,
@@ -48,35 +77,76 @@ function confirmModal(options) {
 
 Page({
   data: {
-    profile: {}, nickname: '', nicknameInitial: '我', avatarPreview: '', avatarLocalPath: '',
-    avatarPrivacyMode: 'checking', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false,
+    profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我', avatarPreview: '', avatarLocalPath: '',
+    avatarImageFailed: false,
+    avatarPrivacyMode: 'native', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false,
     legalPrivacyError: '',
-    authState: 'idle', authDetail: '', updatedText: '', saving: false,
+    authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, clearingData: false,
+    bindingPhone: false, phoneError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
-    member: {}, memberCount: 0, maxMembers: 7, inviteLabel: '', inviteCode: '', inviteExpiresText: '', creatingInvite: false,
+    nativeControlColor: '#176B46',
+    member: {}, memberCount: 0, occupiedCount: 0, maxMembers: DEFAULT_MAX_MEMBERS,
+    inviteTtlHours: DEFAULT_INVITE_TTL_HOURS, inviteTtlText: inviteTtlText(DEFAULT_INVITE_TTL_HOURS),
+    inviteLabel: '', inviteCode: '', inviteExpiresText: '', creatingInvite: false,
+    activeInvites: [], inviteCapacityKnown: false, revokingInviteRef: '',
     transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '', transferringOwner: false,
   },
 
-  onLoad() { this.checkAvatarPrivacy(); this.connect() },
+  onLoad() {
+    this.applyTheme()
+    this.themeChangeHandler = (event) => this.applyTheme(event)
+    if (typeof wx.onThemeChange === 'function') wx.onThemeChange(this.themeChangeHandler)
+    this.connect()
+  },
   onShow() { this.render() },
+  onUnload() {
+    if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
+    this.themeChangeHandler = null
+  },
+
+  applyTheme(event = {}) {
+    let theme = event && event.theme
+    if (theme !== 'dark' && theme !== 'light') {
+      try {
+        if (typeof wx.getAppBaseInfo === 'function') theme = (wx.getAppBaseInfo() || {}).theme
+      } catch (_) {}
+    }
+    if (theme !== 'dark' && theme !== 'light') theme = this.currentTheme || 'light'
+    this.currentTheme = theme
+    this.setData({ nativeControlColor: theme === 'dark' ? '#72D49E' : '#176B46' })
+  },
 
   async connect(force = false) {
+    this.setData({ authState: 'connecting', authDetail: '正在加载资料', profileLoading: true })
     try {
       const member = await membershipStore.init({ force })
       if (!member || member.status !== 'active') return wx.reLaunch({ url: '/pages/access/access' })
-      await authStore.init({ force }); await userStore.init({ force })
+      const authRequest = authStore.init({ force })
       this.render()
+      await authRequest
+      await userStore.init({ force })
+      this.render()
+      this.setData({ profileLoading: false })
       if (member.role === 'owner') await this.loadMembers()
       else this.resetMemberManagement()
     }
-    catch (error) { wx.showToast({ title: '连接失败，可稍后重试', icon: 'none' }) }
-    this.render()
+    catch (error) {
+      this.setData({
+        authState: 'offline',
+        authDetail: error.message || '资料加载失败，请稍后重试',
+        profileLoading: false,
+      })
+      wx.showToast({ title: '连接失败，可稍后重试', icon: 'none' })
+    }
   },
 
   resetMemberManagement() {
     this.setData({
       transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '',
-      memberCount: 0, inviteCode: '', inviteExpiresText: '', inviteLabel: '', creatingInvite: false,
+      memberCount: 0, occupiedCount: 0, activeInvites: [], inviteCapacityKnown: false,
+      maxMembers: DEFAULT_MAX_MEMBERS,
+      inviteTtlHours: DEFAULT_INVITE_TTL_HOURS, inviteTtlText: inviteTtlText(DEFAULT_INVITE_TTL_HOURS),
+      inviteCode: '', inviteExpiresText: '', inviteLabel: '', creatingInvite: false, revokingInviteRef: '',
     })
   },
 
@@ -85,7 +155,7 @@ Page({
       this.resetMemberManagement()
       return
     }
-    this.setData({ membersState: 'loading', membersError: '' })
+    this.setData({ membersState: 'loading', membersError: '', inviteCapacityKnown: false })
     try {
       const summary = await membershipStore.listMembers()
       if (!membershipStore.member || membershipStore.member.role !== 'owner') {
@@ -93,35 +163,48 @@ Page({
         return
       }
       const transferMembers = visibleTransferMembers(summary)
+      const activeInvites = visibleActiveInvites(summary)
+      const memberCount = Number.isSafeInteger(summary && summary.count) ? summary.count : transferMembers.length + 1
+      const maxMembers = positiveSafeInteger(summary && summary.maxMembers, DEFAULT_MAX_MEMBERS)
+      const inviteTtlHours = positiveSafeInteger(summary && summary.inviteTtlHours, DEFAULT_INVITE_TTL_HOURS)
       const selectedMemberRef = transferMembers.some((item) => item.memberRef === this.data.selectedMemberRef)
         ? this.data.selectedMemberRef : ''
       this.setData({
         transferMembers,
+        activeInvites,
         selectedMemberRef,
         membersState: transferMembers.length ? 'ready' : 'empty',
         membersError: '',
-        memberCount: Number.isSafeInteger(summary && summary.count) ? summary.count : transferMembers.length + 1,
-        maxMembers: Number.isSafeInteger(summary && summary.maxMembers) ? summary.maxMembers : this.data.maxMembers,
+        memberCount,
+        occupiedCount: memberCount + activeInvites.length,
+        inviteCapacityKnown: true,
+        maxMembers,
+        inviteTtlHours,
+        inviteTtlText: inviteTtlText(inviteTtlHours),
       })
     } catch (error) {
       this.setData({
-        transferMembers: [], selectedMemberRef: '', membersState: 'error',
+        transferMembers: [], activeInvites: [], selectedMemberRef: '', membersState: 'error',
+        occupiedCount: 0, inviteCapacityKnown: false,
         membersError: error.message || '成员列表加载失败，请重试',
       })
     }
   },
 
-  retryMembers() { this.loadMembers() },
+  retryMembers() {
+    if (this.data.profileLoading || this.data.membersState === 'loading') return
+    return this.loadMembers()
+  },
 
   selectTransferMember(event) {
-    if (this.data.transferringOwner || this.data.membersState !== 'ready') return
+    if (this.data.profileLoading || this.data.transferringOwner || this.data.membersState !== 'ready') return
     const memberRef = String(event.detail && event.detail.value || '').toLowerCase()
     if (!this.data.transferMembers.some((item) => item.memberRef === memberRef)) return
     this.setData({ selectedMemberRef: memberRef })
   },
 
   async transferOwner() {
-    if (this.data.transferringOwner) return
+    if (this.data.profileLoading || this.data.transferringOwner) return
     const target = this.data.transferMembers.find((item) => item.memberRef === this.data.selectedMemberRef)
     if (!target) return wx.showToast({ title: '请先选择接任成员', icon: 'none' })
 
@@ -161,16 +244,32 @@ Page({
 
   render() {
     const profile = authStore.profile || {}
+    const authState = authStore.state === 'ready' || authStore.state === 'offline'
+      ? authStore.state : this.data.authState === 'connecting' ? 'connecting' : authStore.state
+    const nickname = this.data.nicknameDirty ? this.data.nickname : profile.nickname || ''
+    const avatarPreview = this.data.avatarLocalPath ? this.data.avatarPreview : profile.avatarUrl || ''
     this.setData({
       profile,
-      nickname: this.data.nickname || profile.nickname || '',
-      nicknameInitial: (this.data.nickname || profile.nickname || '我').slice(0, 1),
-      avatarPreview: this.data.avatarPreview || profile.avatarUrl || '',
-      authState: authStore.state,
-      authDetail: authStore.state === 'ready' ? '微信身份已安全连接，数据按当前用户隔离' : authStore.error || '正在连接微信身份',
+      nickname,
+      nicknameInitial: (nickname || '我').slice(0, 1),
+      avatarPreview,
+      avatarImageFailed: avatarPreview === this.data.avatarPreview ? this.data.avatarImageFailed : false,
+      authState,
+      authDetail: authState === 'offline' ? authStore.error || this.data.authDetail || '网络连接不可用，请稍后重试' : '正在加载资料',
       updatedText: formatUpdatedAt(userStore.data.updatedAt),
       settings: userStore.data.settings || { calciumAnchorReminder: false, vitaminDReminder: false },
       member: membershipStore.member || {},
+    })
+  },
+
+  clearRenderedPrivateData() {
+    this.setData({
+      profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
+      avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false,
+      phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false },
+      updatedText: '', member: {}, memberCount: 0, occupiedCount: 0,
+      activeInvites: [], transferMembers: [], selectedMemberRef: '',
+      inviteCode: '', inviteExpiresText: '', inviteLabel: '',
     })
   },
 
@@ -196,16 +295,28 @@ Page({
   },
 
   async authorizeAvatarPrivacy() {
-    if (this.data.authorizingAvatar) return
-    this.setData({ authorizingAvatar: true, avatarPrivacyError: '' })
+    if (this.data.profileLoading || this.data.authorizingAvatar) return
+    this.setData({ authorizingAvatar: true, avatarPrivacyError: '', avatarPrivacyMode: 'checking' })
+    const current = await getPrivacyAuthorizationState()
+    if (!current.supported || current.authorized) {
+      this.setData({
+        avatarPrivacyMode: 'native',
+        avatarPrivacyError: '',
+        avatarPrivacyTone: 'hint',
+        authorizingAvatar: false,
+      })
+      if (typeof wx.showToast === 'function') wx.showToast({ title: '请再次点头像选择', icon: 'none' })
+      return
+    }
     const privacy = await ensurePrivacyAuthorized()
     if (privacy.authorized) {
       this.setData({
         avatarPrivacyMode: 'native',
-        avatarPrivacyError: '隐私授权已完成，请再次点击头像并选择图片。',
-        avatarPrivacyTone: 'success',
+        avatarPrivacyError: '',
+        avatarPrivacyTone: 'hint',
         authorizingAvatar: false,
       })
+      if (typeof wx.showToast === 'function') wx.showToast({ title: '已授权，请点头像选择', icon: 'none' })
       return
     }
     this.setData({
@@ -224,27 +335,99 @@ Page({
     return result
   },
 
+  onAvatarImageError(event) {
+    const source = String(event && event.currentTarget && event.currentTarget.dataset
+      && event.currentTarget.dataset.src || '')
+    if (!source || source !== this.data.avatarPreview) return
+    this.setData({ avatarImageFailed: true })
+  },
+
   onChooseAvatar(event) {
+    if (this.data.profileLoading || this.data.saving) return
     if (event.detail && event.detail.avatarUrl) this.setData({
       avatarPreview: event.detail.avatarUrl,
       avatarLocalPath: event.detail.avatarUrl,
+      avatarImageFailed: false,
       avatarPrivacyError: '',
       avatarPrivacyTone: 'hint',
     })
-    else this.setData({
-      avatarPrivacyError: '头像选择未完成。请重试，或先查看《隐私保护指引》后再操作。',
-      avatarPrivacyTone: 'error',
-    })
+    else {
+      const errMsg = String(event && event.detail && event.detail.errMsg || '').toLowerCase()
+      const denied = /deny/.test(errMsg)
+      const cancelled = /cancel/.test(errMsg)
+      const unavailable = /not\s+declared|undeclared|unsupported|not\s+supported|not support/.test(errMsg)
+      if (unavailable) {
+        this.setData({
+          avatarPrivacyMode: 'native',
+          avatarPrivacyError: '当前微信版本或小程序配置暂不支持选择头像，可先填写昵称，不影响其他功能。',
+          avatarPrivacyTone: 'error',
+        })
+        return
+      }
+      if (denied) {
+        this.setData({
+          avatarPrivacyMode: 'authorize',
+          avatarPrivacyError: '已取消头像授权，不影响其他功能；需要时可再次尝试。',
+          avatarPrivacyTone: 'hint',
+        })
+        return
+      }
+      if (cancelled) {
+        this.setData({ avatarPrivacyError: '', avatarPrivacyTone: 'hint' })
+        return
+      }
+      if (/privacy|permission|authorization|scope/.test(errMsg)) {
+        this.setData({
+          avatarPrivacyMode: 'authorize',
+          avatarPrivacyError: '选择头像前需要完成微信隐私授权，授权后请再次点击头像。',
+          avatarPrivacyTone: 'hint',
+        })
+        return
+      }
+      this.setData({
+        avatarPrivacyError: '头像暂时无法选择，可先填写昵称，不影响其他功能。',
+        avatarPrivacyTone: 'error',
+      })
+    }
   },
   onNicknameInput(event) {
+    if (this.data.profileLoading || this.data.saving) return
     const nickname = event.detail.value
-    this.setData({ nickname, nicknameInitial: (nickname || '我').slice(0, 1) })
+    this.setData({ nickname, nicknameDirty: true, nicknameInitial: (nickname || '我').slice(0, 1) })
   },
 
-  async saveProfile() {
-    const nickname = String(this.data.nickname || '').trim().slice(0, 20)
-    if (!nickname) return wx.showToast({ title: '请填写昵称', icon: 'none' })
-    if (this.data.saving) return
+  async onGetPhoneNumber(event) {
+    if (this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
+    const detail = event && event.detail || {}
+    const code = typeof detail.code === 'string' ? detail.code.trim() : ''
+    if (!code) {
+      const denied = /deny|cancel/.test(String(detail.errMsg || '').toLowerCase())
+      this.setData({
+        phoneError: denied
+          ? '已取消绑定，之后需要时可以再试'
+          : '暂时无法获取手机号，可稍后重试，不影响其他功能',
+      })
+      return
+    }
+    this.setData({ bindingPhone: true, phoneError: '' })
+    try {
+      const profile = await authStore.bindPhoneNumber(code)
+      this.setData({ profile, bindingPhone: false, phoneError: '' })
+      wx.showToast({ title: '手机号已绑定', icon: 'success' })
+    } catch (error) {
+      this.setData({
+        bindingPhone: false,
+        phoneError: error.message || '暂时无法绑定手机号，可稍后重试，不影响其他功能',
+      })
+    }
+  },
+
+  async saveProfile(event) {
+    const submittedNickname = event && event.detail && event.detail.value
+      && Object.prototype.hasOwnProperty.call(event.detail.value, 'nickname')
+      ? event.detail.value.nickname : this.data.nickname
+    const nickname = String(submittedNickname || '').trim().slice(0, 20)
+    if (this.data.profileLoading || this.data.saving || this.data.bindingPhone) return
     this.setData({ saving: true })
     wx.showLoading({ title: '正在保存', mask: true })
     try {
@@ -252,7 +435,11 @@ Page({
         ? await privateImagePayload(this.data.avatarLocalPath, { maxBytes: MAX_AVATAR_BYTES, label: '头像' })
         : null
       const profile = await authStore.updateProfile({ nickname, avatarImage })
-      this.setData({ profile, nickname: profile.nickname, avatarPreview: profile.avatarUrl, avatarLocalPath: '' })
+      this.setData({
+        profile, nickname: profile.nickname, nicknameDirty: false,
+        nicknameInitial: (profile.nickname || '我').slice(0, 1),
+        avatarPreview: profile.avatarUrl, avatarLocalPath: '', avatarImageFailed: false,
+      })
       wx.showToast({ title: '资料已保存', icon: 'success' })
     } catch (error) {
       wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
@@ -267,7 +454,7 @@ Page({
     return this.connect(true)
   },
   async toggleHealthSetting(event) {
-    if (this.data.savingSettings) return
+    if (this.data.profileLoading || this.data.savingSettings) return
     const key = event.currentTarget.dataset.key
     if (!['calciumAnchorReminder', 'vitaminDReminder'].includes(key)) return
     const previous = { ...(userStore.data.settings || {}) }
@@ -283,13 +470,18 @@ Page({
       this.setData({ savingSettings: false })
     }
   },
-  inputInviteLabel(event) { this.setData({ inviteLabel: event.detail.value }) },
+  inputInviteLabel(event) {
+    if (!this.data.profileLoading) this.setData({ inviteLabel: event.detail.value })
+  },
   async createInvite() {
-    if (this.data.creatingInvite) return
+    if (this.data.profileLoading || this.data.creatingInvite || this.data.revokingInviteRef) return
+    if (!this.data.inviteCapacityKnown) return wx.showToast({ title: '请先刷新邀请状态', icon: 'none' })
+    if (this.data.occupiedCount >= this.data.maxMembers) return wx.showToast({ title: '成员名额已满', icon: 'none' })
     this.setData({ creatingInvite: true })
     try {
       const invite = await membershipStore.createInvite(this.data.inviteLabel)
       this.setData({ inviteCode: invite.code, inviteExpiresText: formatBeijingDateTime(invite.expiresAt), inviteLabel: '' })
+      await this.loadMembers()
     } catch (error) { wx.showToast({ title: error.message || '邀请码生成失败', icon: 'none' }) }
     finally { this.setData({ creatingInvite: false }) }
   },
@@ -297,28 +489,99 @@ Page({
     if (!this.data.inviteCode) return
     wx.setClipboardData({ data: this.data.inviteCode, success: () => wx.showToast({ title: '邀请码已复制', icon: 'success' }) })
   },
-  clearMyData() {
-    wx.showModal({
-      title: '清空我的私人数据？',
-      content: '将永久删除你的资料、当前及候选餐单、历史计划、生成偏好、提醒、采购状态、体重、运动、头像、照片和成员身份。管理员仍有其他成员时，必须先明确转移管理员身份。此操作无法恢复。',
-      confirmText: '永久清空', confirmColor: '#A33F2B',
-      success: ({ confirm }) => {
-        if (!confirm) return
-        wx.showModal({ title: '再次确认', content: '确认删除当前微信账号的全部数据和成员身份？删除后再次使用需要重新获得邀请。', confirmText: '确认删除', confirmColor: '#A33F2B', success: async ({ confirm: confirmed }) => {
-          if (!confirmed) return
-          wx.showLoading({ title: '正在清空', mask: true })
-          try {
-            const cacheNamespace = membershipStore.cacheNamespace
-            await callFunction('privacy', 'clearMyData')
-            const storageInfo = wx.getStorageInfoSync()
-            clearPrivateCache(cacheNamespace, storageInfo)
-            if (typeof membershipStore.reset === 'function') membershipStore.reset()
-            wx.showToast({ title: '私人数据已清空', icon: 'success' })
-            setTimeout(() => wx.reLaunch({ url: '/pages/access/access' }), 700)
-          } catch (error) { wx.showToast({ title: error.message || '清空失败', icon: 'none' }) }
-          finally { wx.hideLoading() }
-        } })
-      },
+  async revokeInvite(event) {
+    if (this.data.profileLoading || this.data.revokingInviteRef || this.data.creatingInvite) return
+    const inviteRef = String(event.currentTarget && event.currentTarget.dataset.inviteRef || '').toLowerCase()
+    const invite = this.data.activeInvites.find((item) => item.inviteRef === inviteRef)
+    if (!invite) return wx.showToast({ title: '邀请状态已变化，请刷新', icon: 'none' })
+    const confirmed = await confirmModal({
+      title: '撤销待使用邀请？',
+      content: `备注：${invite.label}\n有效至：${invite.expiresText}（北京时间）\n\n撤销后原邀请码立即失效，并释放一个邀请名额。`,
+      confirmText: '确认撤销',
+      confirmColor: '#A33F2B',
     })
+    if (!confirmed) return
+    this.setData({ revokingInviteRef: inviteRef })
+    try {
+      const result = await membershipStore.revokeInvite(inviteRef)
+      await this.loadMembers()
+      wx.showToast({ title: result && result.revoked ? '邀请已撤销' : '邀请已失效', icon: 'success' })
+    } catch (error) {
+      wx.showToast({ title: error.message || '撤销失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ revokingInviteRef: '' })
+    }
+  },
+  async clearMyData() {
+    if (this.data.profileLoading || this.data.clearingData) return
+    const isOwner = this.data.member && this.data.member.role === 'owner'
+    if (isOwner && (!this.data.inviteCapacityKnown || this.data.membersState === 'error')) {
+      wx.showToast({ title: '请先刷新成员状态', icon: 'none' })
+      return
+    }
+    if (isOwner && this.data.memberCount > 1) {
+      wx.showToast({ title: '请先完成管理员交接', icon: 'none' })
+      return
+    }
+
+    const consequence = isOwner
+      ? '将永久删除你的资料、餐单、采购、提醒、体重、运动、头像和照片。为避免小程序失去管理入口，只会保留不含个人资料的空管理员身份。此操作无法恢复。'
+      : '将永久删除你的资料、餐单、采购、提醒、体重、运动、头像和照片，并退出当前成员资格。再次使用需要新的邀请码。此操作无法恢复。'
+    const finalConsequence = isOwner
+      ? '确认永久清空以上数据，只保留空管理员身份？'
+      : '确认永久清空以上数据并退出当前成员资格？'
+
+    this.setData({ clearingData: true })
+    let loadingShown = false
+    try {
+      const firstConfirmed = await confirmModal({
+        title: '清空我的私人数据？', content: consequence,
+        confirmText: '永久清空', confirmColor: '#A33F2B',
+      })
+      if (!firstConfirmed) return
+      const finalConfirmed = await confirmModal({
+        title: '再次确认', content: finalConsequence,
+        confirmText: '永久清空', confirmColor: '#A33F2B',
+      })
+      if (!finalConfirmed) return
+
+      const cacheNamespace = membershipStore.cacheNamespace
+      try { clearPrivateCache(cacheNamespace) } catch (_) {}
+      if (typeof membershipStore.reset === 'function') membershipStore.reset()
+      wx.showLoading({ title: '正在清空', mask: true })
+      loadingShown = true
+      try {
+        await callFunction('privacy', 'clearMyData', {
+          expectedCacheNamespace: cacheNamespace,
+        })
+      } catch (error) {
+        let member = null
+        try { member = await membershipStore.init({ force: true }) } catch (_) {}
+        const recoveryState = membershipStore.state === 'ready'
+          ? deletionRecoveryState(member, cacheNamespace) : 'unknown'
+        if (recoveryState === 'completed') {
+          this.clearRenderedPrivateData()
+          wx.showToast({ title: '私人数据已清空', icon: 'success' })
+          setTimeout(() => wx.reLaunch({ url: '/pages/access/access' }), 700)
+          return
+        }
+        if (recoveryState === 'pending') {
+          wx.showToast({ title: '请继续完成清理', icon: 'none' })
+          setTimeout(() => wx.reLaunch({ url: '/pages/access/access' }), 700)
+          return
+        }
+        wx.showToast({ title: error.message || '暂时无法确认清理结果', icon: 'none' })
+        setTimeout(() => wx.reLaunch({ url: '/pages/access/access' }), 700)
+        return
+      }
+      this.clearRenderedPrivateData()
+      wx.showToast({ title: '私人数据已清空', icon: 'success' })
+      setTimeout(() => wx.reLaunch({ url: '/pages/access/access' }), 700)
+    } catch (error) {
+      wx.showToast({ title: error.message || '清空失败，请重试', icon: 'none' })
+    } finally {
+      if (loadingShown) wx.hideLoading()
+      this.setData({ clearingData: false })
+    }
   },
 })

@@ -1,4 +1,7 @@
 <view class="screen">
+  <button class="page-navigation" bindtap="navigateFromPage" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+    <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+  </button>
   <view wx:if="{{loading}}" class="guide-state surface" aria-label="正在加载健康提醒">
     <view class="skeleton guide-title-skeleton"></view>
     <view class="skeleton guide-line-skeleton"></view>
@@ -15,20 +18,25 @@
   <block wx:else>
   <view wx:if="{{saving}}" class="sync-strip saving" aria-live="polite">
     <text class="sync-title">正在同步</text>
-    <text class="sync-copy">本次修改已先保存在本机</text>
+    <text class="sync-copy">本次修改已保存，正在同步</text>
   </view>
   <view wx:elif="{{offline}}" class="sync-strip offline" aria-role="alert">
     <view class="sync-message">
-      <text class="sync-title">本机已保存、尚未同步</text>
+      <text class="sync-title">修改已保存，尚未同步</text>
       <text class="sync-copy">{{saveError}}</text>
     </view>
     <button class="sync-retry" bindtap="retrySync" disabled="{{saving}}" hover-class="button-hover">重试同步</button>
   </view>
 
-  <view class="hero surface">
-    <text class="hero-kicker">由你主动决定</text>
-    <text class="hero-title">按需管理健康提醒</text>
-    <text class="hero-copy">新用户不会默认启用专业健康提醒。仅在与你有关、且你愿意记录时开启；之后可以随时关闭。</text>
+  <view class="guide-heading">
+    <text class="guide-title">按需开启健康提醒</text>
+    <text class="guide-copy">这里显示你当前的提醒状态，可以随时按自己的需要开启或关闭。</text>
+  </view>
+
+  <text class="section-title">计划提醒</text>
+  <view class="surface setting-list">
+    <label class="setting-row touch-target" for="guide-calcium-reminder-switch"><view class="setting-copy-wrap"><text class="setting-title">补钙食物提醒</text><text class="setting-copy">开启后显示普通食物搭配提示</text></view><view class="setting-switch-target"><switch id="guide-calcium-reminder-switch" checked="{{settings.calciumAnchorReminder}}" disabled="{{saving}}" color="{{nativeControlColor}}" data-key="calciumAnchorReminder" bindchange="toggleSetting" aria-label="补钙食物提醒，当前{{settings.calciumAnchorReminder ? '已开启' : '已关闭'}}" /></view></label>
+    <label class="setting-row touch-target" for="guide-vitamin-d-reminder-switch"><view class="setting-copy-wrap"><text class="setting-title">维生素 D 复诊提醒</text><text class="setting-copy">开启后显示复诊核对提示</text></view><view class="setting-switch-target"><switch id="guide-vitamin-d-reminder-switch" checked="{{settings.vitaminDReminder}}" disabled="{{saving}}" color="{{nativeControlColor}}" data-key="vitaminDReminder" bindchange="toggleSetting" aria-label="维生素 D 复诊提醒，当前{{settings.vitaminDReminder ? '已开启' : '已关闭'}}" /></view></label>
   </view>
 
   <block wx:if="{{settings.calciumAnchorReminder}}">
@@ -42,17 +50,6 @@
   <view wx:if="{{settings.vitaminDReminder}}" class="vitamin-note surface">
     <text class="block-title">维生素 D 复诊提醒</text>
     <text class="block-copy">补充剂剂量、检测和疗程应由医生结合你的情况决定，不根据小程序内容自行调整。</text>
-  </view>
-
-  <view wx:if="{{!settings.calciumAnchorReminder && !settings.vitaminDReminder}}" class="surface status-panel reminder-empty">
-    <text class="status-title">没有启用专业健康提醒</text>
-    <text class="status-detail">下方开关默认关闭。只有你主动开启后，相关内容才会显示。</text>
-  </view>
-
-  <text class="section-title">计划提醒</text>
-  <view class="surface setting-list">
-    <view class="setting-row"><view><text class="setting-title">显示补钙食物提醒</text><text class="setting-copy">默认关闭，开启后显示普通食物提示</text></view><switch checked="{{settings.calciumAnchorReminder}}" disabled="{{saving}}" color="#176B46" data-key="calciumAnchorReminder" bindchange="toggleSetting" /></view>
-    <view class="setting-row"><view><text class="setting-title">显示维生素 D 复诊提醒</text><text class="setting-copy">默认关闭，开启后显示复诊核对提示</text></view><switch checked="{{settings.vitaminDReminder}}" disabled="{{saving}}" color="#176B46" data-key="vitaminDReminder" bindchange="toggleSetting" /></view>
   </view>
 
   <text class="section-title">我的补充提醒</text>

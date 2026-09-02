@@ -2,15 +2,20 @@
 
 const assert = require('assert')
 const {
+  CURRENT_SCHEMA,
+  CURRENT_AI_CONTRACT,
   MAX_HISTORY,
+  MAX_MEAL_OVERRIDES,
   defaults,
   migrate,
   sanitizeState,
+  sanitizeGenerationPreferences,
   confirmDraft,
   restoreHistory,
 } = require('./user-state')
 
 assert.strictEqual(MAX_HISTORY, 64)
+assert.strictEqual(MAX_MEAL_OVERRIDES, 4620)
 
 function meal(id, type = 'breakfast', scenario = 'default') {
   return {
@@ -55,6 +60,36 @@ function plan(id, shoppingIds = ['shared-item'], source = 'ai', durationDays = 7
   }
 }
 
+function densePlan(id) {
+  const result = plan(id, [`${id}-shopping-item`], 'ai', 14)
+  result.generationBasis = {
+    mealTypes: ['breakfast', 'lunch', 'dinner', 'snack'],
+    doubleDinner: true,
+  }
+  result.days = result.days.map((day, dayIndex) => ({
+    ...day,
+    meals: [
+      meal(`${id}-meal-${dayIndex + 1}-breakfast`, 'breakfast'),
+      meal(`${id}-meal-${dayIndex + 1}-lunch`, 'lunch'),
+      meal(`${id}-meal-${dayIndex + 1}-dinner-rest`, 'dinner', 'rest'),
+      meal(`${id}-meal-${dayIndex + 1}-dinner-workout`, 'dinner', 'workout'),
+      meal(`${id}-meal-${dayIndex + 1}-snack`, 'snack'),
+    ],
+  }))
+  return result
+}
+
+function mealOverride(title, extra = {}) {
+  return {
+    title,
+    ingredients: 'Personal ingredients',
+    method: 'Personal method',
+    tag: 'Personal',
+    updatedAt: '2026-08-25T00:00:00.000Z',
+    ...extra,
+  }
+}
+
 function legacyTextMeal(id, type = 'breakfast', scenario = 'default') {
   return { ...meal(id, type, scenario), ingredients: 'Ingredient 100 g' }
 }
@@ -95,20 +130,35 @@ function throwsCode(callback, code) {
 }
 
 const empty = defaults()
-assert.strictEqual(empty.schemaVersion, 6)
+assert.strictEqual(CURRENT_SCHEMA, 7)
+assert.strictEqual(CURRENT_AI_CONTRACT, 2)
+assert.strictEqual(empty.schemaVersion, 7)
 assert.strictEqual(empty.stateRevision, 0)
 assert.strictEqual(empty.activePlan, null)
 assert.strictEqual(empty.draftPlan, null)
 assert.deepStrictEqual(empty.planHistory, [])
 assert.deepStrictEqual(empty.planUiStateByPlan, {})
-assert.strictEqual(empty.generationPreferences.durationDays, 7)
+assert.strictEqual(empty.generationPreferences.durationDays, 1)
 assert.deepStrictEqual(empty.generationPreferences.mealTypes, [])
-assert.strictEqual(empty.generationPreferences.contractVersion, 1)
+assert.strictEqual(empty.generationPreferences.contractVersion, 2)
+assert.strictEqual(empty.generationPreferences.exerciseIntent, '', '新用户运动意图必须保持未确认')
 assert.deepStrictEqual(empty.settings, { calciumAnchorReminder: false, vitaminDReminder: false })
 assert.deepStrictEqual(sanitizeState({}).settings, { calciumAnchorReminder: false, vitaminDReminder: false })
 assert.deepStrictEqual(sanitizeState({ settings: { calciumAnchorReminder: true } }).settings, {
   calciumAnchorReminder: true,
   vitaminDReminder: false,
+})
+
+;Array.from({ length: 14 }, (_, index) => index + 1).forEach((durationDays) => {
+  assert.strictEqual(sanitizeGenerationPreferences({ durationDays }).durationDays, durationDays)
+  assert.strictEqual(sanitizeState({
+    ...defaults(), activePlan: plan(`range-${durationDays}`, [`range-item-${durationDays}`], 'ai', durationDays),
+  })
+    .activePlan.durationDays, durationDays)
+})
+assert.strictEqual(sanitizeGenerationPreferences({}).durationDays, 1)
+;[0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 15].forEach((durationDays) => {
+  assert.throws(() => sanitizeGenerationPreferences({ durationDays }), /integer between 1 and 14/)
 })
 
 const v4 = {
@@ -186,7 +236,8 @@ const legacySamples = [
 
 legacySamples.forEach(({ version, state, assertState }) => {
   const result = migrate(state, { legacyPlan: legacyPlan(), preserveUnknownFrom: state })
-  assert.strictEqual(result.schemaVersion, 6, `schema v${version} should migrate to v6`)
+  assert.strictEqual(result.schemaVersion, 7, `schema v${version} should migrate to v7`)
+  assert.strictEqual(result.generationPreferences.contractVersion, 2)
   assert.strictEqual(result.activePlan.id, 'week-legacy-1')
   assert.strictEqual(result.activePlan.source, 'legacy')
   assert.deepStrictEqual(result.settings, state.settings)
@@ -231,7 +282,7 @@ assert.deepStrictEqual(migrate({ schemaVersion: 5, settings: { calciumAnchorRemi
 }, 'schema v5 must not inherit a legacy default for a missing reminder setting')
 
 const migrated = migrate(v4, { legacyPlan: legacyPlan(), preserveUnknownFrom: v4 })
-assert.strictEqual(migrated.schemaVersion, 6)
+assert.strictEqual(migrated.schemaVersion, 7)
 assert.strictEqual(migrated.activePlan.id, 'week-legacy-1')
 assert.strictEqual(migrated.activePlan.source, 'legacy')
 assert.strictEqual(migrated.activePlan.days[0].meals.length, 3)
@@ -253,7 +304,48 @@ assert.strictEqual(sanitizeState({
   ...defaults(), activePlan: existingPlan, activePlanId: 'stale-plan-id',
 }).activePlanId, existingPlan.id, 'activePlanId must always mirror the confirmed active plan')
 
-throwsCode(() => migrate({ ...migrated, schemaVersion: 7 }), 'STATE_SCHEMA_UNSUPPORTED')
+const legacyV1Plan = plan('schema-v6-plan', ['schema-v6-item'], 'ai', 14)
+const schemaV6 = {
+  ...defaults(),
+  schemaVersion: 6,
+  stateRevision: 24,
+  activePlan: legacyV1Plan,
+  activePlanId: legacyV1Plan.id,
+  planHistory: [plan('schema-v6-history', ['history-item'], 'ai', 7)],
+  generationPreferences: {
+    ...defaults().generationPreferences,
+    contractVersion: 1,
+    durationDays: 14,
+    mealTypes: ['breakfast'],
+  },
+  checkedShoppingIds: ['schema-v6-item'],
+  customReminders: [{ id: 'schema-v6-reminder', text: 'Keep this reminder', done: false }],
+}
+schemaV6.planUiStateByPlan = {
+  [legacyV1Plan.id]: {
+    selectedDayId: legacyV1Plan.days[6].id,
+    selectedDay: 6,
+    defaultDinnerMode: 'workout',
+    dinnerModeByDay: { [legacyV1Plan.days[6].id]: 'workout' },
+    checkedShoppingIds: ['schema-v6-item'],
+  },
+}
+const schemaV7 = migrate(schemaV6, { preserveUnknownFrom: schemaV6 })
+assert.strictEqual(schemaV7.schemaVersion, 7)
+assert.strictEqual(schemaV7.stateRevision, 24)
+assert.strictEqual(schemaV7.generationPreferences.contractVersion, 2,
+  'schema v6 preferences must migrate to the current request contract')
+assert.strictEqual(schemaV7.generationPreferences.durationDays, 14)
+assert.strictEqual(schemaV7.activePlan.contractVersion, 1,
+  'migration must keep an existing contract v1 plan readable')
+assert.strictEqual(schemaV7.planHistory[0].contractVersion, 1)
+assert.deepStrictEqual(schemaV7.checkedShoppingIds, ['schema-v6-item'])
+assert.deepStrictEqual(schemaV7.customReminders, schemaV6.customReminders)
+assert.deepStrictEqual(schemaV7.planUiStateByPlan[legacyV1Plan.id], schemaV6.planUiStateByPlan[legacyV1Plan.id])
+assert.deepStrictEqual(migrate(schemaV7, { preserveUnknownFrom: schemaV7 }), schemaV7,
+  'schema v7 migration must be idempotent')
+
+throwsCode(() => migrate({ ...migrated, schemaVersion: 8 }), 'STATE_SCHEMA_UNSUPPORTED')
 
 const clientSanitized = sanitizeState(migrated)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(clientSanitized, 'futureServerField'), false)
@@ -417,6 +509,7 @@ const personalState = sanitizeState({
     styles: ['Custom style'],
     restrictions: 'No peanuts',
     healthNotes: '',
+    exerciseIntent: 'daily',
     exerciseNotes: 'Morning sessions',
     exerciseByDay: [{ dayIndex: 0, planned: true, type: 'run', durationMinutes: 30, intensity: 'medium' }],
   },
@@ -475,6 +568,63 @@ assert.deepStrictEqual(Object.keys(cappedOverrideState.mealOverrides).sort(), [
   'override-current-meal-1', 'override-history-5-meal-1', 'override-history-6-meal-1', 'override-next-meal-1',
 ])
 
+const filterFirstPlan = plan('override-filter-first')
+const filterFirstMealId = filterFirstPlan.days[0].meals[0].id
+const invalidLegacyOverrides = Object.fromEntries(Array.from({ length: 250 }, (_, index) => [
+  `removed-plan-meal-${index + 1}`,
+  index % 2 ? null : { malformed: true },
+]))
+const filterFirstSource = {
+  ...defaults(),
+  activePlan: filterFirstPlan,
+  mealOverrides: {
+    ...invalidLegacyOverrides,
+    [filterFirstMealId]: mealOverride('Still referenced', { futureOverrideField: { format: 2 } }),
+  },
+}
+const filteredFirst = sanitizeState(filterFirstSource, { preserveUnknownFrom: filterFirstSource })
+assert.deepStrictEqual(Object.keys(filteredFirst.mealOverrides), [filterFirstMealId],
+  'unreferenced legacy overrides must be filtered before entry validation or capacity checks')
+assert.deepStrictEqual(filteredFirst.mealOverrides[filterFirstMealId].futureOverrideField, { format: 2 },
+  'trusted future fields must survive on a retained personal override')
+
+const denseActive = densePlan('override-dense-active')
+const denseDraft = densePlan('override-dense-draft')
+const denseHistory = densePlan('override-dense-history')
+const densePlans = [denseActive, denseDraft, denseHistory]
+const denseOverrides = Object.fromEntries(densePlans.flatMap((item) => item.days.flatMap((day) => (
+  day.meals.map((itemMeal) => [itemMeal.id, mealOverride('Personal dense meal')])
+))))
+const firstDenseMealId = denseActive.days[0].meals[0].id
+denseOverrides[firstDenseMealId].futureOverrideField = 'trusted-vNext-value'
+const denseOverrideSource = {
+  ...defaults(),
+  stateRevision: 50,
+  activePlan: denseActive,
+  planHistory: [denseHistory],
+  mealOverrides: denseOverrides,
+}
+const denseBeforeDraft = sanitizeState(denseOverrideSource, { preserveUnknownFrom: denseOverrideSource })
+const denseAddedDraft = sanitizeState({
+  ...denseBeforeDraft,
+  draftPlan: denseDraft,
+}, { preserveUnknownFrom: denseBeforeDraft })
+assert.deepStrictEqual(denseAddedDraft.mealOverrides, denseBeforeDraft.mealOverrides,
+  'adding a new draft period must not replace adjustments belonging to retained plans')
+const denseOverrideState = sanitizeState({
+  ...denseOverrideSource,
+  draftPlan: denseDraft,
+}, { preserveUnknownFrom: { ...denseOverrideSource, draftPlan: denseDraft } })
+assert.strictEqual(Object.keys(denseOverrideState.mealOverrides).length, 210,
+  'all personal overrides referenced by retained plans must survive beyond the legacy 200-entry limit')
+assert.strictEqual(denseOverrideState.mealOverrides[firstDenseMealId].futureOverrideField, 'trusted-vNext-value')
+const denseConfirmed = confirmDraft(denseOverrideState, 50)
+assert.deepStrictEqual(denseConfirmed.mealOverrides, denseOverrideState.mealOverrides,
+  'confirming a later plan must not replace retained personal meal adjustments')
+const denseRestored = restoreHistory(denseConfirmed, denseHistory.id, 51)
+assert.deepStrictEqual(denseRestored.mealOverrides, denseOverrideState.mealOverrides,
+  'restoring an older plan must not replace adjustments belonging to any retained plan')
+
 const tooManyDays = plan('too-many-days')
 tooManyDays.days.push(...Array.from({ length: 8 }, (_, index) => ({
   ...tooManyDays.days[0],
@@ -482,7 +632,16 @@ tooManyDays.days.push(...Array.from({ length: 8 }, (_, index) => ({
   meals: [meal(`extra-meal-${index}`)],
 })))
 tooManyDays.durationDays = 15
-assert.throws(() => sanitizeState({ ...defaults(), activePlan: tooManyDays }), /7 or 14 days/)
+assert.throws(() => sanitizeState({ ...defaults(), activePlan: tooManyDays }), /too many items/)
+
+const emptyPlan = plan('empty-plan', [], 'ai', 1)
+emptyPlan.days = []
+emptyPlan.durationDays = 0
+assert.throws(() => sanitizeState({ ...defaults(), activePlan: emptyPlan }), /at least 1 day/)
+
+const mismatchedDuration = plan('mismatched-duration', [], 'ai', 10)
+mismatchedDuration.durationDays = 9
+assert.throws(() => sanitizeState({ ...defaults(), activePlan: mismatchedDuration }), /does not match days/)
 
 const tooManyMeals = plan('too-many-meals')
 tooManyMeals.days[0].meals = [
@@ -512,4 +671,4 @@ const oversized = plan('oversized')
 oversized.untrustedPadding = 'x'.repeat(256 * 1024)
 throwsCode(() => sanitizeState({ ...defaults(), activePlan: oversized }), 'PLAN_TOO_LARGE')
 
-console.log('user-state schema v6 tests passed')
+console.log('user-state schema v7 tests passed')

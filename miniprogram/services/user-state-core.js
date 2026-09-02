@@ -1,18 +1,22 @@
 'use strict'
 
-const CURRENT_SCHEMA = 6
+const CURRENT_SCHEMA = 7
+const CURRENT_AI_CONTRACT = 2
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
 const MAX_STATE_BYTES = 900 * 1024
+const MIN_DAYS = 1
 const MAX_DAYS = 14
 const MAX_MEALS_PER_DAY = 5
 const MAX_SHOPPING_GROUPS = 12
 const MAX_SHOPPING_ITEMS_PER_GROUP = 40
 const MAX_CHECKED_SHOPPING_IDS = MAX_SHOPPING_GROUPS * MAX_SHOPPING_ITEMS_PER_GROUP
+const MAX_MEAL_OVERRIDES = (MAX_HISTORY + 2) * MAX_DAYS * MAX_MEALS_PER_DAY
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
 const SCENARIOS = ['default', 'rest', 'workout']
 const INTENSITIES = ['low', 'medium', 'high']
+const EXERCISE_INTENTS = ['none', 'daily']
 
 function fail(message, code = 'INVALID_USER_STATE') {
   const error = new Error(message)
@@ -176,8 +180,8 @@ function assertStateSize(state) {
 
 function defaultGenerationPreferences() {
   return {
-    contractVersion: 1,
-    durationDays: 7,
+    contractVersion: CURRENT_AI_CONTRACT,
+    durationDays: MIN_DAYS,
     startDate: '',
     mealTypes: [],
     doubleDinner: false,
@@ -186,6 +190,7 @@ function defaultGenerationPreferences() {
     customGoal: '',
     restrictions: '',
     healthNotes: '',
+    exerciseIntent: '',
     exerciseNotes: '',
     exerciseByDay: [],
   }
@@ -229,8 +234,9 @@ function sanitizeExercise(raw, field, dayIndex) {
 
 function sanitizeGenerationPreferences(raw) {
   const value = isObject(raw) ? raw : {}
-  const durationDays = finiteInteger(value.durationDays, 'generationPreferences.durationDays', 7, 14, 7)
-  if (![7, 14].includes(durationDays)) fail('generationPreferences.durationDays must be 7 or 14')
+  const durationDays = finiteInteger(
+    value.durationDays, 'generationPreferences.durationDays', MIN_DAYS, MAX_DAYS, MIN_DAYS,
+  )
   const mealTypes = uniqueTextArray(value.mealTypes, 'generationPreferences.mealTypes', {
     maxItems: 4, maxLength: 20, allowed: MEAL_TYPES,
   })
@@ -246,7 +252,7 @@ function sanitizeGenerationPreferences(raw) {
     return sanitizeExercise(item, `generationPreferences.exerciseByDay[${index}]`, dayIndex)
   }).sort((left, right) => left.dayIndex - right.dayIndex)
   return {
-    contractVersion: finiteInteger(value.contractVersion, 'generationPreferences.contractVersion', 1, 1000000, 1),
+    contractVersion: CURRENT_AI_CONTRACT,
     durationDays,
     startDate: optionalDate(value.startDate, 'generationPreferences.startDate'),
     mealTypes,
@@ -256,6 +262,7 @@ function sanitizeGenerationPreferences(raw) {
     customGoal: cleanText(value.customGoal, 'generationPreferences.customGoal', 160),
     restrictions: cleanText(value.restrictions, 'generationPreferences.restrictions', 240),
     healthNotes: cleanText(value.healthNotes, 'generationPreferences.healthNotes', 240),
+    exerciseIntent: EXERCISE_INTENTS.includes(value.exerciseIntent) ? value.exerciseIntent : '',
     exerciseNotes: cleanText(value.exerciseNotes, 'generationPreferences.exerciseNotes', 160),
     exerciseByDay,
   }
@@ -277,6 +284,7 @@ function sanitizeGenerationBasis(raw, field) {
     customGoal: cleanText(value.customGoal, `${field}.customGoal`, 160),
     restrictions: cleanText(value.restrictions, `${field}.restrictions`, 240),
     healthNotes: cleanText(value.healthNotes, `${field}.healthNotes`, 240),
+    exerciseIntent: EXERCISE_INTENTS.includes(value.exerciseIntent) ? value.exerciseIntent : '',
     exerciseNotes: cleanText(value.exerciseNotes, `${field}.exerciseNotes`, 160),
     exerciseByDay: exerciseInput.map((item, index) => sanitizeExercise(item, `${field}.exerciseByDay[${index}]`, index)),
   }
@@ -384,7 +392,7 @@ function sanitizePlan(raw, field = 'plan') {
   const source = cleanText(raw.source, `${field}.source`, 20, { required: true })
   if (!['ai', 'legacy', 'user'].includes(source)) fail(`${field}.source is not supported`)
   if (!Array.isArray(raw.days)) fail(`${field}.days must be an array`)
-  if (![7, 14].includes(raw.days.length)) fail(`${field}.days must contain 7 or 14 days`)
+  if (raw.days.length < MIN_DAYS) fail(`${field}.days must contain at least ${MIN_DAYS} day`)
   if (raw.days.length > MAX_DAYS) fail(`${field}.days has too many items`)
   const dayIds = new Set()
   const mealIds = new Set()
@@ -398,8 +406,8 @@ function sanitizePlan(raw, field = 'plan') {
     })
     return result
   })
-  const durationDays = finiteInteger(raw.durationDays, `${field}.durationDays`, 7, 14, days.length)
-  if (durationDays !== days.length || ![7, 14].includes(durationDays)) fail(`${field}.durationDays does not match days`)
+  const durationDays = finiteInteger(raw.durationDays, `${field}.durationDays`, MIN_DAYS, MAX_DAYS, days.length)
+  if (durationDays !== days.length) fail(`${field}.durationDays does not match days`)
   const result = {
     id: cleanText(raw.id, `${field}.id`, 120, { required: true }),
     planVersion: finiteInteger(raw.planVersion, `${field}.planVersion`, 1, 1000000, 1),
@@ -536,27 +544,6 @@ function sanitizePlanUiStateByPlan(raw, plans) {
   return result
 }
 
-function sanitizeMealOverrides(raw) {
-  if (raw === undefined || raw === null) return {}
-  if (!isObject(raw)) fail('mealOverrides must be an object')
-  const keys = Object.keys(raw)
-  if (keys.length > 200) fail('mealOverrides has too many entries')
-  const result = {}
-  keys.forEach((key, index) => {
-    const id = cleanText(key, `mealOverrides key ${index}`, 120, { required: true })
-    const item = raw[key]
-    if (!isObject(item)) fail(`mealOverrides.${id} must be an object`)
-    result[id] = {
-      title: cleanText(item.title, `mealOverrides.${id}.title`, 50),
-      ingredients: cleanText(item.ingredients, `mealOverrides.${id}.ingredients`, 500),
-      method: cleanText(item.method, `mealOverrides.${id}.method`, 500),
-      tag: cleanText(item.tag, `mealOverrides.${id}.tag`, 80),
-      updatedAt: optionalTimestamp(item.updatedAt, `mealOverrides.${id}.updatedAt`),
-    }
-  })
-  return result
-}
-
 function planMealIds(plans) {
   const ids = new Set()
   plans.filter(Boolean).forEach((plan) => {
@@ -565,9 +552,25 @@ function planMealIds(plans) {
   return ids
 }
 
-function constrainMealOverrides(overrides, plans) {
+function sanitizeMealOverrides(raw, plans) {
+  if (raw === undefined || raw === null) return {}
+  if (!isObject(raw)) fail('mealOverrides must be an object')
   const allowed = planMealIds(plans)
-  return Object.fromEntries(Object.entries(overrides).filter(([mealId]) => allowed.has(mealId)))
+  const retained = Object.entries(raw).filter(([mealId]) => allowed.has(mealId))
+  if (retained.length > MAX_MEAL_OVERRIDES) {
+    fail(`mealOverrides exceeds ${MAX_MEAL_OVERRIDES} retained meals`, 'STATE_TOO_LARGE')
+  }
+  return Object.fromEntries(retained.map(([key, item], index) => {
+    const id = cleanText(key, `mealOverrides key ${index}`, 120, { required: true })
+    if (!isObject(item)) fail(`mealOverrides.${id} must be an object`)
+    return [id, {
+      title: cleanText(item.title, `mealOverrides.${id}.title`, 50),
+      ingredients: cleanText(item.ingredients, `mealOverrides.${id}.ingredients`, 500),
+      method: cleanText(item.method, `mealOverrides.${id}.method`, 500),
+      tag: cleanText(item.tag, `mealOverrides.${id}.tag`, 80),
+      updatedAt: optionalTimestamp(item.updatedAt, `mealOverrides.${id}.updatedAt`),
+    }]
+  }))
 }
 
 function sanitizeReminders(raw) {
@@ -636,10 +639,7 @@ function sanitizeState(raw, options = {}) {
     dinnerModeByDay: sanitizeModes(value.dinnerModeByDay),
     checkedShoppingIds,
   }
-  const mealOverrides = constrainMealOverrides(
-    sanitizeMealOverrides(value.mealOverrides),
-    plans,
-  )
+  const mealOverrides = sanitizeMealOverrides(value.mealOverrides, plans)
   Object.assign(result, {
     schemaVersion: CURRENT_SCHEMA,
     stateRevision: finiteInteger(value.stateRevision, 'stateRevision', 0, Number.MAX_SAFE_INTEGER - 1, 0),
@@ -674,6 +674,24 @@ function migrate(raw = {}, options = {}) {
     fail('User state was created by a newer app version; update before continuing', 'STATE_SCHEMA_UNSUPPORTED')
   }
   const candidate = { ...value, schemaVersion: CURRENT_SCHEMA }
+  if (sourceSchema < CURRENT_SCHEMA) {
+    const legacyPreferences = isObject(value.generationPreferences) ? value.generationPreferences : {}
+    candidate.generationPreferences = {
+      ...legacyPreferences,
+      contractVersion: CURRENT_AI_CONTRACT,
+    }
+    const activePlanId = isObject(value.activePlan) && typeof value.activePlan.id === 'string'
+      ? value.activePlan.id : ''
+    const savedActiveUi = activePlanId && isObject(value.planUiStateByPlan)
+      ? value.planUiStateByPlan[activePlanId] : null
+    if (isObject(savedActiveUi)) {
+      candidate.selectedDayId = savedActiveUi.selectedDayId
+      candidate.selectedDay = savedActiveUi.selectedDay
+      candidate.defaultDinnerMode = savedActiveUi.defaultDinnerMode
+      candidate.dinnerModeByDay = savedActiveUi.dinnerModeByDay
+      candidate.checkedShoppingIds = savedActiveUi.checkedShoppingIds
+    }
+  }
   if (sourceSchema >= 1 && sourceSchema < 5) {
     const legacySettings = isObject(value.settings) ? value.settings : {}
     candidate.settings = {
@@ -769,7 +787,9 @@ function restoreHistory(raw, historyPlanId, expectedStateRevision) {
 
 module.exports = {
   CURRENT_SCHEMA,
+  CURRENT_AI_CONTRACT,
   MAX_HISTORY,
+  MAX_MEAL_OVERRIDES,
   defaults,
   migrate,
   sanitizeState,

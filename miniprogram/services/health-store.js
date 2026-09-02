@@ -11,15 +11,52 @@ function clientError(code, message) {
 
 function normalizeRecord(value = {}) {
   const record = value && typeof value === 'object' ? value : {}
+  const recordRevision = Number.isSafeInteger(record.recordRevision) && record.recordRevision >= 0
+    ? record.recordRevision : 0
+  if (record.empty === true) {
+    return { date: record.date, recordRevision, empty: true }
+  }
   return {
     ...record,
-    recordRevision: Number.isSafeInteger(record.recordRevision) && record.recordRevision >= 0
-      ? record.recordRevision : 0,
+    recordRevision,
   }
 }
 
 function normalizeRecords(value) {
   return Array.isArray(value) ? value.map(normalizeRecord) : []
+}
+
+function cacheRecord(record) {
+  return record.empty === true ? record : { ...record, photoUrl: '' }
+}
+
+function withRangeCacheInfo(records, cacheInfo) {
+  Object.defineProperty(records, 'cacheInfo', {
+    configurable: true,
+    enumerable: false,
+    value: cacheInfo,
+  })
+  return records
+}
+
+function monthsForRange(startDate, endDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)
+    || startDate > endDate) return []
+  const startMonth = startDate.slice(0, 7)
+  const endMonth = endDate.slice(0, 7)
+  const [startYear, startNumber] = startMonth.split('-').map(Number)
+  const [endYear, endNumber] = endMonth.split('-').map(Number)
+  if (startNumber < 1 || startNumber > 12 || endNumber < 1 || endNumber > 12) return []
+  const result = []
+  let year = startYear
+  let month = startNumber
+  while (year < endYear || (year === endYear && month <= endNumber)) {
+    result.push(`${year}-${String(month).padStart(2, '0')}`)
+    if (result.length > 24) return []
+    month += 1
+    if (month === 13) { year += 1; month = 1 }
+  }
+  return result
 }
 
 function isRecordRevisionConflict(error) {
@@ -45,6 +82,7 @@ class HealthStore {
     this.monthRequestId = 0
     this.state = 'idle'
     this.error = ''
+    this.rangeStatus = { source: 'idle', complete: false, missingMonths: [], error: '' }
     this.unsubscribeNamespace = memberStore.onCacheNamespaceChange((namespace) => this.applyCacheNamespace(namespace))
   }
 
@@ -57,6 +95,7 @@ class HealthStore {
     this.monthRequestId += 1
     this.state = 'idle'
     this.error = ''
+    this.rangeStatus = { source: 'idle', complete: false, missingMonths: [], error: '' }
     return nextNamespace
   }
 
@@ -102,11 +141,15 @@ class HealthStore {
     this.loadCache(month, namespace)
     this.state = 'loading'
     try {
-      const records = normalizeRecords(await callFunction('health', 'getMonth', { month, includePhotoUrls: options.includePhotoUrls === true }))
+      const records = normalizeRecords(await callFunction('health', 'getMonth', {
+        month,
+        includePhotoUrls: options.includePhotoUrls === true,
+        expectedCacheNamespace: namespace,
+      }))
       if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
       this.months[month] = records
       this.cachedMonths.add(month)
-      wx.setStorageSync(this.cacheKey(month, namespace), records.map((item) => ({ ...item, photoUrl: '' })))
+      wx.setStorageSync(this.cacheKey(month, namespace), records.map(cacheRecord))
       if (requestId === this.monthRequestId) {
         this.state = 'ready'
         this.error = ''
@@ -124,9 +167,33 @@ class HealthStore {
 
   async getRange(startDate, endDate) {
     const namespace = this.requireCacheNamespace()
-    const result = await callFunction('health', 'getRange', { startDate, endDate })
-    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-    return normalizeRecords(result)
+    try {
+      const result = await callFunction('health', 'getRange', {
+        startDate, endDate, expectedCacheNamespace: namespace,
+      })
+      if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+      const records = normalizeRecords(result)
+      this.rangeStatus = { source: 'cloud', complete: true, missingMonths: [], error: '' }
+      return withRangeCacheInfo(records, this.rangeStatus)
+    } catch (error) {
+      if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+      const months = monthsForRange(startDate, endDate)
+      if (!months.length) throw error
+      const missingMonths = months.filter((month) => !this.hasCachedMonth(month, namespace))
+      const byDate = new Map()
+      months.forEach((month) => {
+        this.loadCache(month, namespace).forEach((record) => {
+          if (record.date >= startDate && record.date <= endDate) byDate.set(record.date, record)
+        })
+      })
+      const records = [...byDate.values()].filter((record) => record.empty !== true)
+        .sort((left, right) => left.date.localeCompare(right.date))
+      this.rangeStatus = {
+        source: 'cache', complete: missingMonths.length === 0, missingMonths,
+        error: error.message || '近 7 天记录加载失败',
+      }
+      return withRangeCacheInfo(records, this.rangeStatus)
+    }
   }
 
   async saveDaily(record) {
@@ -137,13 +204,15 @@ class HealthStore {
     }
     this.state = 'saving'
     try {
-      const saved = normalizeRecord(await callFunction('health', 'saveDaily', { record: value }))
+      const saved = normalizeRecord(await callFunction('health', 'saveDaily', {
+        record: value, expectedCacheNamespace: namespace,
+      }))
       if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
       const month = saved.date.slice(0, 7)
       const list = this.loadCache(month, namespace).filter((item) => item.date !== saved.date)
       this.months[month] = [...list, saved].sort((a, b) => a.date.localeCompare(b.date))
       this.cachedMonths.add(month)
-      wx.setStorageSync(this.cacheKey(month, namespace), this.months[month].map((item) => ({ ...item, photoUrl: '' })))
+      wx.setStorageSync(this.cacheKey(month, namespace), this.months[month].map(cacheRecord))
       this.state = 'ready'
       return saved
     } catch (error) {
@@ -160,4 +229,5 @@ module.exports = {
   healthStore: new HealthStore(),
   isRecordRevisionConflict,
   normalizeRecord,
+  monthsForRange,
 }

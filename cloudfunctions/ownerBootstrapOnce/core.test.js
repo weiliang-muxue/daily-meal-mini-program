@@ -3,6 +3,7 @@
 const assert = require('assert')
 const {
   CONTROL_ID, REQUEST_DOCUMENT_ID, REQUEST_TTL_MS, approvalDigest,
+  INVITE_SLOTS, INVITE_TTL_HOURS,
   CONTROL_PHASE_PENDING, CONTROL_PHASE_APPROVED, CONTROL_PHASE_ACTIVE,
   bootstrapControl, assertBootstrapControl,
   assertOperationalActivationContext, assertEmptyBootstrapSnapshot,
@@ -18,6 +19,10 @@ const pending = {
   approvedRequestId: '', approvedTargetDigest: '', expiresAtMs: now + REQUEST_TTL_MS,
 }
 const pendingControl = bootstrapControl(pending, CONTROL_PHASE_PENDING, 1)
+assert.strictEqual(INVITE_SLOTS, 3)
+assert.strictEqual(INVITE_TTL_HOURS, 168)
+assert.strictEqual(pendingControl.inviteSlots, 3)
+assert.strictEqual(pendingControl.inviteTtlHours, 168)
 
 assert.doesNotThrow(() => assertOperationalActivationContext({ SOURCE: 'unknown-operation' }))
 assert.throws(

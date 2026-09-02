@@ -30,7 +30,18 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install WeChat automator dependencies
+        working-directory: scripts/wx-automator
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Test WeChat automator runtime
+        working-directory: scripts/wx-automator
+        run: npm test
+
       - name: Validate versions, migrations and contracts
+        env:
+          RELEASE_GATE_REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
+          RELEASE_GATE_COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: node scripts/validate.js
 
       - name: Reject secrets and private data in published history

@@ -3,10 +3,12 @@
 const assert = require('assert')
 const { CONTRACT_VERSION, PLANNER_VERSION, preferencesHash } = require('./lib')
 const {
-  TASK_TTL_MS, LEASE_MS, MAX_ATTEMPTS, MAX_CONCURRENT_DETAILS,
+  TASK_SCHEMA_VERSION, TASK_TTL_MS, LEASE_MS, MAX_ATTEMPTS, MAX_CONCURRENT_DETAILS, AI_DATA_CONSENT_VERSION,
+  RETENTION_SCHEMA_VERSION,
   generateTaskId, validateTaskId, generateLeaseToken, validateClientRequestId,
   idempotencyFingerprint, requestFingerprint, sameIdempotentRequest,
-  planStateFingerprint, hasPlanStateFingerprint,
+  planStateFingerprint, hasPlanStateFingerprint, hasAiDataConsent,
+  taskSchemaVersionState, assertSupportedTaskSchema,
   createTask, claimNext, completeClaim, failClaim, verifyLease,
   assertTaskOwner, cancelTask, expireTask, finishTask,
   publicTask, compactTask, terminal,
@@ -15,11 +17,13 @@ const {
 const input = {
   contractVersion: CONTRACT_VERSION, durationDays: 7, startDate: '2026-08-31',
   mealTypes: ['breakfast', 'lunch', 'dinner'], doubleDinner: true,
-  goals: ['均衡饮食'], styles: ['清淡'], customGoal: '', restrictions: '', healthNotes: '', exerciseNotes: '', exerciseByDay: [],
+  goals: ['均衡饮食'], styles: ['清淡'], customGoal: '', restrictions: '', healthNotes: '', exerciseIntent: 'none', exerciseNotes: '', exerciseByDay: [],
 }
 const owner = 'openid-test-owner'
 const clientRequestId = '0123456789abcdef0123456789abcdef'
 const fixedTaskId = generateTaskId(Buffer.alloc(32, 7))
+const providerRevision = 7
+const providerConfigVersion = 'a'.repeat(64)
 
 function lease(seed) { return generateLeaseToken(Buffer.alloc(32, seed)) }
 function task(overrides = {}) {
@@ -29,6 +33,8 @@ function task(overrides = {}) {
     baseStateRevision: 2, stateRevision: 2, planId: 'plan-test',
     generatedAt: '2026-08-26T00:00:00.000Z', now: 1000,
     clientRequestId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION,
+    aiDataConsentVersion: AI_DATA_CONSENT_VERSION,
+    providerRevision, providerConfigVersion,
     ...overrides,
   })
 }
@@ -66,6 +72,8 @@ test('相同幂等键和请求只重放，内容或 revision 改变即冲突', (
   const changed = requestFingerprint({
     preferencesHash: created.preferencesHash, baseStateRevision: 3,
     contractVersion: CONTRACT_VERSION, plannerVersion: created.plannerVersion,
+    aiDataConsentVersion: AI_DATA_CONSENT_VERSION,
+    providerRevision, providerConfigVersion,
   })
   assert.strictEqual(sameIdempotentRequest(created, { ...expected, requestFingerprint: changed }), 'conflict')
   assert.strictEqual(sameIdempotentRequest(created, { ...expected, idempotencyHash: 'f'.repeat(64) }), 'conflict')
@@ -73,6 +81,8 @@ test('相同幂等键和请求只重放，内容或 revision 改变即冲突', (
 
 test('创建任务会重新规范化偏好并拒绝伪造的三类指纹', () => {
   const created = task({ input: { ...input, ignoredByContract: '不得存入任务' } })
+  assert.strictEqual(TASK_SCHEMA_VERSION, 3)
+  assert.strictEqual(created.taskSchemaVersion, TASK_SCHEMA_VERSION)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(created.input, 'ignoredByContract'), false)
   assert.throws(() => task({ preferencesHash: 'f'.repeat(32) }), (error) => error.code === 'REQUEST_FINGERPRINT_MISMATCH')
   assert.throws(() => task({ idempotencyHash: 'f'.repeat(64) }), (error) => error.code === 'IDEMPOTENCY_FINGERPRINT_MISMATCH')
@@ -80,6 +90,72 @@ test('创建任务会重新规范化偏好并拒绝伪造的三类指纹', () =>
   assert.match(created.planStateFingerprint, /^[a-f0-9]{64}$/)
   assert.strictEqual(created.planStateFingerprint, planStateFingerprint(null, null))
   assert.strictEqual(hasPlanStateFingerprint(created), true)
+  assert.strictEqual(hasAiDataConsent(created), true)
+  assert.strictEqual(created.providerRevision, providerRevision)
+  assert.strictEqual(created.providerConfigVersion, providerConfigVersion)
+  assert.throws(() => task({ aiDataConsentVersion: 0 }), (error) => error.code === 'AI_DATA_CONSENT_REQUIRED')
+  assert.throws(() => task({ providerRevision: 0 }), (error) => error.code === 'INVALID_TASK_INPUT')
+  assert.throws(() => task({ providerConfigVersion: '' }), (error) => error.code === 'INVALID_TASK_INPUT')
+})
+
+test('核心 worker 对未来或非法 task schema 失败关闭且不修改输入', () => {
+  const cases = [
+    { value: TASK_SCHEMA_VERSION + 1, state: 'future', code: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { value: '3', state: 'invalid', code: 'AI_TASK_VERSION_INVALID' },
+    { value: 0, state: 'invalid', code: 'AI_TASK_VERSION_INVALID' },
+    { value: undefined, state: 'invalid', code: 'AI_TASK_VERSION_INVALID' },
+  ]
+  cases.forEach(({ value, state, code }, index) => {
+    const original = task()
+    if (value === undefined) delete original.taskSchemaVersion
+    else original.taskSchemaVersion = value
+    const before = JSON.parse(JSON.stringify(original))
+    const claim = { taskId: original._id, kind: 'outline', index: -1, attempt: 1, inputHash: '', outlineHash: '' }
+    const token = lease(50 + index)
+    assert.strictEqual(taskSchemaVersionState(original), state)
+    ;[
+      () => assertSupportedTaskSchema(original),
+      () => claimNext(original, token, 1200),
+      () => completeClaim(original, claim, token, { title: '不得写入' }, 1200),
+      () => failClaim(original, claim, token, 'AI_NETWORK_ERROR', 1200),
+      () => cancelTask(original, owner, original.taskRevision, 1200),
+      () => expireTask(original, original.expiresAt + 1),
+      () => finishTask(original, 'failed', 1200),
+      () => publicTask(original, 1200, owner),
+      () => compactTask(original, 'failed', 1200),
+    ].forEach((invoke) => assert.throws(invoke, (error) => error && error.code === code))
+    assert.deepStrictEqual(original, before, 'schema 门禁拒绝时不能改写任务对象')
+  })
+})
+
+test('task schema v2 仍进入明确允许的旧任务关闭逻辑且不会被升级为 v3', () => {
+  const legacy = task()
+  legacy.taskSchemaVersion = 2
+  delete legacy.aiDataConsentVersion
+  assert.deepStrictEqual(assertSupportedTaskSchema(legacy), { state: 'legacy', version: 2 })
+  const outcome = claimNext(legacy, lease(59), 1200)
+  assert.strictEqual(outcome.task.status, 'failed')
+  assert.strictEqual(outcome.task.errorCode, 'AI_DATA_CONSENT_REQUIRED')
+  const compacted = compactTask(outcome.task, 'failed', 1200)
+  assert.strictEqual(compacted.taskSchemaVersion, 2)
+})
+
+test('同意版本进入请求指纹，缺少同意的旧活动任务在 claim 前失败关闭', () => {
+  const created = task()
+  assert.throws(() => requestFingerprint({
+    preferencesHash: created.preferencesHash,
+    baseStateRevision: created.baseStateRevision,
+    contractVersion: created.contractVersion,
+    plannerVersion: created.plannerVersion,
+    providerRevision,
+    providerConfigVersion,
+  }), (error) => error.code === 'AI_DATA_CONSENT_REQUIRED')
+  const legacy = { ...created, status: 'queued' }
+  delete legacy.aiDataConsentVersion
+  const outcome = claimNext(legacy, lease(44), 1200)
+  assert.strictEqual(outcome.claim, null)
+  assert.strictEqual(outcome.task.status, 'failed')
+  assert.strictEqual(outcome.task.errorCode, 'AI_DATA_CONSENT_REQUIRED')
 })
 
 test('计划基线摘要包含 null 与完整规范化计划内容且不保存计划正文', () => {
@@ -97,8 +173,8 @@ test('计划基线摘要包含 null 与完整规范化计划内容且不保存�
 
 test('任务从 queued 开始，每次有效状态变更递增 taskRevision', () => {
   const created = task()
-  assert.strictEqual(created.plannerVersion, '4')
-  assert.strictEqual(created.chunks.every((chunk) => chunk.mealSlots <= 4), true)
+  assert.strictEqual(created.plannerVersion, '7')
+  assert.strictEqual(created.chunks.every((chunk) => chunk.mealSlots === 1), true)
   assert.strictEqual(created.chunks.reduce((sum, chunk) => sum + chunk.mealSlots, 0), 28)
   assert.strictEqual(created.status, 'queued')
   assert.strictEqual(created.taskRevision, 0)
@@ -274,7 +350,7 @@ test('只有完成 finalize 的任务可成功，revision 冲突使用独立终�
 test('公开进度不泄露 owner、偏好、结果、租约或健康文本', () => {
   const progress = publicTask(task(), 1100, owner)
   assert.deepStrictEqual(Object.keys(progress), [
-    'taskId', 'status', 'phase', 'taskRevision', 'completedSteps', 'totalSteps', 'progressPercent',
+    'taskId', 'status', 'contractVersion', 'plannerVersion', 'phase', 'taskRevision', 'completedSteps', 'totalSteps', 'progressPercent',
     'errorCode', 'failureCode', 'expiresAt', 'resultStateRevision',
   ])
   const serialized = JSON.stringify(progress)
@@ -294,6 +370,10 @@ test('任务压缩保留幂等与审计字段并清除私人正文和所有租�
   assert.strictEqual(compacted.generationEpoch, 7)
   assert.strictEqual(compacted.createdAt, 1000)
   assert.strictEqual(compacted.updatedAt, 1500)
+  assert.strictEqual(compacted.retentionSchemaVersion, RETENTION_SCHEMA_VERSION)
+  assert.strictEqual(compacted.compactedAtMs, 1500)
+  assert.strictEqual(compacted.shardCleanupPending, true)
+  assert.strictEqual(compacted.shardCleanupUpdatedAtMs, 1500)
   assert.match(compacted.idempotencyHash, /^[a-f0-9]{64}$/)
   assert.strictEqual(compacted.planStateFingerprint, active.planStateFingerprint)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(compacted, 'input'), false)
@@ -304,6 +384,26 @@ test('任务压缩保留幂等与审计字段并清除私人正文和所有租�
     idempotencyHash: compacted.idempotencyHash,
     requestFingerprint: compacted.requestFingerprint,
   }), 'replay')
+
+  const cleaned = compactTask({
+    ...compacted,
+    shardCleanupPending: false,
+    shardCleanupUpdatedAtMs: 1600,
+    shardsCleanedAtMs: 1600,
+  }, 'cancelled', 1700)
+  assert.strictEqual(cleaned.shardCleanupPending, false, '重复压缩不能重新排队已完成的分片清理')
+  assert.strictEqual(cleaned.shardCleanupUpdatedAtMs, 1600)
+  assert.strictEqual(cleaned.shardsCleanedAtMs, 1600)
+  assert.strictEqual(cleaned.compactedAtMs, 1500)
+
+  const legacyRetention = compactTask({
+    ...cleaned,
+    retentionSchemaVersion: 0,
+    shardCleanupPending: false,
+  }, 'cancelled', 1800)
+  assert.strictEqual(legacyRetention.shardCleanupPending, true, '旧 retention 版本必须重新登记清理')
+  assert.strictEqual(legacyRetention.shardCleanupUpdatedAtMs, 1800)
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(legacyRetention, 'shardsCleanedAtMs'), false)
 })
 
 let passed = 0

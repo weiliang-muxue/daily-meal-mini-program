@@ -4,6 +4,7 @@ const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
 const {
   CONTROL_ID, REQUEST_DOCUMENT_ID, CONTROL_SCHEMA,
+  INVITE_SLOTS, INVITE_TTL_HOURS,
   CONTROL_PHASE_PENDING, CONTROL_PHASE_APPROVED, CONTROL_PHASE_ACTIVE,
   validatedRequest, bootstrapControl, assertBootstrapControl, assertEmptyBootstrapSnapshot,
   assertOperationalActivationContext, decideRequest, decideApproval, decideBootstrap, publicRequest,
@@ -179,7 +180,8 @@ async function activate() {
       kind: 'control', status: 'control', schemaVersion: CONTROL_SCHEMA,
       phase: CONTROL_PHASE_ACTIVE, bootstrapRequestId: '',
       ownerOpenid: decision.targetOpenid, activeMemberCount: 1, reservedInviteCount: 0,
-      revision: decision.control.revision + 1, inviteSlots: 6, inviteTtlHours: 24,
+      revision: decision.control.revision + 1,
+      inviteSlots: INVITE_SLOTS, inviteTtlHours: INVITE_TTL_HOURS,
       createdAt: now, updatedAt: now,
     } })
     await requestReference.remove()

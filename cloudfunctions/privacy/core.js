@@ -1,9 +1,15 @@
 'use strict'
 
-const { orphanPermanentPath } = require('./upload-ticket')
+const { orphanPermanentPath, validOwnedPermanentPath } = require('./upload-ticket')
 
 const AI_PRIVATE_COLLECTIONS = ['meal_ai_tasks', 'meal_ai_shards', 'meal_ai_controls']
 const UPLOAD_FILE_FIELDS = ['inboxFileId', 'permanentFileId', 'cleanupFileId', 'fileID', 'fileId']
+const UPLOAD_LEASE_MS = 120 * 1000
+const LEGACY_UPLOAD_GRACE_MS = 120 * 1000
+const TOKEN_PATTERN = /^[a-f0-9]{48}$/
+const LEGACY_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp'])
+const PERMANENT_OBJECT_EXTENSION_PATTERN = /\.(?:jpg|png|webp)$/
+const TICKET_STATES = new Set(['prepared', 'uploading', 'staged', 'consumed', 'cleanup', 'cleaning'])
 
 function activeMembers(records, excludedId) {
   return (Array.isArray(records) ? records : [])
@@ -98,22 +104,96 @@ function privateFileIds(data = {}) {
   return [...ids]
 }
 
-function privateOrphanPaths(data = {}, openid = '') {
+function privateUploadError(code, message, retryable = false) {
+  const error = new Error(message)
+  error.code = code
+  error.retryable = retryable
+  return error
+}
+
+function invalidUploadTicket() {
+  return privateUploadError('PRIVATE_UPLOAD_STATE_INVALID', '私人图片清理状态异常，请稍后重试')
+}
+
+function legacyInboxPath(ticket, options = {}) {
+  if (!ticket || ticket.owner !== options.owner || !TOKEN_PATTERN.test(options.token || '')) return ''
+  const extension = typeof ticket.extension === 'string' ? ticket.extension.trim().toLowerCase() : ''
+  if (!LEGACY_IMAGE_EXTENSIONS.has(extension)) return ''
+  if (options.kind === 'avatar') return `avatar-inbox/${options.token}.${extension}`
+  if (options.kind === 'health') return `health-inbox/${options.token}.${extension}`
+  return ''
+}
+
+function privateUploadCleanupPlan(data = {}, openid = '', currentTime = Date.now()) {
+  const now = Number.isSafeInteger(currentTime) && currentTime >= 0 ? currentTime : Date.now()
   const paths = new Set()
-  ;(Array.isArray(data.avatarTickets) ? data.avatarTickets : []).forEach((ticket) => {
+  let uploadInProgress = false
+
+  const inspect = (ticket, options) => {
+    if (!ticket || typeof ticket !== 'object' || ticket.owner !== openid
+      || !TOKEN_PATTERN.test(ticket._id || '')) throw invalidUploadTicket()
+    if (ticket.state !== undefined && !TICKET_STATES.has(ticket.state)) throw invalidUploadTicket()
+    if (ticket.permanentPath !== undefined && ticket.permanentPath !== ''
+      && !validOwnedPermanentPath(ticket.permanentPath, ticket, options)) {
+      throw invalidUploadTicket()
+    }
+
+    if (ticket.state === 'uploading') {
+      if (!PERMANENT_OBJECT_EXTENSION_PATTERN.test(ticket.permanentPath || '')
+        || !Number.isSafeInteger(ticket.uploadStartedAtMs) || ticket.uploadStartedAtMs < 0
+        || !Number.isSafeInteger(ticket.uploadLeaseExpiresAtMs)
+        || ticket.uploadLeaseExpiresAtMs - ticket.uploadStartedAtMs !== UPLOAD_LEASE_MS) {
+        throw invalidUploadTicket()
+      }
+      if (ticket.uploadLeaseExpiresAtMs > now) uploadInProgress = true
+    }
+
+    const preparedUploadMayBeInFlight = ticket.state === 'prepared'
+      && PERMANENT_OBJECT_EXTENSION_PATTERN.test(ticket.permanentPath || '')
+    if (preparedUploadMayBeInFlight) {
+      if (!Number.isSafeInteger(ticket.expiresAt) || ticket.expiresAt < 0
+        || ticket.expiresAt > Number.MAX_SAFE_INTEGER - LEGACY_UPLOAD_GRACE_MS) {
+        throw invalidUploadTicket()
+      }
+      if (ticket.expiresAt + LEGACY_UPLOAD_GRACE_MS > now) uploadInProgress = true
+    }
+
+    if (ticket.state === undefined) {
+      const inboxPath = legacyInboxPath(ticket, options)
+      if (!inboxPath || !Number.isSafeInteger(ticket.expiresAt) || ticket.expiresAt < 0
+        || ticket.expiresAt > Number.MAX_SAFE_INTEGER - LEGACY_UPLOAD_GRACE_MS) {
+        throw invalidUploadTicket()
+      }
+      if (ticket.expiresAt + LEGACY_UPLOAD_GRACE_MS > now) uploadInProgress = true
+      paths.add(inboxPath)
+    }
+
     const path = orphanPermanentPath(ticket, {
-      kind: 'avatar', owner: openid, token: ticket && ticket._id,
+      ...options, owner: openid, token: ticket._id,
     })
     if (path) paths.add(path)
+  }
+
+  ;(Array.isArray(data.avatarTickets) ? data.avatarTickets : []).forEach((ticket) => {
+    inspect(ticket, { kind: 'avatar', owner: openid, token: ticket && ticket._id })
   })
   ;(Array.isArray(data.photoTickets) ? data.photoTickets : []).forEach((ticket) => {
-    const path = orphanPermanentPath(ticket, {
+    inspect(ticket, {
       kind: 'health', owner: openid, token: ticket && ticket._id,
       targetDate: ticket && ticket.targetDate,
     })
-    if (path) paths.add(path)
   })
-  return [...paths]
+
+  if (uploadInProgress) {
+    throw privateUploadError(
+      'PRIVATE_UPLOAD_IN_PROGRESS', '私人图片仍在处理中，请稍后重试', true,
+    )
+  }
+  return { orphanPaths: [...paths] }
+}
+
+function privateOrphanPaths(data = {}, openid = '', currentTime = Date.now()) {
+  return privateUploadCleanupPlan(data, openid, currentTime).orphanPaths
 }
 
 async function runDeletionSequence(steps) {
@@ -124,7 +204,8 @@ async function runDeletionSequence(steps) {
   const privateData = await steps.collectPrivateData()
   const result = await steps.deletePrivateData(privateData)
   await steps.verifyCleared()
-  return result
+  const membership = await steps.finalizeMembership()
+  return { ...result, ...membership }
 }
 
 module.exports = {
@@ -137,6 +218,8 @@ module.exports = {
   relatedInvite,
   ticketFileIds,
   privateFileIds,
+  legacyInboxPath,
+  privateUploadCleanupPlan,
   privateOrphanPaths,
   runDeletionSequence,
 }

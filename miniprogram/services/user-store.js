@@ -1,7 +1,7 @@
 'use strict'
 
 const { callFunction } = require('../utils/cloud')
-const { defaults, sanitizeState, sanitizeGenerationPreferences } = require('./user-state-core')
+const { defaults, migrate, sanitizeGenerationPreferences } = require('./user-state-core')
 const { membershipStore } = require('./membership-store')
 
 const CACHE_PREFIX = 'meal_user_state_v3_'
@@ -12,11 +12,18 @@ const EDITABLE_FIELDS = [
 ]
 const PLAN_UI_VALUE_FIELDS = ['selectedDayId', 'selectedDay', 'defaultDinnerMode', 'dinnerModeByDay']
 const PENDING_VALUE_FIELDS = EDITABLE_FIELDS.filter((key) => (
-  key !== 'checkedShoppingIds' && !PLAN_UI_VALUE_FIELDS.includes(key)
+  key !== 'checkedShoppingIds' && key !== 'mealOverrides' && !PLAN_UI_VALUE_FIELDS.includes(key)
 ))
 
 function cacheKey(namespace) { return namespace ? `${CACHE_PREFIX}${namespace}` : '' }
 function pendingKey(namespace) { return namespace ? `${PENDING_PREFIX}${namespace}` : '' }
+
+function hasCachedGenerationPreferences(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+    && Object.prototype.hasOwnProperty.call(value, 'generationPreferences')
+    && value.generationPreferences && typeof value.generationPreferences === 'object'
+    && !Array.isArray(value.generationPreferences))
+}
 
 function normalizeCacheNamespace(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value) ? value : ''
@@ -30,13 +37,34 @@ function namespaceChangedError() {
 
 function normalize(raw) {
   const value = raw && typeof raw === 'object' ? raw : {}
-  try { return { ...sanitizeState(value), updatedAt: value.updatedAt || null } }
+  try { return { ...migrate(value), updatedAt: value.updatedAt || null } }
+  catch (_) { return { ...defaults(), updatedAt: null } }
+}
+
+function normalizeCached(raw) {
+  const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const preferences = value.generationPreferences
+  const durationDays = preferences && typeof preferences === 'object' && !Array.isArray(preferences)
+    ? preferences.durationDays
+    : undefined
+  const parsedDuration = Number(durationDays)
+  const invalidDuration = durationDays !== undefined && durationDays !== null && durationDays !== ''
+    && (!Number.isSafeInteger(parsedDuration) || parsedDuration < 1 || parsedDuration > 14)
+  const candidate = invalidDuration
+    ? { ...value, generationPreferences: { ...preferences, durationDays: 1 } }
+    : value
+  try { return { ...migrate(candidate), updatedAt: value.updatedAt || null } }
   catch (_) { return { ...defaults(), updatedAt: null } }
 }
 
 function normalizeStrict(raw) {
   const value = raw && typeof raw === 'object' ? raw : {}
-  return { ...sanitizeState(value), updatedAt: value.updatedAt || null }
+  return { ...migrate(value), updatedAt: value.updatedAt || null }
+}
+
+function normalizeCloud(raw) {
+  const value = raw && typeof raw === 'object' ? raw : {}
+  return { ...migrate(value), updatedAt: value.updatedAt || null }
 }
 
 function editableSnapshot(state) {
@@ -49,13 +77,99 @@ function emptyPlanUiPending() {
 
 function emptyPending() {
   return {
-    version: 2,
+    version: 3,
     revision: 0,
     fields: {},
     fieldRevisions: {},
+    mealOverrideOperations: {},
+    legacyMealOverridesReplacement: null,
     planUiByPlan: {},
     unscopedPlanUi: emptyPlanUiPending(),
   }
+}
+
+function validMealOverrideId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 120
+}
+
+function validPlanId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 120
+}
+
+function sameMealOverride(left, right) {
+  if (!left || !right) return left === right
+  return ['title', 'ingredients', 'method', 'tag', 'updatedAt']
+    .every((key) => left[key] === right[key])
+}
+
+function normalizeMealOverrideOperations(source, cachedState) {
+  const operations = {}
+  Object.entries(source && source.mealOverrideOperations || {}).forEach(([mealId, operation]) => {
+    const revision = Number(operation && operation.revision)
+    if (!validMealOverrideId(mealId) || !operation || !Number.isSafeInteger(revision) || revision < 1) return
+    if (operation.removed === true) {
+      operations[mealId] = { removed: true, revision }
+      return
+    }
+    if (!operation.value || typeof operation.value !== 'object' || Array.isArray(operation.value)) return
+    try {
+      const normalized = normalizeStrict({
+        ...cachedState,
+        mealOverrides: { ...(cachedState.mealOverrides || {}), [mealId]: operation.value },
+      }).mealOverrides[mealId]
+      if (normalized) operations[mealId] = { removed: false, value: normalized, revision }
+    } catch (_) {}
+  })
+  return operations
+}
+
+function normalizeLegacyMealOverridesReplacement(source, cachedState) {
+  const persisted = source && source.legacyMealOverridesReplacement
+  const hasPersisted = persisted && typeof persisted === 'object'
+  const sourceVersion = Number(source && source.version)
+  const hasLegacyFullMap = !Number.isSafeInteger(sourceVersion) || sourceVersion < 3
+  const revision = Number(hasPersisted
+    ? persisted.revision
+    : source && source.fieldRevisions && source.fieldRevisions.mealOverrides)
+  const value = hasPersisted ? persisted.value : source && source.fields && source.fields.mealOverrides
+  const hasValue = hasPersisted
+    ? Object.prototype.hasOwnProperty.call(persisted, 'value')
+    : hasLegacyFullMap && Object.prototype.hasOwnProperty.call(source && source.fields || {}, 'mealOverrides')
+  if (!hasValue || !value || typeof value !== 'object' || Array.isArray(value)
+    || !Number.isSafeInteger(revision) || revision < 1) return null
+  try {
+    const normalized = normalizeStrict({ ...cachedState, mealOverrides: value }).mealOverrides
+    return { value: normalized, revision }
+  } catch (_) { return null }
+}
+
+function recomputePendingRevision(pending) {
+  const revisions = [
+    ...Object.values(pending.fieldRevisions),
+    ...Object.values(pending.mealOverrideOperations).map((operation) => operation.revision),
+    ...Object.values(pending.planUiByPlan).flatMap(planUiRevisions),
+    ...planUiRevisions(pending.unscopedPlanUi),
+  ]
+  if (pending.legacyMealOverridesReplacement) revisions.push(pending.legacyMealOverridesReplacement.revision)
+  pending.revision = revisions.length ? Math.max(...revisions) : 0
+  return pending.revision
+}
+
+function materializeLegacyMealOverrides(pending, cloudState) {
+  const replacement = pending && pending.legacyMealOverridesReplacement
+  if (!replacement) return false
+  const cloudOverrides = cloudState && cloudState.mealOverrides || {}
+  const desiredOverrides = replacement.value
+  new Set([...Object.keys(cloudOverrides), ...Object.keys(desiredOverrides)]).forEach((mealId) => {
+    // A v3 edit made after the app upgrade is newer than the legacy full-map intent.
+    if (Object.prototype.hasOwnProperty.call(pending.mealOverrideOperations, mealId)) return
+    if (sameMealOverride(cloudOverrides[mealId], desiredOverrides[mealId])) return
+    pending.mealOverrideOperations[mealId] = Object.prototype.hasOwnProperty.call(desiredOverrides, mealId)
+      ? { removed: false, value: desiredOverrides[mealId], revision: replacement.revision }
+      : { removed: true, revision: replacement.revision }
+  })
+  recomputePendingRevision(pending)
+  return true
 }
 
 function pendingPlanId(state) {
@@ -101,6 +215,8 @@ function normalizePending(value, cachedState) {
     pending.fields[key] = source.fields[key]
     pending.fieldRevisions[key] = revision
   })
+  pending.mealOverrideOperations = normalizeMealOverrideOperations(source, cachedState)
+  pending.legacyMealOverridesReplacement = normalizeLegacyMealOverridesReplacement(source, cachedState)
   Object.entries(source.planUiByPlan || {}).forEach(([planId, planUi]) => {
     if (typeof planId !== 'string' || !planId || planId.length > 120) return
     const clean = normalizePlanUiPending(planUi)
@@ -116,21 +232,31 @@ function normalizePending(value, cachedState) {
     if (legacyPlanId) pending.planUiByPlan[legacyPlanId] = legacy
     else pending.unscopedPlanUi = legacy
   }
-  const revisions = [
-    ...Object.values(pending.fieldRevisions),
-    ...Object.values(pending.planUiByPlan).flatMap(planUiRevisions),
-    ...planUiRevisions(pending.unscopedPlanUi),
-  ]
-  pending.revision = revisions.length ? Math.max(...revisions) : 0
+  recomputePendingRevision(pending)
   return pending
 }
 
 function hasPending(pending) {
   return Boolean(pending && (
     Object.keys(pending.fields).length
+    || Object.keys(pending.mealOverrideOperations || {}).length
+    || Boolean(pending.legacyMealOverridesReplacement)
     || Object.values(pending.planUiByPlan).some(planUiHasPending)
     || planUiHasPending(pending.unscopedPlanUi)
   ))
+}
+
+function applyMealOverrideOperations(state, operations) {
+  let base = state
+  Object.entries(operations || {})
+    .sort((left, right) => left[1].revision - right[1].revision)
+    .forEach(([mealId, operation]) => {
+      const mealOverrides = { ...base.mealOverrides }
+      if (operation.removed) delete mealOverrides[mealId]
+      else mealOverrides[mealId] = operation.value
+      try { base = normalizeStrict({ ...base, mealOverrides }) } catch (_) {}
+    })
+  return base
 }
 
 function applyPlanUiPending(state, planId, planUi) {
@@ -180,6 +306,10 @@ function applyPending(state, pending) {
       try { base = normalizeStrict({ ...base, [key]: value }) } catch (_) {}
     })
   if (!pending) return base
+  if (pending.legacyMealOverridesReplacement) {
+    try { base = normalizeStrict({ ...base, mealOverrides: pending.legacyMealOverridesReplacement.value }) } catch (_) {}
+  }
+  base = applyMealOverrideOperations(base, pending.mealOverrideOperations)
   Object.entries(pending.planUiByPlan || {}).forEach(([planId, planUi]) => {
     base = applyPlanUiPending(base, planId, planUi)
   })
@@ -202,6 +332,7 @@ class UserStore {
     this.saveTimer = null
     this.namespace = ''
     this.cacheLoaded = false
+    this.hasCachedGenerationPreferences = false
     this.initEpoch = 0
     this.localRevision = 0
     this.confirmedLocalRevision = 0
@@ -216,6 +347,7 @@ class UserStore {
     this.saveTimer = null
     this.namespace = nextNamespace
     this.cacheLoaded = false
+    this.hasCachedGenerationPreferences = false
     this.initEpoch += 1
     this.initPromise = null
     this.pendingSave = null
@@ -231,7 +363,9 @@ class UserStore {
   bindNamespace(options = {}) {
     const namespace = this.applyNamespace(this.membershipStore.cacheNamespace)
     if (namespace && options.loadCache !== false && !this.cacheLoaded) {
-      const cachedState = normalize(wx.getStorageSync(cacheKey(namespace)))
+      const rawCachedState = wx.getStorageSync(cacheKey(namespace))
+      this.hasCachedGenerationPreferences = hasCachedGenerationPreferences(rawCachedState)
+      const cachedState = normalizeCached(rawCachedState)
       this.pending = normalizePending(wx.getStorageSync(pendingKey(namespace)), cachedState)
       this.localRevision = this.pending.revision
       this.data = applyPending(cachedState, this.pending)
@@ -257,11 +391,12 @@ class UserStore {
     if (this.initPromise && !options.force) return this.initPromise
     const initEpoch = ++this.initEpoch
     this.state = 'loading'
-    const request = callFunction('userData', 'bootstrap')
+    const request = callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
       .then(async (data) => {
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         if (initEpoch !== this.initEpoch) return this.data
-        const cloudState = normalize(data)
+        const cloudState = normalizeCloud(data)
+        materializeLegacyMealOverrides(this.pending, cloudState)
         if (cloudState.stateRevision >= this.data.stateRevision) {
           this.data = applyPending(cloudState, this.pending)
         }
@@ -275,9 +410,11 @@ class UserStore {
       .catch((error) => {
         if (!this.isCurrentNamespace(namespace)) throw error
         if (initEpoch !== this.initEpoch) return this.data
-        this.state = this.data.activePlan ? 'offline' : 'error'
+        const canRestoreCache = Boolean(this.data.activePlan || this.data.draftPlan
+          || hasPending(this.pending) || this.hasCachedGenerationPreferences)
+        this.state = canRestoreCache ? 'offline' : 'error'
         this.error = error.message || '云端数据加载失败'
-        if (!this.data.activePlan && !this.data.draftPlan && !hasPending(this.pending)) throw error
+        if (!canRestoreCache) throw error
         return this.data
       })
       .finally(() => { if (this.initPromise === request) this.initPromise = null })
@@ -287,7 +424,10 @@ class UserStore {
 
   persistCache(namespace = this.namespace) {
     const key = this.isCurrentNamespace(namespace) ? cacheKey(namespace) : ''
-    if (key) wx.setStorageSync(key, this.data)
+    if (key) {
+      wx.setStorageSync(key, this.data)
+      this.hasCachedGenerationPreferences = true
+    }
   }
 
   persistPending(namespace = this.namespace) {
@@ -302,7 +442,7 @@ class UserStore {
 
   replaceFromCloud(value, namespace = this.requireNamespace({ loadCache: false })) {
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-    this.data = applyPending(normalize(value), this.pending)
+    this.data = applyPending(normalizeCloud(value), this.pending)
     this.state = hasPending(this.pending) ? 'saving' : 'ready'
     this.error = ''
     this.persistCache()
@@ -343,6 +483,16 @@ class UserStore {
         planUiPending.checkedOperations[id] = { checked: next.has(id), revision }
       })
     }
+    if (Object.prototype.hasOwnProperty.call(allowed, 'mealOverrides')) {
+      const previous = before.mealOverrides || {}
+      const next = this.data.mealOverrides || {}
+      new Set([...Object.keys(previous), ...Object.keys(next)]).forEach((mealId) => {
+        if (sameMealOverride(previous[mealId], next[mealId])) return
+        this.pending.mealOverrideOperations[mealId] = Object.prototype.hasOwnProperty.call(next, mealId)
+          ? { removed: false, value: next[mealId], revision }
+          : { removed: true, revision }
+      })
+    }
     this.pending.revision = revision
     this.persistPending(namespace)
     this.persistCache(namespace)
@@ -357,6 +507,9 @@ class UserStore {
       if (changedAt > revision) return
       delete this.pending.fieldRevisions[key]
       delete this.pending.fields[key]
+    })
+    Object.entries(this.pending.mealOverrideOperations).forEach(([mealId, operation]) => {
+      if (operation.revision <= revision) delete this.pending.mealOverrideOperations[mealId]
     })
     const clearPlanUi = (planUi) => {
       Object.entries(planUi.fieldRevisions).forEach(([key, changedAt]) => {
@@ -373,12 +526,11 @@ class UserStore {
       if (!planUiHasPending(planUi)) delete this.pending.planUiByPlan[planId]
     })
     clearPlanUi(this.pending.unscopedPlanUi)
-    const remaining = [
-      ...Object.values(this.pending.fieldRevisions),
-      ...Object.values(this.pending.planUiByPlan).flatMap(planUiRevisions),
-      ...planUiRevisions(this.pending.unscopedPlanUi),
-    ]
-    this.pending.revision = remaining.length ? Math.max(...remaining) : 0
+    if (this.pending.legacyMealOverridesReplacement
+      && this.pending.legacyMealOverridesReplacement.revision <= revision) {
+      this.pending.legacyMealOverridesReplacement = null
+    }
+    recomputePendingRevision(this.pending)
   }
 
   flush(targetRevision = this.localRevision) {
@@ -398,18 +550,28 @@ class UserStore {
 
   saveOnce(namespace) {
     this.state = 'saving'
+    const resolveLegacyReplacement = async () => {
+      if (!this.pending.legacyMealOverridesReplacement) return
+      const latest = normalizeCloud(await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace }))
+      if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+      materializeLegacyMealOverrides(this.pending, latest)
+      this.data = applyPending(latest, this.pending)
+      this.persistPending(namespace)
+      this.persistCache(namespace)
+    }
     const write = async (conflictRetries) => {
-      const snapshot = normalize(this.data)
+      const snapshot = normalizeStrict(this.data)
       const savedLocalRevision = this.localRevision
       try {
         const data = await callFunction('userData', 'saveState', {
           state: editableSnapshot(snapshot),
           expectedStateRevision: snapshot.stateRevision,
+          expectedCacheNamespace: namespace,
         })
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         this.confirmedLocalRevision = Math.max(this.confirmedLocalRevision, savedLocalRevision)
         this.clearPendingThrough(savedLocalRevision)
-        this.data = applyPending(normalize(data), this.pending)
+        this.data = applyPending(normalizeCloud(data), this.pending)
         this.state = hasPending(this.pending) ? 'saving' : 'ready'
         this.error = ''
         this.persistPending(namespace)
@@ -418,14 +580,19 @@ class UserStore {
       } catch (error) {
         if (!this.isCurrentNamespace(namespace)) throw error
         if (!isRevisionConflict(error) || conflictRetries < 1) throw error
-        const latest = await callFunction('userData', 'bootstrap')
+        const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-        this.data = applyPending(normalize(latest), this.pending)
+        const latestState = normalizeCloud(latest)
+        materializeLegacyMealOverrides(this.pending, latestState)
+        this.data = applyPending(latestState, this.pending)
         this.persistCache(namespace)
         return write(conflictRetries - 1)
       }
     }
-    const request = write(1).catch((error) => {
+    const operation = this.pending.legacyMealOverridesReplacement
+      ? resolveLegacyReplacement().then(() => (hasPending(this.pending) ? write(1) : this.data))
+      : write(1)
+    const request = operation.catch((error) => {
       if (!this.isCurrentNamespace(namespace)) throw error
       this.state = 'offline'
       this.error = error.message || '保存失败，已保留在本机'
@@ -440,24 +607,46 @@ class UserStore {
 
   savePreferences(preferences) { return this.patch({ generationPreferences: preferences }, { immediate: true }) }
 
-  async confirmDraft() {
+  setMealOverride(mealId, value, options = { immediate: true }) {
+    if (!validMealOverrideId(mealId)) return Promise.reject(new Error('餐食标识无效'))
+    const mealOverrides = { ...(this.data.mealOverrides || {}) }
+    if (value === null) delete mealOverrides[mealId]
+    else mealOverrides[mealId] = value
+    return this.patch({ mealOverrides }, options)
+  }
+
+  async confirmDraft(expectedDraftPlanId) {
+    if (!validPlanId(expectedDraftPlanId)) throw new Error('候选餐单标识无效，请刷新后重试')
     const namespace = this.requireNamespace()
     await this.flush()
-    const data = await callFunction('userData', 'confirmDraft', { expectedStateRevision: this.data.stateRevision })
+    const data = await callFunction('userData', 'confirmDraft', {
+      expectedDraftPlanId,
+      expectedStateRevision: this.data.stateRevision,
+      expectedCacheNamespace: namespace,
+    })
     return this.replaceFromCloud(data, namespace)
   }
 
-  async discardDraft() {
+  async discardDraft(expectedDraftPlanId) {
+    if (!validPlanId(expectedDraftPlanId)) throw new Error('候选餐单标识无效，请刷新后重试')
     const namespace = this.requireNamespace()
     await this.flush()
-    const data = await callFunction('userData', 'discardDraft', { expectedStateRevision: this.data.stateRevision })
+    const data = await callFunction('userData', 'discardDraft', {
+      expectedDraftPlanId,
+      expectedStateRevision: this.data.stateRevision,
+      expectedCacheNamespace: namespace,
+    })
     return this.replaceFromCloud(data, namespace)
   }
 
   async restoreHistory(planId) {
     const namespace = this.requireNamespace()
     await this.flush()
-    const data = await callFunction('userData', 'restoreHistory', { planId, expectedStateRevision: this.data.stateRevision })
+    const data = await callFunction('userData', 'restoreHistory', {
+      planId,
+      expectedStateRevision: this.data.stateRevision,
+      expectedCacheNamespace: namespace,
+    })
     return this.replaceFromCloud(data, namespace)
   }
 }

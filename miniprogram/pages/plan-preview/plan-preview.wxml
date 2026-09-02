@@ -1,40 +1,48 @@
 <view class="preview-page">
-  <view wx:if="{{viewState === 'loading'}}" class="state-panel" aria-label="正在加载候选计划">
+  <button class="page-navigation" bindtap="navigateFromPage" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+    <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+  </button>
+  <view wx:if="{{viewState === 'loading'}}" class="state-panel" aria-label="正在加载候选餐单">
     <view class="loading-line wide"></view>
     <view class="loading-line"></view>
     <view class="loading-block"></view>
-    <text class="state-copy">正在从云端读取候选计划</text>
+    <text class="state-copy">正在读取候选餐单</text>
   </view>
 
   <view wx:elif="{{viewState === 'error'}}" class="state-panel" aria-role="alert">
-    <text class="state-title">候选计划暂时无法加载</text>
+    <text class="state-title">候选餐单暂时无法加载</text>
     <text class="state-copy">{{errorMessage}}</text>
     <button class="primary-action state-action" bindtap="retry" hover-class="button-pressed">重新加载</button>
   </view>
 
   <view wx:elif="{{viewState === 'no-draft'}}" class="state-panel">
-    <text class="state-title">暂无待确认计划</text>
-    <text class="state-copy">先选择餐次、目标和运动安排，再生成一份候选计划。</text>
+    <text class="state-title">暂无待确认餐单</text>
+    <text class="state-copy">选择餐次、目标和运动安排后，即可生成餐单。</text>
     <button class="primary-action state-action" bindtap="backToPlanner" hover-class="button-pressed">返回调整条件</button>
   </view>
 
   <block wx:else>
-    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retry" hover-class="button-pressed" aria-role="button" aria-label="当前显示本机候选快照，点此重试连接">
-      <text>当前显示本机快照，确认前请点此重新连接云端</text>
+    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retry" hover-class="button-pressed" aria-role="button" aria-label="当前显示已保存内容，点此重试连接">
+      <text>当前显示已保存内容，确认前请重新连接</text>
     </view>
 
-    <view class="hero-section">
-      <text class="eyebrow">待确认计划</text>
+      <view class="hero-section">
+      <text class="eyebrow">待确认餐单</text>
       <text class="page-title">{{plan.title}}</text>
       <text class="date-range">{{plan.dateRange}}</text>
       <view class="meta-row">
         <text>{{plan.versionText}}</text>
         <text>生成于 {{plan.generatedText}}</text>
       </view>
-      <text class="safety-note">确认后才会替换当前计划。网络失败或版本冲突时，当前计划保持不变。</text>
-    </view>
+        <text class="safety-note">确认后才会替换当前餐单。网络失败或其他设备已更新时，当前餐单保持不变。</text>
+      </view>
 
-    <view wx:if="{{plan.basisRows.length}}" class="section-block">
+      <view wx:if="{{plan.isAiGenerated}}" class="ai-origin-notice" aria-label="AI 生成内容">
+        <text class="ai-origin-badge">AI 生成</text>
+        <text class="ai-origin-copy">这份候选餐单由人工智能生成，请核对食材、份量和个人约束后再确认。</text>
+      </view>
+
+      <view wx:if="{{plan.basisRows.length}}" class="section-block">
       <text class="section-title">生成依据</text>
       <view class="basis-list">
         <view wx:for="{{plan.basisRows}}" wx:key="label" class="basis-row">
@@ -83,9 +91,10 @@
     </view>
 
     <view class="action-area">
-      <button class="primary-action" loading="{{busyAction === 'confirm'}}" disabled="{{busyAction}}" bindtap="confirmPlan" hover-class="button-pressed">确认并应用计划</button>
+      <text class="safety-note">仅供日常饮食参考，不能替代医生或注册营养师建议。存在过敏、疾病或治疗相关限制时，请先咨询专业人员。</text>
+      <button class="primary-action" loading="{{busyAction === 'confirm'}}" disabled="{{busyAction}}" bindtap="confirmPlan" hover-class="button-pressed">确认并使用餐单</button>
       <button class="secondary-action" disabled="{{busyAction}}" bindtap="backToPlanner" hover-class="button-pressed">调整生成条件</button>
-      <button class="danger-action" loading="{{busyAction === 'discard'}}" disabled="{{busyAction}}" bindtap="discardPlan" hover-class="button-pressed">丢弃候选计划</button>
+      <button class="danger-action" loading="{{busyAction === 'discard'}}" disabled="{{busyAction}}" bindtap="discardPlan" hover-class="button-pressed">丢弃候选餐单</button>
     </view>
   </block>
 </view>

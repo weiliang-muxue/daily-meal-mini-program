@@ -6,6 +6,25 @@ const { membershipStore } = require('../../services/membership-store')
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 const SCENARIO_LABELS = { default: '', rest: '不运动备选', workout: '运动备选' }
 const EDITABLE_FIELDS = ['title', 'ingredients', 'method', 'tag']
+const PLAN_URL = '/pages/plan/plan'
+
+function canNavigateBack() {
+  try {
+    return typeof getCurrentPages === 'function' && getCurrentPages().length > 1
+  } catch (_) {
+    return false
+  }
+}
+
+function returnFromSecondaryPage() {
+  const goHome = () => wx.switchTab({ url: PLAN_URL })
+  if (!canNavigateBack() || typeof wx.navigateBack !== 'function') return goHome()
+  try {
+    return wx.navigateBack({ delta: 1, fail: goHome })
+  } catch (_) {
+    return goHome()
+  }
+}
 
 function cleanText(value, maxLength) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
@@ -90,8 +109,11 @@ function sameForm(left, right) {
 
 Page({
   data: {
+    canNavigateBack: false,
+    pageNavigationLabel: '返回餐单首页',
     loading: true,
     error: '',
+    errorAction: 'retry',
     mealId: '',
     planId: '',
     base: {},
@@ -101,17 +123,45 @@ Page({
     mealLabel: '',
     scenarioLabel: '',
     dayLabel: '',
+    isAiPlan: false,
     hasOverride: false,
     saving: false,
     resetting: false,
   },
 
   async onLoad(options) {
+    this.refreshPageNavigation()
     await this.load(options)
   },
 
+  onShow() {
+    this.refreshPageNavigation()
+  },
+
+  refreshPageNavigation() {
+    const canGoBack = canNavigateBack()
+    this.setData({
+      canNavigateBack: canGoBack,
+      pageNavigationLabel: canGoBack ? '返回上一页' : '返回餐单首页',
+    })
+  },
+
+  navigateFromPage() {
+    return returnFromSecondaryPage()
+  },
+
   async load(options, force = false) {
-    this.setData({ loading: true, error: '' })
+    const mealId = safeDecode(options && options.mealId)
+    if (!mealId || mealId.length > 120) {
+      this.setData({
+        loading: false,
+        error: '这份餐食已更新或不存在，请返回餐单重新选择',
+        errorAction: 'back',
+        mealId: '',
+      })
+      return
+    }
+    this.setData({ loading: true, error: '', errorAction: 'retry', mealId })
     try {
       const member = await membershipStore.init({ force })
       if (!member || member.status !== 'active') {
@@ -119,9 +169,6 @@ Page({
         return
       }
       await userStore.init({ force })
-      const mealId = safeDecode(options && options.mealId)
-      if (!mealId || mealId.length > 120) throw new Error('餐食标识无效')
-      this.setData({ mealId })
       const found = findPlanMeal(userStore.data.activePlan, mealId)
       if (!found) throw new Error('当前计划中没有这份餐食，计划可能已更新')
       const base = baseForm(found.meal)
@@ -145,6 +192,7 @@ Page({
         mealLabel: type,
         scenarioLabel: scenario,
         dayLabel: [date, dayName].filter(Boolean).join(' · '),
+        isAiPlan: found.plan.source === 'ai',
         hasOverride: Boolean(override),
       })
     } catch (error) {
@@ -154,6 +202,10 @@ Page({
 
   retry() {
     this.load({ mealId: encodeURIComponent(this.data.mealId) }, true)
+  },
+
+  backToPlan() {
+    wx.switchTab({ url: '/pages/plan/plan' })
   },
 
   input(event) {
@@ -175,13 +227,11 @@ Page({
       return
     }
     this.setData({ saving: true })
-    const mealOverrides = { ...(userStore.data.mealOverrides || {}) }
-    if (sameForm(form, this.data.base)) delete mealOverrides[this.data.mealId]
-    else mealOverrides[this.data.mealId] = { ...form, updatedAt: new Date().toISOString() }
+    const override = sameForm(form, this.data.base) ? null : { ...form, updatedAt: new Date().toISOString() }
     try {
-      await userStore.patch({ mealOverrides }, { immediate: true })
+      await userStore.setMealOverride(this.data.mealId, override)
       wx.showToast({ title: sameForm(form, this.data.base) ? '已恢复原计划' : '个人调整已保存', icon: 'success' })
-      setTimeout(() => wx.navigateBack(), 500)
+      setTimeout(() => this.navigateFromPage(), 500)
     } catch (error) {
       wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
       this.setData({ saving: false })
@@ -193,12 +243,10 @@ Page({
     wx.showModal({ title: '恢复原计划内容？', content: '只删除这份餐食的个人显示调整，不修改已确认计划和采购清单。', confirmText: '恢复', success: async ({ confirm }) => {
       if (!confirm) return
       this.setData({ resetting: true })
-      const mealOverrides = { ...(userStore.data.mealOverrides || {}) }
-      delete mealOverrides[this.data.mealId]
       try {
-        await userStore.patch({ mealOverrides }, { immediate: true })
+        await userStore.setMealOverride(this.data.mealId, null)
         wx.showToast({ title: '已恢复原计划', icon: 'success' })
-        setTimeout(() => wx.navigateBack(), 400)
+        setTimeout(() => this.navigateFromPage(), 400)
       } catch (error) {
         wx.showToast({ title: error.message || '恢复失败，请重试', icon: 'none' })
         this.setData({ resetting: false })

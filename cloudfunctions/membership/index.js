@@ -6,7 +6,8 @@ const {
   CONTROL_ID, configuration, normalizeControl, reserveInvite, consumeInvite, releaseInvite,
   transferOwner: transferOwnerControl,
   assertOperationalControl, reviseOperationalControl,
-  assertReactivationAllowed, controlFromSnapshot, isMemberRef, publicMember,
+  capacityExceeded, assertReactivationAllowed, controlFromSnapshot,
+  isMemberRef, isInviteRef, publicMember, publicInvite,
 } = require('./core')
 const { notFound } = require('./not-found')
 
@@ -14,7 +15,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const members = db.collection('meal_members')
 const invites = db.collection('meal_invites')
-const config = configuration(process.env)
+const config = configuration()
 
 function clean(value, maxLength = 40) { return typeof value === 'string' ? value.trim().slice(0, maxLength) : '' }
 function codeHash(value) { return crypto.createHash('sha256').update(clean(value).toUpperCase()).digest('hex') }
@@ -39,7 +40,15 @@ async function queryAll(collection, criteria) {
   }
 }
 
-function safeMember(member) {
+function safeMember(member, control) {
+  if (member && member.status === 'deleting') {
+    if (!isCacheNamespace(member.cacheNamespace)) {
+      const error = new Error('成员清理状态异常，请联系管理员')
+      error.code = 'MEMBERSHIP_INVARIANT_FAILED'
+      throw error
+    }
+    return { status: 'deleting', cacheNamespace: member.cacheNamespace }
+  }
   const active = Boolean(member && member.status === 'active')
   return {
     status: active ? 'active' : 'invite_required',
@@ -49,6 +58,7 @@ function safeMember(member) {
     maxMembers: config.maxMembers,
     inviteSlots: config.inviteSlots,
     inviteTtlHours: config.inviteTtlHours,
+    capacityExceeded: capacityExceeded(control, config),
     cacheNamespace: active && isCacheNamespace(member.cacheNamespace) ? member.cacheNamespace : '',
   }
 }
@@ -116,16 +126,19 @@ async function ensureMemberIdentity(openid, member) {
     if (Object.keys(data).length || needsControlUpgrade) {
       const nextControl = reviseOperationalControl(rawControl, config)
       await reference.update({ data: { ...data, updatedAt: db.serverDate() } })
-      await controlReference.update({ data: { ...nextControl, updatedAt: db.serverDate() } })
+      await controlReference.update({ data: {
+        ...nextControl, inviteSlots: config.inviteSlots, inviteTtlHours: config.inviteTtlHours,
+        updatedAt: db.serverDate(),
+      } })
     }
   })
   return readMember(openid)
 }
 
 async function requireOwner(openid) {
-  assertOperationalControl(await ensureControl(), config)
+  const control = assertOperationalControl(await ensureControl(), config)
   const member = await ensureMemberIdentity(openid, await readMember(openid))
-  if (!member || member.status !== 'active' || member.role !== 'owner') {
+  if (!member || member.status !== 'active' || member.role !== 'owner' || control.ownerOpenid !== openid) {
     const error = new Error('只有管理员可以管理成员')
     error.code = 'OWNER_REQUIRED'
     throw error
@@ -152,7 +165,7 @@ async function expireInvite(inviteId, now = Date.now()) {
 }
 
 async function cleanupExpiredInvites() {
-  assertOperationalControl(await ensureControl(), config)
+  assertOperationalControl(await ensureControl())
   const now = Date.now()
   const active = await queryAll('meal_invites', { active: true })
   for (const invite of active) {
@@ -160,14 +173,88 @@ async function cleanupExpiredInvites() {
   }
 }
 
+function inviteOrderValue(value) {
+  const timestamp = Number(value || 0)
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+async function revokeExcessInvite(inviteId) {
+  return db.runTransaction(async (transaction) => {
+    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
+    const inviteReference = transaction.collection('meal_invites').doc(inviteId)
+    const rawControl = await readDocument(controlReference)
+    const control = assertOperationalControl(rawControl)
+    if (!capacityExceeded(control, config) || control.reservedInviteCount < 1) return false
+    const invite = await readDocument(inviteReference)
+    const used = Number(invite && invite.usedCount || 0) >= Number(invite && invite.maxUses || 1)
+    if (!invite || invite.active !== true || used) return false
+    const next = releaseInvite(control)
+    await inviteReference.update({ data: {
+      active: false, capacityRevokedAt: db.serverDate(), updatedAt: db.serverDate(),
+    } })
+    await controlReference.update({ data: {
+      ...next, inviteSlots: config.inviteSlots, inviteTtlHours: config.inviteTtlHours,
+      updatedAt: db.serverDate(),
+    } })
+    return true
+  })
+}
+
+async function cleanupExcessInvites() {
+  const rawControl = await ensureControl()
+  const control = assertOperationalControl(rawControl)
+  if (!capacityExceeded(control, config) || control.reservedInviteCount < 1) return control
+  const active = await queryAll('meal_invites', { active: true })
+  const candidates = active
+    .filter((invite) => Number(invite.usedCount || 0) < Number(invite.maxUses || 1))
+    .sort((left, right) => (
+      inviteOrderValue(right.createdAt) - inviteOrderValue(left.createdAt)
+      || inviteOrderValue(right.expiresAt) - inviteOrderValue(left.expiresAt)
+      || String(right._id || '').localeCompare(String(left._id || ''))
+    ))
+  for (const invite of candidates) {
+    await revokeExcessInvite(invite._id)
+    const fresh = assertOperationalControl(await ensureControl())
+    if (!capacityExceeded(fresh, config) || fresh.reservedInviteCount < 1) return fresh
+  }
+  return assertOperationalControl(await ensureControl())
+}
+
+async function upgradeControlConfiguration() {
+  return db.runTransaction(async (transaction) => {
+    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
+    const rawControl = await readDocument(controlReference)
+    const control = assertOperationalControl(rawControl)
+    if (
+      Number(rawControl.inviteSlots) === config.inviteSlots
+      && Number(rawControl.inviteTtlHours) === config.inviteTtlHours
+    ) return control
+    const next = reviseOperationalControl(control)
+    await controlReference.update({ data: {
+      ...next, inviteSlots: config.inviteSlots, inviteTtlHours: config.inviteTtlHours,
+      updatedAt: db.serverDate(),
+    } })
+    return next
+  })
+}
+
+async function reconcileInvites() {
+  await cleanupExpiredInvites()
+  await cleanupExcessInvites()
+  return upgradeControlConfiguration()
+}
+
 async function status(openid) {
-  assertOperationalControl(await ensureControl(), config)
-  return safeMember(await ensureMemberIdentity(openid, await readMember(openid)))
+  assertOperationalControl(await ensureControl())
+  await reconcileInvites()
+  const member = await ensureMemberIdentity(openid, await readMember(openid))
+  const control = assertOperationalControl(await ensureControl())
+  return safeMember(member, control)
 }
 
 async function uniqueInvite() {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const code = randomHex(5).toUpperCase()
+    const code = randomHex(16).toUpperCase()
     const hash = codeHash(code)
     const result = await invites.where({ codeHash: hash }).limit(1).get()
     if (!result.data.length) return { id: randomHex(16), code, hash }
@@ -179,7 +266,7 @@ async function uniqueInvite() {
 
 async function createInvite(openid, label) {
   await requireOwner(openid)
-  await cleanupExpiredInvites()
+  await reconcileInvites()
   const invitation = await uniqueInvite()
   const now = Date.now()
   const expiresAt = now + config.inviteTtlMs
@@ -206,16 +293,62 @@ async function createInvite(openid, label) {
       ...next, inviteSlots: config.inviteSlots, inviteTtlHours: config.inviteTtlHours, updatedAt: db.serverDate(),
     } })
   })
-  return { id: invitation.id, code: invitation.code, expiresAt }
+  return { inviteRef: invitation.id, code: invitation.code, expiresAt }
+}
+
+async function revokeInvite(openid, inviteRef) {
+  await requireOwner(openid)
+  await reconcileInvites()
+  const targetRef = typeof inviteRef === 'string' ? inviteRef.trim().toLowerCase() : ''
+  if (!isInviteRef(targetRef)) {
+    const error = new Error('邀请引用无效')
+    error.code = 'INVITE_REFERENCE_INVALID'
+    throw error
+  }
+  await ensureControl()
+  return db.runTransaction(async (transaction) => {
+    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
+    const ownerReference = transaction.collection('meal_members').doc(openid)
+    const inviteReference = transaction.collection('meal_invites').doc(targetRef)
+    const rawControl = await readDocument(controlReference)
+    assertOperationalControl(rawControl, config)
+    const owner = await readDocument(ownerReference)
+    const invite = await readDocument(inviteReference)
+    if (!owner || owner.status !== 'active' || owner.role !== 'owner'
+      || normalizeControl(rawControl).ownerOpenid !== openid) {
+      const error = new Error('只有当前管理员可以撤销邀请')
+      error.code = 'OWNER_REQUIRED'
+      throw error
+    }
+    if (!invite) {
+      const error = new Error('邀请引用无效')
+      error.code = 'INVITE_REFERENCE_INVALID'
+      throw error
+    }
+    const used = Number(invite.usedCount || 0) >= Number(invite.maxUses || 1)
+    if (invite.active !== true || used) return { revoked: false }
+    const next = releaseInvite(rawControl)
+    const expired = inviteExpired(invite.expiresAt)
+    await inviteReference.update({ data: {
+      active: false,
+      ...(expired ? { expiredAt: db.serverDate() } : { revokedAt: db.serverDate() }),
+      updatedAt: db.serverDate(),
+    } })
+    await controlReference.update({ data: {
+      ...next, inviteSlots: config.inviteSlots, inviteTtlHours: config.inviteTtlHours, updatedAt: db.serverDate(),
+    } })
+    return { revoked: !expired }
+  })
 }
 
 async function acceptInvite(openid, code) {
-  assertOperationalControl(await ensureControl(), config)
+  assertOperationalControl(await ensureControl())
   const current = await ensureMemberIdentity(openid, await readMember(openid))
   assertReactivationAllowed(current)
-  if (current && current.status === 'active') return safeMember(current)
-  await ensureControl()
-  await cleanupExpiredInvites()
+  await reconcileInvites()
+  if (current && current.status === 'active') {
+    return safeMember(current, assertOperationalControl(await ensureControl()))
+  }
   const hash = codeHash(code)
   const result = await invites.where({ codeHash: hash, active: true }).limit(2).get()
   if (result.data.length !== 1) {
@@ -267,17 +400,29 @@ async function acceptInvite(openid, code) {
 
 async function listMembers(openid) {
   await requireOwner(openid)
+  await reconcileInvites()
   const active = await queryAll('meal_members', { status: 'active' })
   for (const member of active) await ensureMemberIdentity(member._id, member)
   await requireOwner(openid)
   const fresh = await queryAll('meal_members', { status: 'active' })
+  const activeInvites = (await queryAll('meal_invites', { active: true }))
+    .filter((invite) => (
+      isInviteRef(invite._id)
+      && !inviteExpired(invite.expiresAt)
+      && Number(invite.usedCount || 0) < Number(invite.maxUses || 1)
+    ))
+    .sort((left, right) => Number(left.expiresAt || 0) - Number(right.expiresAt || 0))
+  await requireOwner(openid)
   const ordered = fresh.sort((left, right) => (left.role === 'owner' ? -1 : right.role === 'owner' ? 1 : 0))
+  const control = assertOperationalControl(await ensureControl())
   return {
     count: ordered.length,
     maxMembers: config.maxMembers,
     inviteSlots: config.inviteSlots,
     inviteTtlHours: config.inviteTtlHours,
+    capacityExceeded: capacityExceeded(control, config),
     members: ordered.map((member, index) => publicMember(member, index)),
+    activeInvites: activeInvites.map(publicInvite),
   }
 }
 
@@ -288,6 +433,7 @@ async function transferOwner(openid, memberRef, confirmed) {
     throw error
   }
   await requireOwner(openid)
+  await reconcileInvites()
   const targetRef = clean(memberRef, 32).toLowerCase()
   if (!isMemberRef(targetRef)) {
     const error = new Error('接任成员引用无效')
@@ -340,6 +486,7 @@ function publicError(error) {
     MEMBER_REFERENCE_MISSING: '成员引用尚未初始化，请重试',
     TRANSFER_CONFIRMATION_REQUIRED: '请在客户端二次确认管理员转移',
     TRANSFER_TARGET_INVALID: '接任成员不存在或状态已变化',
+    INVITE_REFERENCE_INVALID: '邀请不存在或状态已变化',
     ACCOUNT_DELETION_IN_PROGRESS: '账号数据正在删除，请等待完成后再重新加入',
     MEMBERSHIP_NOT_INITIALIZED: '成员服务尚未初始化，请联系管理员',
     MEMBERSHIP_BOOTSTRAP_IN_PROGRESS: '管理员初始化正在进行，请稍后重试',
@@ -360,6 +507,7 @@ exports.main = async (event = {}) => {
     if (event.action === 'acceptInvite') return { success: true, data: await acceptInvite(OPENID, event.code) }
     if (event.action === 'createInvite') return { success: true, data: await createInvite(OPENID, event.label) }
     if (event.action === 'listMembers') return { success: true, data: await listMembers(OPENID) }
+    if (event.action === 'revokeInvite') return { success: true, data: await revokeInvite(OPENID, event.inviteRef) }
     if (event.action === 'transferOwner') return { success: true, data: await transferOwner(OPENID, event.memberRef, event.confirmed) }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的成员操作' }
   } catch (error) {
@@ -369,6 +517,7 @@ exports.main = async (event = {}) => {
 }
 
 exports._test = {
-  ensureControl, cleanupExpiredInvites, publicError, inviteExpired,
-  status, createInvite, acceptInvite, transferOwner, expireInvite,
+  ensureControl, cleanupExpiredInvites, cleanupExcessInvites, reconcileInvites,
+  revokeExcessInvite, upgradeControlConfiguration, publicError, inviteExpired,
+  status, createInvite, acceptInvite, listMembers, revokeInvite, transferOwner, expireInvite,
 }
