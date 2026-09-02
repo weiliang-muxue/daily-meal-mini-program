@@ -1,0 +1,76 @@
+name: Trusted pull request security
+
+on:
+  pull_request_target:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  trusted-pr-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out trusted default-branch policy
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Bind candidate and scan with trusted policy
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPOSITORY: ${{ github.repository }}
+          PR_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_OID: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_OID: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$PR_NUMBER" in (*[!0-9]*|'') echo "Invalid Pull Request number." >&2; exit 1;; esac
+          case "$PR_DEFAULT_BRANCH" in (*[!A-Za-z0-9._/-]*|*..*|'') echo "Invalid default Branch." >&2; exit 1;; esac
+
+          git fetch --no-tags origin \
+            "+refs/heads/$PR_DEFAULT_BRANCH:refs/remotes/origin/$PR_DEFAULT_BRANCH" \
+            "+refs/pull/$PR_NUMBER/head:refs/remotes/pull-request/$PR_NUMBER/head"
+
+          export PR_DEFAULT_OID="$(git rev-parse --verify "refs/remotes/origin/$PR_DEFAULT_BRANCH^{commit}")"
+          export PR_FETCHED_OID="$(git rev-parse --verify "refs/remotes/pull-request/$PR_NUMBER/head^{commit}")"
+          export PR_WORKING_VERSION="$(git show "$PR_FETCHED_OID:release-manifest.json" | node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => { input += chunk });
+            process.stdin.on("end", () => {
+              let value;
+              try { value = JSON.parse(input).workingVersion } catch (_) { process.exit(1) }
+              if (typeof value !== "string" || !/^\d+\.\d+\.\d+$/.test(value)) process.exit(1)
+              process.stdout.write(value)
+            });
+          ')"
+
+          git fetch --no-tags origin \
+            "+refs/heads/v$PR_WORKING_VERSION:refs/remotes/origin/v$PR_WORKING_VERSION"
+          export PR_CANDIDATE_OID="$(git rev-parse --verify "refs/remotes/origin/v$PR_WORKING_VERSION^{commit}")"
+          export PR_CANDIDATE_TREE_OID="$(git show -s --format=%T "$PR_CANDIDATE_OID")"
+          export PR_FETCHED_TREE_OID="$(git show -s --format=%T "$PR_FETCHED_OID")"
+
+          node scripts/release-gate.js --trusted-pr-binding
+          git merge-base --is-ancestor "$PR_BASE_OID" "$PR_FETCHED_OID" || {
+            echo "Pull Request head must contain the selected base commit." >&2
+            exit 1
+          }
+          node scripts/check-staged-safety.js \
+            --range "$PR_BASE_OID" "$PR_FETCHED_OID" "refs/heads/$PR_HEAD_REF"

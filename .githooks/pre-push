@@ -1,3 +1,81 @@
 #!/bin/sh
 
-node scripts/check-staged-safety.js --pre-push
+set -u
+
+scanner='scripts/check-staged-safety.js'
+remote_name="${1:-}"
+trusted_scanner=''
+push_updates=''
+
+cleanup() {
+  if [ -n "$trusted_scanner" ]; then rm -f -- "$trusted_scanner"; fi
+  if [ -n "$push_updates" ]; then rm -f -- "$push_updates"; fi
+}
+
+trap cleanup EXIT HUP INT TERM
+
+if ! git cat-file -e "HEAD:$scanner" 2>/dev/null; then
+  echo "Safety check refused: $scanner is missing from HEAD." >&2
+  exit 1
+fi
+
+if ! git ls-files --error-unmatch -- "$scanner" >/dev/null 2>&1; then
+  echo "Safety check refused: $scanner is missing from the index." >&2
+  exit 1
+fi
+
+if ! git diff --no-ext-diff --quiet -- "$scanner"; then
+  echo "Safety check refused: working-tree $scanner differs from the index." >&2
+  echo "Commit or restore the scanner before pushing." >&2
+  exit 1
+fi
+
+if ! git diff --cached --no-ext-diff --quiet HEAD -- "$scanner"; then
+  echo "Safety check refused: indexed $scanner differs from HEAD." >&2
+  echo "Commit or restore the scanner before pushing." >&2
+  exit 1
+fi
+
+case "$remote_name" in
+  ''|*[!A-Za-z0-9._/-]*)
+    echo "Safety check refused: push remote name is invalid." >&2
+    exit 1
+    ;;
+esac
+
+default_ref="$(git ls-remote --symref "$remote_name" HEAD 2>/dev/null \
+  | sed -n 's/^ref: \(refs\/heads\/[A-Za-z0-9._\/-]*\)[[:space:]]HEAD$/\1/p' \
+  | sed -n '1p')"
+case "$default_ref" in
+  refs/heads/*) ;;
+  *)
+    echo "Safety check refused: cannot resolve the remote default Branch." >&2
+    exit 1
+    ;;
+esac
+
+if ! git fetch --quiet --no-tags "$remote_name" "+$default_ref"; then
+  echo "Safety check refused: cannot fetch the trusted remote default Branch." >&2
+  exit 1
+fi
+trusted_oid="$(git rev-parse --verify 'FETCH_HEAD^{commit}' 2>/dev/null)" || {
+  echo "Safety check refused: cannot resolve the trusted remote default commit." >&2
+  exit 1
+}
+
+trusted_scanner="$(mktemp "${TMPDIR:-/tmp}/meal-safety.XXXXXX.js")" || {
+  echo "Safety check refused: cannot create a temporary trusted scanner." >&2
+  exit 1
+}
+push_updates="$(mktemp "${TMPDIR:-/tmp}/meal-push.XXXXXX")" || {
+  echo "Safety check refused: cannot preserve pre-push updates." >&2
+  exit 1
+}
+if ! git show "$trusted_oid:$scanner" > "$trusted_scanner"; then
+  echo "Safety check refused: trusted remote default Branch has no scanner." >&2
+  exit 1
+fi
+cat > "$push_updates"
+
+node "$trusted_scanner" --pre-push < "$push_updates" || exit $?
+node "$scanner" --pre-push < "$push_updates"

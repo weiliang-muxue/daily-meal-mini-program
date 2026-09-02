@@ -1,2 +1,42 @@
 #!/bin/sh
-node scripts/check-staged-safety.js --staged
+
+set -u
+
+scanner='scripts/check-staged-safety.js'
+trusted_scanner=''
+
+cleanup() {
+  if [ -n "$trusted_scanner" ]; then
+    rm -f -- "$trusted_scanner"
+  fi
+}
+
+trap cleanup EXIT HUP INT TERM
+
+if ! git cat-file -e "HEAD:$scanner" 2>/dev/null; then
+  echo "Safety check refused: trusted HEAD copy of $scanner is missing." >&2
+  exit 1
+fi
+
+if ! git ls-files --error-unmatch -- "$scanner" >/dev/null 2>&1; then
+  echo "Safety check refused: $scanner is missing from the staged index." >&2
+  exit 1
+fi
+
+if ! git diff --no-ext-diff --quiet -- "$scanner"; then
+  echo "Safety check refused: $scanner differs from the staged index." >&2
+  echo "Stage or restore the scanner before committing." >&2
+  exit 1
+fi
+
+trusted_scanner="$(mktemp "${TMPDIR:-/tmp}/meal-safety.XXXXXX.js")" || {
+  echo "Safety check refused: cannot create a temporary trusted scanner." >&2
+  exit 1
+}
+if ! git show "HEAD:$scanner" > "$trusted_scanner"; then
+  echo "Safety check refused: cannot read the trusted HEAD scanner." >&2
+  exit 1
+fi
+
+node "$trusted_scanner" --staged || exit $?
+node "$scanner" --staged

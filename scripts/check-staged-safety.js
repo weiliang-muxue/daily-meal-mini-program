@@ -9,6 +9,29 @@ const ZERO_OID = /^0+$/
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
 const MAX_METADATA_BYTES = 64 * 1024
 const REGULAR_FILE_MODES = new Set(['100644', '100755'])
+const SECURITY_POLICY_PATHS = new Set([
+  '.github/workflows/validate.yml',
+  '.github/workflows/trusted-pr-security.yml',
+  '.githooks/pre-commit',
+  '.githooks/pre-push',
+  'CHANGELOG.md',
+  'docs/ITERATION_LOG.md',
+  'docs/RELEASE_CHECKLIST.md',
+  'docs/VERSIONING.md',
+  'scripts/check-staged-safety.js',
+  'scripts/check-staged-safety.test.js',
+  'scripts/git-hooks.test.js',
+  'scripts/release-gate.js',
+  'scripts/release-gate.test.js',
+  'scripts/validate.js',
+])
+const SECURITY_TRUST_ROOT_PATHS = new Set([
+  '.github/workflows/trusted-pr-security.yml',
+  '.githooks/pre-commit',
+  '.githooks/pre-push',
+  'scripts/check-staged-safety.js',
+  'scripts/release-gate.js',
+])
 const TEXT_BASENAMES = new Set([
   '.gitignore', '.gitattributes', 'license', 'license.txt', 'notice', 'notice.txt',
 ])
@@ -38,6 +61,54 @@ const ASSET_ALLOWLIST = Object.freeze({
     sha256: '29aea82c675c55ae70c58667030445f676e873c721f04dff3bfc7046c8200024',
     signature: Buffer.from('ffd8ff', 'hex'),
   }),
+  'miniprogram/assets/icons/tabbar/plan.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: '1ba01fe66862e36e2b6c9965c40bd43e97d38a20976068e40947b4fa7e37cdd3',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/plan-selected.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: '2e729682fd2c275c865512de8f992c5f097b7ff7676632c6ad15aa83b2aadb12',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/record.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: '81f0bd18494af3d542fffbf369597adc3fd0f533b7749f22c6c869b263b20a7f',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/record-selected.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: 'c75a212ba11ee30d0ece8abe3ad93ccd54d71b9d28044c9fd066ba1899f6da6b',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/shopping.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: '90b6163e89124cc34675d2a2b890c16a12c46895b294a0e9f90604e994e84d7a',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/shopping-selected.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: 'f49c596066bc4196883f4b8cc185a9029d7b86b002e4ccc99686558de3cd8c71',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/profile.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: 'b196949a5c9c45c7b66a050d376c1d2d36f4f7eaa6c39302529c08d98988d57b',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+  'miniprogram/assets/icons/tabbar/profile-selected.png': Object.freeze({
+    maxBytes: 8 * 1024,
+    sha256: '1672af263bd5efc2f9a4cf1a97751f75a12a7c5373132766a1644c9f4d8a0044',
+    signature: Buffer.from('89504e470d0a1a0a', 'hex'),
+  }),
+})
+const REVIEWED_HISTORICAL_ASSIGNMENT_ALLOWLIST = Object.freeze({
+  'cloudfunctions/aiPlanner/.env.example': new Set([
+    '7d8a49158c5bdf78bd6710627df6f683d8b5fa4b124d554e0d11f190237803d6',
+  ]),
+  'cloudfunctions/aiPlanner/provider-config.test.js': new Set([
+    '1c5f48af2589536486b584a87cc0ef9a81c7ae14ed006d05e8fdac2c8f08d98b',
+  ]),
 })
 const environmentFilePath = /(^|\/)\.env(?:\..+)?$/i
 const forbiddenPaths = [
@@ -231,6 +302,26 @@ function unsafeAssignmentReason(text) {
   return ''
 }
 
+function dotenvAssignmentReason(file, text) {
+  if (!allowedEnvironmentExample.test(normalizedPath(file))) return ''
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/)
+    if (!match) continue
+    const [, rawName, value] = match
+    const field = assignmentFieldKind(rawName)
+    if (!field || /^['"`]/.test(value)) continue
+    const allowed = safePlaceholderValuesByName.get(field.canonical)
+    const exactPlaceholder = Boolean(allowed && allowed.has(value))
+    const environmentReference = /^\$\{[A-Z][A-Z0-9_]{0,63}\}$/.test(value)
+    if (!exactPlaceholder && !environmentReference) {
+      return field.kind === 'identity'
+        ? '检测到疑似硬编码微信身份标识'
+        : '检测到疑似真实密钥变量赋值'
+    }
+  }
+  return ''
+}
+
 function patternMatches(pattern, text) {
   pattern.lastIndex = 0
   const matches = []
@@ -304,9 +395,16 @@ function pathReason(file) {
   return ''
 }
 
-function secretReason(text) {
+function secretReason(text, options = {}) {
   if (directSecretPatterns.some((pattern) => pattern.test(text))) return '检测到疑似真实密钥、AppID 或私钥'
-  return unsafeAssignmentReason(text)
+  if (options.skipUnsafeAssignment === true) return ''
+  return dotenvAssignmentReason(options.file, text) || unsafeAssignmentReason(text)
+}
+
+function reviewedHistoricalAssignment(file, content, allowlist = REVIEWED_HISTORICAL_ASSIGNMENT_ALLOWLIST) {
+  const allowed = allowlist[normalizedPath(file)]
+  if (!allowed) return false
+  return allowed.has(crypto.createHash('sha256').update(content).digest('hex'))
 }
 
 function validUtf8(content) {
@@ -315,7 +413,7 @@ function validUtf8(content) {
   return !decoded.includes('\ufffd') && Buffer.from(decoded, 'utf8').equals(content)
 }
 
-function blobReason(file, content) {
+function blobReason(file, content, options = {}) {
   const pathError = pathReason(file)
   if (pathError) return pathError
   const normalized = normalizedPath(file)
@@ -330,7 +428,9 @@ function blobReason(file, content) {
   if (content.length > MAX_TEXT_BYTES) return '公开文本源码超过大小上限'
   if (!validUtf8(content)) return '公开文本源码必须是有效 UTF-8 且不能包含二进制内容'
   const text = content.toString('utf8')
-  return secretReason(text) || personalDataReason(file, text)
+  const skipUnsafeAssignment = options.reviewedHistory === true
+    && reviewedHistoricalAssignment(file, content)
+  return secretReason(text, { file: normalized, skipUnsafeAssignment }) || personalDataReason(file, text)
 }
 
 function metadataReason(text) {
@@ -351,6 +451,31 @@ function git(args, options = {}) {
   return execFileSync('git', args, { maxBuffer: 32 * 1024 * 1024, ...options })
 }
 
+function nulFields(buffer) {
+  return buffer.toString('utf8').split('\0').filter(Boolean).map(normalizedPath)
+}
+
+function policyIsolationReason(files) {
+  const changed = [...new Set((files || []).map(normalizedPath))]
+  const trustRootFiles = changed.filter((file) => SECURITY_TRUST_ROOT_PATHS.has(file))
+  if (!trustRootFiles.length) return ''
+  const businessFiles = changed.filter((file) => !SECURITY_POLICY_PATHS.has(file))
+  if (!businessFiles.length) return ''
+  return `安全信任根只能通过独立策略变更升级；本批次同时修改 ${trustRootFiles.slice(0, 5).join('、')} 和业务文件：${businessFiles.slice(0, 5).join('、')}`
+}
+
+function indexChangedPaths() {
+  return nulFields(git(['diff', '--cached', '--name-only', '-z', 'HEAD', '--']))
+}
+
+function rangeChangedPaths(base, head) {
+  if (!base || ZERO_OID.test(base)) return []
+  const baseCommit = peelCommit(base)
+  const targetCommit = peelCommit(head || 'HEAD')
+  if (!baseCommit || !targetCommit) return []
+  return nulFields(git(['diff', '--name-only', '-z', `${baseCommit}..${targetCommit}`, '--']))
+}
+
 function indexEntries() {
   return git(['ls-files', '--stage', '-z']).toString('utf8').split('\0').filter(Boolean).map((record) => {
     const match = record.match(/^(\d{6}) ([a-f0-9]+) (\d)\t([\s\S]+)$/)
@@ -367,8 +492,8 @@ function gitEntryReason(mode, type = 'blob', stage = 0) {
   return ''
 }
 
-function inspectBlob(file, content, errors, label = '') {
-  const reason = blobReason(file, content)
+function inspectBlob(file, content, errors, label = '', options = {}) {
+  const reason = blobReason(file, content, options)
   if (reason) errors.push(`${label}${file}: ${reason}`)
 }
 
@@ -376,6 +501,8 @@ function checkIndex() {
   const entries = indexEntries()
   const files = [...new Set(entries.map((entry) => entry.file))]
   const errors = []
+  const isolationError = policyIsolationReason(indexChangedPaths())
+  if (isolationError) errors.push(`security-policy: ${isolationError}`)
   for (const entry of entries) {
     const { file } = entry
     const entryError = gitEntryReason(entry.mode, 'blob', entry.stage)
@@ -509,7 +636,7 @@ function checkCommitTree(commit, errors, inspected) {
       errors.push(`${commit.slice(0, 12)}:${file}: 无法读取 Git 对象`)
       continue
     }
-    inspectBlob(file, content, errors, `${commit.slice(0, 12)}:`)
+    inspectBlob(file, content, errors, `${commit.slice(0, 12)}:`, { reviewedHistory: true })
   }
 }
 
@@ -525,6 +652,8 @@ function checkRange(base, head, options = {}) {
   const inspected = new Set()
   const refs = []
   const ref = options.ref || ''
+  const isolationError = policyIsolationReason(rangeChangedPaths(base, head))
+  if (isolationError) errors.push(`security-policy: ${isolationError}`)
   if (ref) {
     refs.push(ref)
     const reason = refReason(ref)
@@ -571,6 +700,13 @@ function checkPushInput(input) {
       errors.push(update.error)
       continue
     }
+    const versionTag = /^refs\/tags\/v\d+\.\d+\.\d+$/.test(update.remoteRef)
+    if (versionTag && !ZERO_OID.test(update.remoteOid)) {
+      const operation = ZERO_OID.test(update.localOid) ? '删除' : '移动或覆盖'
+      errors.push(`${update.remoteRef}: 已存在的版本 Tag 禁止${operation}；请发布新的补丁版本`)
+      refs.push(update.remoteRef)
+      continue
+    }
     if (ZERO_OID.test(update.localOid)) continue
     const result = checkRange(update.remoteOid, update.localOid, { ref: update.remoteRef })
     result.files.forEach((file) => files.add(file))
@@ -611,12 +747,18 @@ if (require.main === module) {
 
 module.exports = {
   ASSET_ALLOWLIST,
+  SECURITY_POLICY_PATHS,
+  SECURITY_TRUST_ROOT_PATHS,
+  REVIEWED_HISTORICAL_ASSIGNMENT_ALLOWLIST,
   MAX_TEXT_BYTES,
   pathReason,
   secretReason,
+  dotenvAssignmentReason,
+  reviewedHistoricalAssignment,
   blobReason,
   metadataReason,
   refReason,
+  policyIsolationReason,
   checkIndex,
   checkWorktree,
   checkRange,
