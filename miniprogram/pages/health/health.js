@@ -35,6 +35,22 @@ function sameExercise(left, right) {
     && left.intensity === right.intensity
 }
 
+function hasSavedPhoto(record) {
+  return Boolean(record && (record.hasPhoto || record.photoFileId || record.photoUrl))
+}
+
+function recordDraftChanged(data) {
+  const saved = data.selectedRecord || null
+  const savedWeight = saved && typeof saved.weight === 'number' ? String(saved.weight) : ''
+  const savedNote = saved && typeof saved.note === 'string' ? saved.note : ''
+  const photoChanged = Boolean(data.photoLocalPath)
+    || (Boolean(data.clearPhoto) && hasSavedPhoto(saved))
+  return String(data.weight == null ? '' : data.weight) !== savedWeight
+    || String(data.note == null ? '' : data.note) !== savedNote
+    || !sameExercise(normalizedExercise(saved && saved.exercise), exerciseDraft(data))
+    || photoChanged
+}
+
 function exercisePresentation(savedValue, draftValue) {
   const saved = normalizedExercise(savedValue)
   const draft = exerciseDraft(draftValue)
@@ -70,7 +86,7 @@ Page({
     exerciseStatusSymbol: '—', exerciseStatusHint: '打开开关，记录当天完成的运动', saveButtonText: '保存当天记录',
     weightError: '', exerciseTypeError: '', exerciseDurationError: '', exerciseIntensityError: '', formError: '', exerciseSwitchColor: '#176B46',
     photoPreview: '', photoFileId: '', photoLocalPath: '', clearPhoto: false, photoPrivacyError: '',
-    choosingPhoto: false, saving: false, loading: true, error: '', offline: false,
+    choosingPhoto: false, saving: false, loading: true, error: '', offline: false, recordDirty: false,
     trendMetric: 'weight', trendMode: 'month', trendRecords: [], trendSummary: '本月暂无体重记录',
     weekTrendIncomplete: false, weekTrendNotice: '', weekExerciseCountDisplay: '0', weekExerciseMinutesDisplay: '0',
     weekExerciseCount: 0, weekExerciseMinutes: 0, hasWeekExercise: false,
@@ -89,7 +105,53 @@ Page({
   onUnload() {
     clearTimeout(this.trendDrawTimer)
     this.weekTrendLoadToken = (this.weekTrendLoadToken || 0) + 1
+    this.setUnloadAlert(false)
     if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
+  },
+
+  hasUnsavedRecordChanges() {
+    return !this.data.loading && !this.data.error && recordDraftChanged(this.data)
+  },
+  setUnloadAlert(enabled) {
+    if (enabled === this.unloadAlertEnabled) return
+    if (enabled && typeof wx.enableAlertBeforeUnload === 'function') {
+      try {
+        wx.enableAlertBeforeUnload({ message: '当天记录还有未保存的修改，离开后将丢失这些内容。' })
+        this.unloadAlertEnabled = true
+      } catch (_) {}
+      return
+    }
+    if (!enabled && this.unloadAlertEnabled && typeof wx.disableAlertBeforeUnload === 'function') {
+      try { wx.disableAlertBeforeUnload() } catch (_) {}
+    }
+    if (!enabled) this.unloadAlertEnabled = false
+  },
+  refreshDraftState() {
+    const recordDirty = this.hasUnsavedRecordChanges()
+    if (recordDirty !== this.data.recordDirty) this.setData({ recordDirty })
+    this.setUnloadAlert(recordDirty)
+    return recordDirty
+  },
+  async confirmDiscardDraft(content) {
+    if (!this.refreshDraftState()) return true
+    if (this.discardPromptPending) return false
+    this.discardPromptPending = true
+    const confirmed = await new Promise((resolve) => {
+      try {
+        wx.showModal({
+          title: '放弃未保存的记录？',
+          content,
+          confirmText: '放弃修改',
+          confirmColor: '#A33F2B',
+          cancelText: '继续编辑',
+          success: ({ confirm }) => resolve(Boolean(confirm)),
+          fail: () => resolve(false),
+        })
+      } catch (_) { resolve(false) }
+    })
+    this.discardPromptPending = false
+    if (confirmed) this.setUnloadAlert(false)
+    return confirmed
   },
 
   async loadMonth(force = false) {
@@ -105,7 +167,7 @@ Page({
       savedExerciseCompleted: false, exerciseDirty: false, exerciseStatus: '未打卡', exerciseStatusTone: 'idle',
       exerciseStatusSymbol: '—', exerciseStatusHint: '打开开关，记录当天完成的运动', saveButtonText: '保存当天记录',
       weightError: '', exerciseTypeError: '', exerciseDurationError: '', exerciseIntensityError: '', formError: '',
-      photoPrivacyError: '', choosingPhoto: false,
+      photoPrivacyError: '', choosingPhoto: false, recordDirty: false,
       trendRecords: [], trendSummary: '正在读取记录', weekExerciseCount: 0, weekExerciseMinutes: 0,
       weekTrendIncomplete: false, weekTrendNotice: '', weekExerciseCountDisplay: '0', weekExerciseMinutesDisplay: '0',
       hasWeekExercise: false, monthExerciseCount: 0, monthExerciseMinutes: 0, hasMonthExercise: false,
@@ -132,7 +194,10 @@ Page({
     }
   },
 
-  retryLoad() { return this.loadMonth(true) },
+  async retryLoad() {
+    if (!await this.confirmDiscardDraft('重新加载会丢失当前日期尚未保存的体重、运动、照片和备注。')) return false
+    return this.loadMonth(true)
+  },
 
   renderCalendar() {
     const exercised = this.data.records.filter((item) => item.exercise && item.exercise.completed)
@@ -145,15 +210,23 @@ Page({
     this.drawTrendSoon()
   },
 
-  previousMonth() { this.changeMonth(-1) },
-  nextMonth() { this.changeMonth(1) },
-  changeMonth(offset) {
+  previousMonth() { return this.changeMonth(-1) },
+  nextMonth() { return this.changeMonth(1) },
+  async changeMonth(offset) {
+    if (this.data.saving || this.data.choosingPhoto) return false
+    if (!await this.confirmDiscardDraft('切换月份会丢失当前日期尚未保存的体重、运动、照片和备注。')) return false
     const month = shiftMonth(this.data.month, offset)
-    this.setData({ month, selectedDate: `${month}-01` })
-    this.loadMonth()
+    this.setData({ month, selectedDate: `${month}-01`, recordDirty: false })
+    return this.loadMonth()
   },
 
-  selectDate(event) { if (event.currentTarget.dataset.date) this.selectDateValue(event.currentTarget.dataset.date) },
+  async selectDate(event) {
+    const date = event.currentTarget.dataset.date
+    if (!date || date === this.data.selectedDate || this.data.saving || this.data.choosingPhoto) return false
+    if (!await this.confirmDiscardDraft('切换日期会丢失当前日期尚未保存的体重、运动、照片和备注。')) return false
+    this.selectDateValue(date)
+    return true
+  },
   selectDateValue(date) {
     const record = recordFor(this.data.records, date)
     const exercise = record && record.exercise
@@ -171,17 +244,17 @@ Page({
       ...draft, ...exercisePresentation(exercise, draft),
       photoPreview: record && record.photoUrl || '', photoFileId: record && record.photoFileId || '', photoLocalPath: '',
       clearPhoto: false, photoPrivacyError: '', choosingPhoto: false,
-      weightError: '', exerciseTypeError: '', exerciseDurationError: '', exerciseIntensityError: '', formError: '',
-    })
+      weightError: '', exerciseTypeError: '', exerciseDurationError: '', exerciseIntensityError: '', formError: '', recordDirty: false,
+    }, () => this.refreshDraftState())
     this.loadWeekTrend(date)
   },
 
-  inputWeight(event) { this.setData({ weight: event.detail.value, weightError: '', formError: '' }) },
-  inputNote(event) { this.setData({ note: event.detail.value, formError: '' }) },
+  inputWeight(event) { this.setData({ weight: event.detail.value, weightError: '', formError: '' }, () => this.refreshDraftState()) },
+  inputNote(event) { this.setData({ note: event.detail.value, formError: '' }, () => this.refreshDraftState()) },
   updateExerciseDraft(patch, errorPatch = {}) {
     const next = { ...this.data, ...patch }
     const saved = this.data.selectedRecord && this.data.selectedRecord.exercise
-    this.setData({ ...patch, ...exercisePresentation(saved, next), ...errorPatch, formError: '' })
+    this.setData({ ...patch, ...exercisePresentation(saved, next), ...errorPatch, formError: '' }, () => this.refreshDraftState())
   },
   toggleExercise(event) {
     this.updateExerciseDraft(
@@ -246,7 +319,7 @@ Page({
         photoLocalPath: selected.tempFilePath,
         photoPrivacyError: '',
         formError: '',
-      })
+      }, () => this.refreshDraftState())
     } catch (error) {
       const message = String(error && error.errMsg || error && error.message || '')
       if (!/cancel/i.test(message)) {
@@ -275,7 +348,7 @@ Page({
     this.setData({
       photoPreview: '', photoFileId: '', photoLocalPath: '', clearPhoto: true,
       formError: hasOtherRecordContent || removingSavedPhoto ? '' : '至少填写体重、运动、照片或备注中的一项',
-    })
+    }, () => this.refreshDraftState())
   },
 
   async refreshAfterRecordConflict(date, month) {
@@ -361,7 +434,10 @@ Page({
         }
       } else wx.showToast({ title: error.message || '保存失败', icon: 'none' })
     }
-    finally { wx.hideLoading(); this.setData({ saving: false }) }
+    finally {
+      wx.hideLoading()
+      this.setData({ saving: false }, () => this.refreshDraftState())
+    }
   },
 
   async loadWeekTrend(endDate) {
@@ -487,5 +563,11 @@ Page({
       }
     })
   },
-  onPullDownRefresh() { this.loadMonth(true) },
+  async onPullDownRefresh() {
+    if (!await this.confirmDiscardDraft('刷新会丢失当前日期尚未保存的体重、运动、照片和备注。')) {
+      wx.stopPullDownRefresh()
+      return false
+    }
+    return this.loadMonth(true)
+  },
 })

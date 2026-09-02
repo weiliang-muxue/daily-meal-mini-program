@@ -68,7 +68,7 @@ function prepareHistoryPlan(plan, expanded) {
     dateRange: dateRange(plan),
     mealCount,
     generatedText: formatTimestamp(plan.generatedAt),
-    sourceText: plan.source === 'legacy' ? '历史迁移' : plan.source === 'ai' ? 'AI 生成' : '个人计划',
+    sourceText: plan.source === 'legacy' ? '历史迁移' : plan.source === 'ai' ? 'AI 生成' : '个人餐单',
     expandText: expanded ? '收起餐次概览' : '查看日期与餐次概览',
   }
 }

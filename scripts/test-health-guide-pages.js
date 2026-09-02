@@ -7,7 +7,10 @@ const path = require('path')
 const root = path.resolve(__dirname, '..')
 const healthPagePath = path.join(root, 'miniprogram', 'pages', 'health', 'health.js')
 const guidePagePath = path.join(root, 'miniprogram', 'pages', 'guide', 'guide.js')
+const mealEditPagePath = path.join(root, 'miniprogram', 'pages', 'meal-edit', 'meal-edit.js')
 const guideWxml = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'guide', 'guide.wxml'), 'utf8')
+const mealEditWxml = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'meal-edit', 'meal-edit.wxml'), 'utf8')
+const legalWxss = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'legal', 'legal.wxss'), 'utf8')
 assert(guideWxml.includes('本次修改已保存，正在同步'))
 assert(guideWxml.includes('修改已保存，尚未同步'))
 assert(!guideWxml.includes('本机已保存、尚未同步'))
@@ -26,6 +29,23 @@ const healthStorePath = path.join(root, 'miniprogram', 'services', 'health-store
 assert(guideWxml.indexOf('class="surface setting-list"') < guideWxml.indexOf('wx:if="{{settings.calciumAnchorReminder}}"'),
   '提醒开关必须先于按需内容出现，让说明紧邻用户操作')
 assert(!guideWxml.includes('没有启用专业健康提醒'), '关闭状态不能再用重复说明卡占据主要空间')
+assert(guideWxml.includes('id="custom-reminder-input"') && guideWxml.includes('aria-label="个人提醒内容"'),
+  '个人提醒输入框必须有稳定标识和可访问名称')
+for (const label of ['个人餐名', '个人食材说明', '个人做法', '个人提示（可选）']) {
+  assert(mealEditWxml.includes(`aria-label="${label}"`), `餐食编辑控件必须提供可访问名称：${label}`)
+}
+assert(legalWxss.includes('env(safe-area-inset-left)') && legalWxss.includes('env(safe-area-inset-right)'),
+  '法律页必须避开横屏左右安全区')
+for (const file of [
+  path.join(root, 'miniprogram', 'pages', 'planner', 'planner.js'),
+  path.join(root, 'miniprogram', 'pages', 'planner', 'planner.wxml'),
+  path.join(root, 'miniprogram', 'pages', 'planner', 'planner.json'),
+  path.join(root, 'miniprogram', 'pages', 'plan-preview', 'plan-preview.json'),
+  path.join(root, 'miniprogram', 'pages', 'plan-history', 'plan-history.js'),
+  path.join(root, 'miniprogram', 'pages', 'plan-history', 'plan-history.json'),
+]) {
+  assert(!fs.readFileSync(file, 'utf8').includes('计划'), `${path.basename(file)} 的用户文案必须统一为餐单`)
+}
 const userStorePath = path.join(root, 'miniprogram', 'services', 'user-store.js')
 
 let pageDefinition
@@ -45,7 +65,11 @@ let removedThemeHandler = null
 const userPatchCalls = []
 const healthSaveCalls = []
 const modals = []
+const modalResponses = []
 const toasts = []
+const unloadAlerts = []
+let unloadAlertDisableCount = 0
+const navigationCalls = []
 const canvasContext = {
   transforms: [],
   operations: [],
@@ -104,6 +128,7 @@ const userStore = {
     userPatchCalls.push({ partial, options })
     return userPatchImplementation(partial, options)
   },
+  setMealOverride: async () => null,
 }
 
 require.cache[membershipPath] = {
@@ -142,8 +167,16 @@ global.wx = {
   offThemeChange(handler) { removedThemeHandler = handler },
   showLoading() {},
   hideLoading() {},
-  showModal(options) { modals.push(options) },
+  showModal(options) {
+    modals.push(options)
+    const response = modalResponses.shift()
+    if (response && typeof options.success === 'function') options.success(response)
+  },
   showToast(options) { toasts.push(options) },
+  enableAlertBeforeUnload(options) { unloadAlerts.push(options) },
+  disableAlertBeforeUnload() { unloadAlertDisableCount += 1 },
+  navigateBack(options) { navigationCalls.push({ type: 'back', options }) },
+  switchTab(options) { navigationCalls.push({ type: 'tab', options }) },
 }
 global.Page = (definition) => { pageDefinition = definition }
 
@@ -215,7 +248,12 @@ function resetMocks() {
   saveDailyImplementation = async () => null
   healthSaveCalls.length = 0
   modals.length = 0
+  modalResponses.length = 0
   toasts.length = 0
+  unloadAlerts.length = 0
+  unloadAlertDisableCount = 0
+  navigationCalls.length = 0
+  userStore.setMealOverride = async () => null
   healthStore.state = 'ready'
   healthStore.error = ''
   canvasMeasurement = null
@@ -658,6 +696,100 @@ async function testHealthConflictRefreshesWithoutAutomaticOverwrite() {
   assert.strictEqual(toasts.some((item) => item.title === '记录已保存'), false)
 }
 
+async function testHealthDraftGuardsEveryRecordField() {
+  resetMocks()
+  const date = '2026-08-26'
+  const nextDate = '2026-08-27'
+  const saved = {
+    date, recordRevision: 2, weight: 60, note: '原备注', hasPhoto: true,
+    photoFileId: 'saved-photo', photoUrl: 'https://example.invalid/saved-photo',
+    exercise: { completed: true, type: '快走', durationMinutes: 30, intensity: 'medium' },
+  }
+  const page = makePage(loadPage(healthPagePath))
+  page.drawTrendSoon = () => {}
+  page.loadWeekTrend = async () => {}
+  page.setData({ loading: false, error: '', month: '2026-08', records: [saved] })
+  page.selectDateValue(date)
+
+  page.inputWeight({ detail: { value: '61' } })
+  assert.strictEqual(page.data.recordDirty, true)
+  assert.strictEqual(unloadAlerts.length, 1, '修改体重后必须启用系统离页提醒')
+  modalResponses.push({ confirm: false })
+  await page.selectDate({ currentTarget: { dataset: { date: nextDate } } })
+  assert.strictEqual(page.data.selectedDate, date, '取消确认时必须保留当前日期和草稿')
+  assert.strictEqual(page.data.weight, '61')
+
+  page.inputWeight({ detail: { value: '60' } })
+  page.inputNote({ detail: { value: '新备注' } })
+  assert.strictEqual(page.data.recordDirty, true, '备注修改必须纳入统一 dirty 状态')
+  page.inputNote({ detail: { value: '原备注' } })
+  page.inputDuration({ detail: { value: '45' } })
+  assert.strictEqual(page.data.recordDirty, true, '运动修改必须纳入统一 dirty 状态')
+  page.inputDuration({ detail: { value: '30' } })
+  page.removePhoto()
+  assert.strictEqual(page.data.recordDirty, true, '删除已保存照片必须纳入统一 dirty 状态')
+  modalResponses.push({ confirm: true })
+  await page.selectDate({ currentTarget: { dataset: { date: nextDate } } })
+  assert.strictEqual(page.data.selectedDate, nextDate)
+  assert.strictEqual(page.data.recordDirty, false)
+
+  page.setData({ selectedRecord: null, weight: '', note: '', photoLocalPath: 'wxfile://new-photo', clearPhoto: false })
+  page.refreshDraftState()
+  assert.strictEqual(page.data.recordDirty, true, '新选照片必须纳入统一 dirty 状态')
+  modalResponses.push({ confirm: false })
+  await page.changeMonth(1)
+  assert.strictEqual(page.data.month, '2026-08', '取消切月确认时必须保留月份和照片草稿')
+}
+
+async function testMealEditGuardsCustomAndNativeBack() {
+  resetMocks()
+  const page = makePage(loadPage(mealEditPagePath))
+  page.setData({
+    loading: false, error: '',
+    loadedForm: { title: '原餐名', ingredients: '原食材', method: '原做法', tag: '' },
+    form: { title: '原餐名', ingredients: '原食材', method: '原做法', tag: '' },
+  })
+  page.setData({ form: { ...page.data.form, title: '新餐名' } })
+  page.refreshDirtyState()
+  assert.strictEqual(page.data.formDirty, true)
+  assert.strictEqual(unloadAlerts.length, 1, '修改餐食后必须保护系统和手势返回')
+  modalResponses.push({ confirm: false })
+  await page.navigateFromPage()
+  assert.strictEqual(navigationCalls.length, 0, '取消离页时不得导航')
+  assert.strictEqual(page.data.form.title, '新餐名')
+  modalResponses.push({ confirm: true })
+  await page.navigateFromPage()
+  assert.strictEqual(navigationCalls.at(-1).type, 'tab', '确认放弃后应返回餐单页')
+  assert(unloadAlertDisableCount > 0, '确认放弃前必须关闭系统离页提醒')
+}
+
+async function testReminderDeletionConfirmationAndRollback() {
+  resetMocks()
+  const reminder = { id: 'keep-me', text: '复诊时带瓶身', done: false }
+  userStore.data.customReminders = [reminder]
+  const page = makePage(loadPage(guidePagePath))
+  page.render()
+
+  modalResponses.push({ confirm: false })
+  await page.removeReminder({ currentTarget: { dataset: { id: reminder.id } } })
+  assert.deepStrictEqual(userStore.data.customReminders, [reminder], '取消删除必须保留原提醒')
+  assert.strictEqual(userPatchCalls.length, 0)
+
+  userPatchImplementation = async (partial, options) => {
+    userStore.data = { ...userStore.data, ...partial }
+    if (options && options.localOnly) return userStore.data
+    userStore.state = 'offline'
+    userStore.error = '同步失败'
+    throw new Error('同步失败')
+  }
+  modalResponses.push({ confirm: true })
+  await page.removeReminder({ currentTarget: { dataset: { id: reminder.id } } })
+  assert.deepStrictEqual(userStore.data.customReminders, [reminder], '删除同步失败时必须恢复原提醒')
+  assert.deepStrictEqual(page.data.reminders, [reminder])
+  assert(userPatchCalls.some(({ options }) => options && options.localOnly), '失败回滚必须更新本地待同步状态')
+  assert(toasts.some(({ title }) => title === '删除失败，提醒已保留'))
+}
+
 async function testEmptyRevisionMarkerRefreshesAndRebuildsWithoutDisplayingContent() {
   resetMocks()
   const date = '2026-08-27'
@@ -782,9 +914,12 @@ async function main() {
   await testDeletingOnlySavedPhotoIsValidRecordChange()
   await testExerciseSummaryFlagsAndCancellationSave()
   await testHealthConflictRefreshesWithoutAutomaticOverwrite()
+  await testHealthDraftGuardsEveryRecordField()
   await testEmptyRevisionMarkerRefreshesAndRebuildsWithoutDisplayingContent()
+  await testMealEditGuardsCustomAndNativeBack()
   await testGuideLoadingFailureAndRetry()
   await testGuidePersistsAndReportsOfflineWithoutRollback()
+  await testReminderDeletionConfirmationAndRollback()
   await tick()
   console.log('health and guide page state tests passed')
 }

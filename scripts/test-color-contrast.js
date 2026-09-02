@@ -5,10 +5,13 @@ const fs = require('fs')
 const path = require('path')
 
 const root = path.resolve(__dirname, '..')
-const styles = fs.readFileSync(path.join(root, 'miniprogram/app.wxss'), 'utf8')
+const normalizeNewlines = (source) => String(source).replace(/\r\n?/g, '\n')
+const styles = normalizeNewlines(fs.readFileSync(path.join(root, 'miniprogram/app.wxss'), 'utf8'))
 const healthBehavior = fs.readFileSync(path.join(root, 'miniprogram/pages/health/health.js'), 'utf8')
 const darkTheme = styles.match(/@media \(prefers-color-scheme: dark\) \{\s*page \{([\s\S]*?)\n  \}\n\}/)
 
+assert.strictEqual(normalizeNewlines('light\r\ndark\rlegacy'), 'light\ndark\nlegacy',
+  '颜色令牌测试必须同时兼容 LF、CRLF 与旧 CR 换行')
 assert(darkTheme, '必须保留暗色主题令牌')
 
 function tokensFrom(source) {

@@ -43,7 +43,7 @@
     </view>
 
     <view class="record-card surface">
-      <view class="record-heading"><view><text class="record-date">{{selectedDate}}</text><text class="record-caption">当天记录可随时补充或修改</text></view><view wx:if="{{selectedRecord}}" class="saved-badge">当天有记录</view></view>
+      <view class="record-heading"><view><text class="record-date">{{selectedDate}}</text><text class="record-caption" aria-live="polite">{{recordDirty ? '有未保存修改，请保存后再离开' : '当天记录可随时补充或修改'}}</text></view><view wx:if="{{selectedRecord}}" class="saved-badge">当天有记录</view></view>
       <view class="exercise-card {{exerciseStatusTone}}">
         <label class="exercise-row" aria-label="运动打卡，当前{{exerciseStatus}}">
           <view class="activity-ring {{exerciseStatusTone}}" aria-hidden="true">

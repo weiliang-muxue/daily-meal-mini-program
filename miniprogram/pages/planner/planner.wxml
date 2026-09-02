@@ -49,8 +49,8 @@
     </view>
 
     <view wx:elif="{{currentStep === 1}}" class="step-body">
-      <text class="section-heading">计划覆盖多长时间</text>
-      <text class="section-description">可选择 1–14 天。新计划会先进入预览，确认后才替换当前计划。</text>
+      <text class="section-heading">餐单覆盖多长时间</text>
+      <text class="section-description">可选择 1–14 天。新餐单会先进入预览，确认后才替换当前餐单。</text>
       <view class="duration-block">
         <text class="field-label">生成天数</text>
         <view class="duration-stepper {{durationDaysError ? 'invalid' : ''}}" aria-role="group" aria-label="生成天数，最少 1 天，最多 14 天">
@@ -169,7 +169,7 @@
 
     <view wx:elif="{{currentStep === 5}}" class="step-body confirm-step">
       <block wx:if="{{taskVisible}}">
-        <text class="section-heading">候选计划生成进度</text>
+        <text class="section-heading">候选餐单生成进度</text>
         <text class="section-description">生成进度会自动保存。离开页面不会替换当前餐单，回来后可以继续。</text>
         <view class="task-panel surface" aria-live="polite">
           <view class="task-head">
@@ -179,7 +179,7 @@
             </view>
             <text class="task-percent">{{taskPercentText}}</text>
           </view>
-          <view class="progress-track" aria-role="progressbar" aria-label="候选计划生成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{taskPercent}}" aria-valuetext="{{taskPercentText}}">
+          <view class="progress-track" aria-role="progressbar" aria-label="候选餐单生成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{taskPercent}}" aria-valuetext="{{taskPercentText}}">
             <view class="progress-fill" style="width: {{taskPercent}}%;"></view>
           </view>
           <view class="task-stages">
@@ -199,7 +199,7 @@
       </block>
       <block wx:else>
         <text class="section-heading">确认本次生成条件</text>
-        <text class="section-description">先生成候选计划。预览确认前，不会替换你正在使用的计划。</text>
+        <text class="section-description">先生成候选餐单。预览确认前，不会替换你正在使用的餐单。</text>
         <view class="summary surface">
           <view wx:for="{{summaryRows}}" wx:key="label" class="summary-row">
             <text class="summary-label">{{item.label}}</text>
@@ -260,7 +260,7 @@
         <button wx:if="{{taskCanRetry}}" class="primary-button task-action" bindtap="retryTask" loading="{{generating}}" disabled="{{generating || canceling}}" hover-class="button-hover">{{generating ? '正在连接' : taskRetryLabel}}</button>
         <button wx:if="{{generating && !taskCanRetry}}" class="primary-button task-action" loading="true" disabled="true">正在生成</button>
       </block>
-      <button wx:else class="primary-button next-button" bindtap="generatePlan" loading="{{generating}}" disabled="{{generating || aiStatus !== 'ready' || !providerDisplayName || !aiDataConsentAccepted}}" hover-class="button-hover">{{generating ? '正在准备' : '生成候选计划'}}</button>
+      <button wx:else class="primary-button next-button" bindtap="generatePlan" loading="{{generating}}" disabled="{{generating || aiStatus !== 'ready' || !providerDisplayName || !aiDataConsentAccepted}}" hover-class="button-hover">{{generating ? '正在准备' : '生成候选餐单'}}</button>
     </view>
   </block>
 </view>

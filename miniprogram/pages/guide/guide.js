@@ -147,7 +147,32 @@ Page({
   async removeReminder(event) {
     if (this.data.saving) return
     const id = event.currentTarget.dataset.id
-    const reminders = (userStore.data.customReminders || []).filter((item) => item.id !== id)
-    await this.persist({ customReminders: reminders })
+    const previous = [...(userStore.data.customReminders || [])]
+    const reminder = previous.find((item) => item.id === id)
+    if (!reminder) return
+    const confirmed = await new Promise((resolve) => {
+      try {
+        wx.showModal({
+          title: '删除这条提醒？',
+          content: String(reminder.text || '').slice(0, 80),
+          confirmText: '删除',
+          confirmColor: '#A33F2B',
+          cancelText: '取消',
+          success: ({ confirm }) => resolve(Boolean(confirm)),
+          fail: () => resolve(false),
+        })
+      } catch (_) { resolve(false) }
+    })
+    if (!confirmed) return
+    const reminders = previous.filter((item) => item.id !== id)
+    const saved = await this.persist({ customReminders: reminders })
+    if (saved) return
+    try {
+      await userStore.patch({ customReminders: previous }, { localOnly: true })
+    } catch (_) {
+      userStore.data = { ...userStore.data, customReminders: previous }
+    }
+    this.render()
+    wx.showToast({ title: '删除失败，提醒已保留', icon: 'none' })
   },
 })

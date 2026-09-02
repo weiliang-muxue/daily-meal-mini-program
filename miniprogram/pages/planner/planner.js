@@ -237,7 +237,7 @@ function summaryRows(preferences) {
       value: preferences.exerciseIntent === 'none'
         ? '本周期不安排运动'
         : preferences.exerciseIntent === 'daily'
-          ? `逐日安排，计划 ${plannedDays} 天运动`
+          ? `逐日安排，其中 ${plannedDays} 天运动`
           : '尚未确认',
     },
   ]
@@ -816,7 +816,7 @@ Page({
       if (inputError) return inputError
       if (!Number.isInteger(preferences.durationDays)
         || preferences.durationDays < MIN_DURATION_DAYS || preferences.durationDays > MAX_DURATION_DAYS) {
-        return '请选择 1–14 天的计划周期'
+        return '请选择 1–14 天的餐单周期'
       }
     }
     if (step === 1 && !parseDate(preferences.startDate)) return '请选择有效的开始日期'
@@ -1156,7 +1156,7 @@ Page({
       await userStore.init({ force: true })
       if (!userStore.data || !userStore.data.draftPlan
         || (expectedDraftPlanId && userStore.data.draftPlan.id !== expectedDraftPlanId)) {
-        throw new Error('候选计划正在同步，请点击继续')
+        throw new Error('候选餐单正在同步，请点击继续')
       }
       aiPlanner.clearCachedTask(response.task.taskId)
       this.resetTaskPanel()
@@ -1164,7 +1164,7 @@ Page({
     } catch (error) {
       this.setData({ generating: false })
       this.renderTask(response.task, { interrupted: true })
-      this.setData({ taskTitle: '候选计划已生成，等待同步', taskDetail: errorMessage(error, '请点击继续同步候选计划。') })
+      this.setData({ taskTitle: '候选餐单已生成，等待同步', taskDetail: errorMessage(error, '请点击继续同步候选餐单。') })
     }
   },
 
@@ -1278,7 +1278,7 @@ Page({
     if (!task || !isActiveTask(task) || this.data.canceling) return
     wx.showModal({
       title: '取消本次生成？',
-      content: '已生成的临时片段会停止处理，当前正在使用的计划不会改变。',
+      content: '已生成的临时片段会停止处理，当前正在使用的餐单不会改变。',
       confirmText: '取消生成',
       confirmColor: '#a33f2b',
       success: async (modal) => {
@@ -1296,7 +1296,7 @@ Page({
             canceling: false,
             generating: false,
             taskTitle: '未能确认取消结果',
-            taskDetail: errorMessage(error, '请重试连接；当前计划没有改变。'),
+            taskDetail: errorMessage(error, '请重试连接；当前餐单没有改变。'),
           })
         }
       },

@@ -54,7 +54,7 @@
 
   <text class="section-title">我的补充提醒</text>
   <view class="reminder-form surface">
-    <textarea maxlength="80" value="{{newReminder}}" disabled="{{saving}}" bindinput="inputReminder" placeholder="例如：复诊时带钙片瓶身" auto-height />
+    <textarea id="custom-reminder-input" maxlength="80" value="{{newReminder}}" disabled="{{saving}}" bindinput="inputReminder" placeholder="例如：复诊时带钙片瓶身" aria-label="个人提醒内容" auto-height />
     <button class="primary-button" bindtap="addReminder" loading="{{saving}}" disabled="{{saving}}" hover-class="button-hover">添加提醒</button>
   </view>
   <view wx:if="{{!reminders.length}}" class="surface status-panel"><text class="status-title">还没有个人提醒</text><text class="status-detail">这里适合记录复诊问题、补充剂标签或计划调整。</text></view>

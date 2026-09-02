@@ -118,6 +118,8 @@ Page({
     planId: '',
     base: {},
     form: {},
+    loadedForm: {},
+    formDirty: false,
     originalIngredients: [],
     hasStructuredIngredients: false,
     mealLabel: '',
@@ -138,6 +140,8 @@ Page({
     this.refreshPageNavigation()
   },
 
+  onUnload() { this.setUnloadAlert(false) },
+
   refreshPageNavigation() {
     const canGoBack = canNavigateBack()
     this.setData({
@@ -146,7 +150,53 @@ Page({
     })
   },
 
-  navigateFromPage() {
+  hasUnsavedChanges() {
+    return !this.data.loading && !this.data.error && !sameForm(this.data.form, this.data.loadedForm)
+  },
+  setUnloadAlert(enabled) {
+    if (enabled === this.unloadAlertEnabled) return
+    if (enabled && typeof wx.enableAlertBeforeUnload === 'function') {
+      try {
+        wx.enableAlertBeforeUnload({ message: '个人餐食调整尚未保存，离开后将丢失这些修改。' })
+        this.unloadAlertEnabled = true
+      } catch (_) {}
+      return
+    }
+    if (!enabled && this.unloadAlertEnabled && typeof wx.disableAlertBeforeUnload === 'function') {
+      try { wx.disableAlertBeforeUnload() } catch (_) {}
+    }
+    if (!enabled) this.unloadAlertEnabled = false
+  },
+  refreshDirtyState() {
+    const formDirty = this.hasUnsavedChanges()
+    if (formDirty !== this.data.formDirty) this.setData({ formDirty })
+    this.setUnloadAlert(formDirty)
+    return formDirty
+  },
+  async confirmDiscardChanges() {
+    if (!this.refreshDirtyState()) return true
+    if (this.discardPromptPending) return false
+    this.discardPromptPending = true
+    const confirmed = await new Promise((resolve) => {
+      try {
+        wx.showModal({
+          title: '放弃未保存的调整？',
+          content: '返回后，本次对餐名、食材、做法和提示的修改将不会保留。',
+          confirmText: '放弃修改',
+          confirmColor: '#A33F2B',
+          cancelText: '继续编辑',
+          success: ({ confirm }) => resolve(Boolean(confirm)),
+          fail: () => resolve(false),
+        })
+      } catch (_) { resolve(false) }
+    })
+    this.discardPromptPending = false
+    if (confirmed) this.setUnloadAlert(false)
+    return confirmed
+  },
+  async navigateFromPage() {
+    if (this.data.saving || this.data.resetting) return false
+    if (!await this.confirmDiscardChanges()) return false
     return returnFromSecondaryPage()
   },
 
@@ -187,6 +237,8 @@ Page({
         planId: cleanText(found.plan.id, 120),
         base,
         form,
+        loadedForm: { ...form },
+        formDirty: false,
         originalIngredients: structuredIngredients(found.meal.ingredients),
         hasStructuredIngredients: Array.isArray(found.meal.ingredients),
         mealLabel: type,
@@ -205,13 +257,14 @@ Page({
   },
 
   backToPlan() {
-    wx.switchTab({ url: '/pages/plan/plan' })
+    if (!this.hasUnsavedChanges()) return wx.switchTab({ url: '/pages/plan/plan' })
+    return this.navigateFromPage()
   },
 
   input(event) {
     const field = event.currentTarget.dataset.field
     if (!EDITABLE_FIELDS.includes(field)) return
-    this.setData({ [`form.${field}`]: event.detail.value })
+    this.setData({ [`form.${field}`]: event.detail.value }, () => this.refreshDirtyState())
   },
 
   async save() {
@@ -230,11 +283,13 @@ Page({
     const override = sameForm(form, this.data.base) ? null : { ...form, updatedAt: new Date().toISOString() }
     try {
       await userStore.setMealOverride(this.data.mealId, override)
+      this.setUnloadAlert(false)
+      this.setData({ loadedForm: { ...form }, formDirty: false })
       wx.showToast({ title: sameForm(form, this.data.base) ? '已恢复原计划' : '个人调整已保存', icon: 'success' })
-      setTimeout(() => this.navigateFromPage(), 500)
+      setTimeout(() => returnFromSecondaryPage(), 500)
     } catch (error) {
       wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
-      this.setData({ saving: false })
+      this.setData({ saving: false }, () => this.refreshDirtyState())
     }
   },
 
@@ -245,11 +300,13 @@ Page({
       this.setData({ resetting: true })
       try {
         await userStore.setMealOverride(this.data.mealId, null)
+        this.setUnloadAlert(false)
+        this.setData({ loadedForm: { ...this.data.base }, form: { ...this.data.base }, formDirty: false })
         wx.showToast({ title: '已恢复原计划', icon: 'success' })
-        setTimeout(() => this.navigateFromPage(), 400)
+        setTimeout(() => returnFromSecondaryPage(), 400)
       } catch (error) {
         wx.showToast({ title: error.message || '恢复失败，请重试', icon: 'none' })
-        this.setData({ resetting: false })
+        this.setData({ resetting: false }, () => this.refreshDirtyState())
       }
     } })
   },
