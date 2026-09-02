@@ -26,8 +26,10 @@ const {
   policyIsolationReason,
   SECURITY_TRUST_ROOT_PATHS,
 } = require('./check-staged-safety')
+const { directoryReleaseTreeMode } = require('./release-gate')
 
 const root = path.resolve(__dirname, '..')
+const FULL_RELEASE_TREE = directoryReleaseTreeMode(root) === 'full'
 const zeroOid = '0'.repeat(40)
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 const write = (cwd, file, content) => {
@@ -73,7 +75,13 @@ const hasError = (result, fragment) => result.errors.some((error) => error.inclu
   .forEach((file) => assert(blobReason(`scripts/${file}`, Buffer.from('public')), `${file} 必须默认拒绝`))
 
 for (const [file, policy] of Object.entries(ASSET_ALLOWLIST)) {
-  const source = fs.readFileSync(path.join(root, file))
+  const target = path.join(root, file)
+  if (!fs.existsSync(target)) {
+    assert.strictEqual(FULL_RELEASE_TREE, false,
+      `${file} 只能在不完整的安全 bootstrap 树中暂时缺失`)
+    continue
+  }
+  const source = fs.readFileSync(target)
   assert.strictEqual(blobReason(file, source), '', `${file} 真实素材应通过`)
   const changed = Buffer.from(source)
   changed[changed.length - 1] ^= 1
@@ -275,7 +283,13 @@ for (const file of [
   'cloudfunctions/aiPlanner/.env.example',
   'cloudfunctions/aiPlanner/provider-config.test.js',
 ]) {
-  const source = fs.readFileSync(path.join(root, file))
+  const target = path.join(root, file)
+  if (!fs.existsSync(target)) {
+    assert.strictEqual(FULL_RELEASE_TREE, false,
+      `${file} 只能在不完整的安全 bootstrap 树中暂时缺失`)
+    continue
+  }
+  const source = fs.readFileSync(target)
   assert.strictEqual(blobReason(file, source), '', `${file} 的明确占位符和测试值不应触发误报`)
 }
 
