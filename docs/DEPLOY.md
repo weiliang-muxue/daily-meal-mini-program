@@ -82,21 +82,24 @@ AI 请求只从云函数发出。前端仅提交用户主动选择的餐次、�
 
 AI task schema v3 会在任务启动时保存本次同意协议版本和规范化 `activePlan` / `draftPlan` 的摘要，并在 finalize 事务中与最新计划摘要比较。部署时先更新 `aiPlanner`，再更新并启用 `mealAiMaintenance`；不要只部署其中一个。升级前已存在且没有同意版本的活动任务会失败关闭为 `AI_DATA_CONSENT_REQUIRED`；具有同意版本但没有摘要的旧任务关闭为 `conflict`。两者都不会写入候选计划，用户需回到确认页重新勾选并生成。维护函数会压缩这些旧任务、清除仍匹配的活动指针并清理遗留分片，但不会读取或修改 `meal_user_states`。
 
-## schema v7 升级
+## schema v8 升级
 
-1. 先备份云数据库，再更新并部署 `userData`，随后部署 `aiPlanner` 和小程序代码。
-2. 不要清空或重建 `meal_user_states`。首次读取旧文档时，`userData` 在事务中把 v1-v6 状态增量迁移到 v7；schema v7 一旦写入，不得回滚到只支持 v6 的旧云函数。
+1. 先备份云数据库。部署顺序固定为：先部署可同时读取 schema v7/v8 的新版 `aiPlanner`，再部署 `userData` v8，最后上传新版小程序。不得先部署 `userData` v8，否则尚未升级的旧 `aiPlanner` v7 会拒绝已迁移的 v8 用户状态。
+2. 不要清空或重建 `meal_user_states`。首次读取旧文档时，`userData` 在事务中把 v1-v7 状态增量迁移到 v8，并新增默认关闭的喝水提醒；schema v8 一旦写入，不得回滚到只支持 v7 的旧云函数。
 3. 旧静态食谱仅作为旧用户迁移输入生成 `source: legacy` 的 `activePlan`；新用户保持 `activePlan: null`，必须主动定制计划。
-4. v7 把 `generationPreferences.contractVersion` 更新为 `2`，并继续保存 `activePlan`、`draftPlan`、最多 64 份 `planHistory`、`stateRevision` 和按 `planId` 隔离的采购/晚餐状态。迁移不重写已有计划自己的 `contractVersion`；历史 contract v1 和 legacy contract v0 计划继续可查看、确认和恢复。应用更新不会自动替换已确认计划；达到上限时显式拒绝，不静默删除旧计划。
-5. AI 生成只写候选计划；用户在预览页确认后才替换 `activePlan`。生成、确认或恢复失败时保留原计划。
-6. 所有写操作携带 `expectedStateRevision`。发生多设备冲突时刷新云端状态，不允许旧客户端静默覆盖。
-7. 采购勾选使用从规范化食材产生的稳定 ID；采购勾选和逐日晚餐模式按 `planId` 保存，切换或恢复时加载对应计划自己的状态。旧 flat 状态迁移到迁移时的当前计划。
-8. 超过单文档 64 份历史的长期路线是独立归档集合、稳定游标分页和事务恢复；该方案上线并验证迁移前不得淘汰现有历史。
-9. AI finalize 只把 `activePlan` / `draftPlan` 摘要和生成偏好作为写入前置条件。计划正文更新、确认、恢复或丢弃会使旧任务进入 `conflict` 且不增加 `stateRevision`；日期、采购、晚餐模式、提醒、设置和餐次覆盖等无关并发更新允许保留并合并。
+4. v8 保留原有计划兼容与生成偏好迁移，并新增默认关闭的 `waterReminder`；不会自动替换已确认计划，也不会改写历史、采购、健康或个人提醒。
+5. 混部矩阵：旧 `userData` v7 + 新 `aiPlanner` 允许作为第一阶段；新 `userData` v8 + 新 `aiPlanner` 是目标组合；新 `userData` v8 + 旧 `aiPlanner` v7 禁止。完成两项云函数升级后才上传会写入 schema v8 的小程序。
+6. 旧客户端窗口：`userData` v8 首次读取会把文档迁移为 v8，仍只支持 schema v7 的旧小程序随后会失败关闭并要求升级。因此应在新版小程序已审核、可立即发布时执行 `userData` 与客户端切换，尽量缩短间隔；不得把该阶段描述为旧客户端可无缝继续使用或零停机。
+7. 真机验证喝水提醒默认关闭、每日/周一至周五、起止时间和间隔。只有用户点击并二次确认后才请求日历权限；分别验证拒绝、部分失败和微信版本不支持。已写入事项须在系统日历自行删除。
+8. AI 生成只写候选计划；用户在预览页确认后才替换 `activePlan`。生成、确认或恢复失败时保留原计划。
+9. 所有写操作携带 `expectedStateRevision`。发生多设备冲突时刷新云端状态，不允许旧客户端静默覆盖。
+10. 采购勾选使用从规范化食材产生的稳定 ID；采购勾选和逐日晚餐模式按 `planId` 保存，切换或恢复时加载对应计划自己的状态。旧 flat 状态迁移到迁移时的当前计划。
+11. 超过单文档 64 份历史的长期路线是独立归档集合、稳定游标分页和事务恢复；该方案上线并验证迁移前不得淘汰现有历史。
+12. AI finalize 只把 `activePlan` / `draftPlan` 摘要和生成偏好作为写入前置条件。计划正文更新、确认、恢复或丢弃会使旧任务进入 `conflict` 且不增加 `stateRevision`；日期、采购、晚餐模式、提醒、设置和餐次覆盖等无关并发更新允许保留并合并。
 
 ## 验证顺序
 
-1. 先运行 `npm ci --prefix scripts/wx-automator --ignore-scripts --no-audit --no-fund` 和 `npm test --prefix scripts/wx-automator`，再运行 `node scripts/validate.js`，确认自动化运行时、schema v7、AI contract v2、planner v7、共享副本、任意 1–14 天动态餐次（默认 1 天）和页面路由通过。开发者工具自动化入口统一位于 `scripts/wx-automator`；`smoke.js`、`visual-regression.js`、`interactive-smoke.js` 必须串行执行，不能同时占用自动化端口。所有截图、报告、互斥锁和恢复日志只写入 `.local/automator`，不得暂存或推送。
+1. 先运行 `npm ci --prefix scripts/wx-automator --ignore-scripts --no-audit --no-fund` 和 `npm test --prefix scripts/wx-automator`，再运行 `node scripts/validate.js`，确认自动化运行时、schema v8、AI contract v2、planner v7、共享副本、任意 1–14 天动态餐次（默认 1 天）和页面路由通过。开发者工具自动化入口统一位于 `scripts/wx-automator`；`smoke.js`、`visual-regression.js`、`interactive-smoke.js` 必须串行执行，不能同时占用自动化端口。所有截图、报告、互斥锁和恢复日志只写入 `.local/automator`，不得暂存或推送。
 2. 在开发者工具编译，检查新用户无计划空状态、餐次任意组合、1/10/14 天边界、非法周期阻断、可选双晚餐、逐日运动、加载/错误/重试状态。
 3. 未配置 AI 时应明确显示尚未配置，不得出现内置食谱兜底。
 4. 配置 AI 后生成候选，核对全部日期、餐次、结构化食材、生成依据和采购汇总；丢弃候选不能影响当前计划。
@@ -114,7 +117,7 @@ AI task schema v3 会在任务启动时保存本次同意协议版本和规范�
 1. 小程序调用 `wx.login` 获取一次性 code，只把 code 发给后端。
 2. 后端自行保存 AppID/AppSecret，并通过微信服务端接口换取身份信息；`session_key` 永不返回前端。只有采用此兼容方案时才需要配置 AppSecret。
 3. 后端签发自己的短期会话，数据库查询始终使用服务端解析的用户身份，拒绝客户端传入的用户 ID。
-4. 自建后端实现同等的 schema v7 迁移、AI contract v2 与历史计划 contract v1/v0 兼容、revision 乐观锁、按计划隔离的 UI 状态、无静默历史淘汰、用户隔离、AI 服务端调用、删除闭环和日志脱敏。
+4. 自建后端实现同等的 schema v8 迁移、AI contract v2 与历史计划 contract v1/v0 兼容、revision 乐观锁、按计划隔离的 UI 状态、无静默历史淘汰、用户隔离、AI 服务端调用、删除闭环和日志脱敏。
 5. API 使用有效 HTTPS 证书，并在微信公众平台配置合法域名。
 
 ## 上传与发布

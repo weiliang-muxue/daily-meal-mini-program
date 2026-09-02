@@ -4,7 +4,7 @@
 
 当前候选版本为 `0.2.0`，状态为 `release-candidate`，仍在本地收敛与复测，尚未形成或上传最终候选构建，也未提交微信审核或正式发布。当前工作线是 Branch `v0.2.0`，上一源码基线由 Tag `v0.1.0` 保留；候选能力与正式发布状态必须以 [CHANGELOG.md](CHANGELOG.md) 和 `release-manifest.json` 为准。上传、审核及正式发布完成前不创建 `v0.2.0` Tag；审核通过、仓库所有者最终确认并完成微信正式发布后，才在审核通过的完全相同 commit 上创建 annotated Tag。
 
-当前兼容矩阵为用户状态 schema v7、新生成请求与计划 contract v2、AI 生成器 v7、AI task schema v3、AI 数据同意协议 v2、AI provider 请求契约 v9。服务商切换会使旧活动任务失败关闭并要求用户重新勾选，不会自动沿用旧同意；升级只迁移生成偏好的当前契约标记，不改写已确认、候选或历史餐单。历史 contract v1 餐单与 legacy contract v0 静态迁移餐单仍可查看、确认和恢复。
+当前兼容矩阵为用户状态 schema v8、新生成请求与计划 contract v2、AI 生成器 v7、AI task schema v3、AI 数据同意协议 v2、AI provider 请求契约 v9。服务商切换会使旧活动任务失败关闭并要求用户重新勾选，不会自动沿用旧同意；升级不改写已确认、候选或历史餐单。历史 contract v1 餐单与 legacy contract v0 静态迁移餐单仍可查看、确认和恢复。
 
 ## 已实现
 
@@ -28,7 +28,9 @@
 
 版本升级见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/VERSIONING.md](docs/VERSIONING.md)，每次开发、验证和发布证据记录在 [docs/ITERATION_LOG.md](docs/ITERATION_LOG.md)，每次交付按 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) 核对，微信后台隐私、类目、审核访问和发布操作按 [docs/WECHAT_REVIEW.md](docs/WECHAT_REVIEW.md) 执行；使用支持见 [SUPPORT.md](SUPPORT.md)，安全问题见 [SECURITY.md](SECURITY.md)。发布后的附近超市、路线和可靠价格数据源研究记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
-每次推送或 Pull Request 都会运行只读 GitHub Actions，自动检查版本同步、schema v1-v6 到 v7 数据迁移、AI 契约、动态餐次、微信开发者工具自动化运行时和公开仓库安全规则。工作流不配置也不读取任何 GitHub Secret。可复现的自动化源码位于 `scripts/wx-automator`，截图、报告、互斥锁和恢复日志只写入被 Git 忽略的 `.local/automator`。
+每次推送或 Pull Request 都会运行只读 GitHub Actions，自动检查版本同步、schema v1-v7 到 v8 数据迁移、AI 契约、动态餐次、微信开发者工具自动化运行时和公开仓库安全规则。工作流不配置也不读取任何 GitHub Secret。可复现的自动化源码位于 `scripts/wx-automator`，截图、报告、互斥锁和恢复日志只写入被 Git 忽略的 `.local/automator`。
+
+“我的”页提供默认关闭的喝水提醒，可选每日或周一至周五、起止时间及提醒间隔。保存设置不申请权限；只有用户主动点击并二次确认后才写入未来 30 天系统日历重复事项。修改、关闭或清空小程序数据不会删除设备日历事项，需在系统日历中自行删除。
 
 原素材完整保存在 `source-assets/meal-plan-gpt-image-2.png`，发布版压缩图位于 `miniprogram/assets/meal-plan-cover.jpg`。
 

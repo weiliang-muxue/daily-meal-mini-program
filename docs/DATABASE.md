@@ -37,13 +37,13 @@
 
 档案 schema v2 在旧用户下次登录时原地补齐手机号绑定默认值，并防御性移除 `phoneNumber`、`purePhoneNumber`、`countryCode` 等不受支持的实验字段。手机号必须由用户点击原生 `getPhoneNumber` 按钮取得短时动态 `code`，再由 `auth` 云函数携可信调用上下文中的 `OPENID` 调用 `phonenumber.getPhoneNumber`。动态 `code` 约 5 分钟有效且仅可使用一次，不写数据库、缓存或日志；微信返回的完整号码只在云函数内存中用于生成掩码，随后立即丢弃。手机号绑定受主体资格、认证状态、平台计费和调用额度约束，失败不影响其他业务。
 
-## `meal_user_states` schema v7
+## `meal_user_states` schema v8
 
 一名用户一条文档，文档 `_id` 为当前调用者 `OPENID`。云数据库是数据真源，本机缓存只是当前微信身份命名空间下的离线快照。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `schemaVersion` | number | 当前为 7 |
+| `schemaVersion` | number | 当前为 8 |
 | `stateRevision` | number | 服务端乐观锁版本，每次成功写入递增 |
 | `activePlan` | object/null | 用户已确认的当前计划；新用户为 `null` |
 | `draftPlan` | object/null | AI 校验通过但尚未确认的候选计划 |
@@ -57,6 +57,7 @@
 | `checkedShoppingIds` | string[] | 当前计划内已勾选的稳定采购 ID；兼容现有页面的镜像字段 |
 | `customReminders` | object[] | 用户主动添加的提醒与完成状态 |
 | `settings` | object | 健康提醒开关；默认关闭，用户主动开启后生效 |
+| `waterReminder` | object | 默认关闭的喝水提醒；保存日期模式、起止时间、间隔、北京时间与排程版本 |
 | `createdAt` / `updatedAt` | server date | 服务端创建及更新时间 |
 
 ### 动态计划对象
@@ -70,7 +71,7 @@
 
 服务端限制计划为 1–14 天的整数周期、每天最多 5 个餐食、计划正文最多 128 KiB、完整用户状态最多 900 KiB、历史最多 64 份，并限制所有数组数量与文本长度。新用户默认生成偏好为 1 天；客户端与云函数都会拒绝 0、负数、小数、非数字和超过 14 天的请求。达到 64 份或文档大小上限时，确认/恢复操作返回明确错误，当前计划及全部历史保持原样；服务端和客户端都不得用 `slice` 或其他方式静默淘汰旧计划。
 
-新 AI 请求和新生成计划使用 `contractVersion: 2`。schema v7 迁移只把 `generationPreferences.contractVersion` 更新为 `2`，不会重写计划对象自己的契约版本；已经保存的 contract v1 计划以及 `source: legacy`、contract v0 的静态迁移计划仍可作为 `activePlan`、`draftPlan` 或历史计划进行严格校验、查看、确认和恢复。
+新 AI 请求和新生成计划使用 `contractVersion: 2`。schema v8 延续原有生成偏好迁移并新增默认关闭的喝水提醒，不会重写计划对象自己的契约版本；已经保存的 contract v1 计划以及 `source: legacy`、contract v0 的静态迁移计划仍可作为 `activePlan`、`draftPlan` 或历史计划进行严格校验、查看、确认和恢复。
 
 64 份是单文档阶段的明确保护上限，不是长期归档策略。后续需要更长历史时，应先引入按用户隔离的独立归档集合、稳定游标分页、迁移校验与恢复事务，再提高容量；迁移完成前不得删除 `meal_user_states.planHistory` 中的任何计划。`planUiStateByPlan` 与计划一同迁移，使旧计划恢复时找回该计划自己的采购勾选和逐日晚餐模式。
 
@@ -120,12 +121,12 @@
 
 当前票据使用 `permanentPath`、`permanentFileId` 和 `cleanupFileId` 记录预留对象路径、已上传文件和待清理旧文件。服务进程若在文件上传成功但 fileID 写回票据前中断，过期清理会在校验精确私有路径后覆盖该路径并删除，从而回收未知 fileID 的对象。账号删除同时兼容旧版 `inboxFileId`、`fileID`、`fileId`；所有 fileID 必须以 `cloud://` 开头并去重后分批删除。清理领取事务会先重读档案或当天记录中的活跃文件，绝不删除仍被业务记录引用的对象。
 
-## schema v1-v6 到 v7 迁移
+## schema v1-v7 到 v8 迁移
 
 1. `userData.bootstrap` 在事务内读取当前用户文档并执行向前迁移。
 2. 旧固定字段、采购勾选、提醒、设置、个人餐食调整和选择状态保留。
-3. 旧静态计划只由 `userData` 作为旧状态迁移输入注入，转换为 `source: legacy`、`contractVersion: 0` 的 `activePlan`。schema v7 新用户不会读取静态默认计划。
-4. 迁移具有幂等性；已是 v7 的文档不会再次改写。v6 到 v7 只把生成偏好的当前契约标记更新为 `2`，已确认、候选和历史计划自己的 contract v1/v0 标记及正文保持不变。
+3. 旧静态计划只由 `userData` 作为旧状态迁移输入注入，转换为 `source: legacy`、`contractVersion: 0` 的 `activePlan`。schema v8 新用户不会读取静态默认计划。
+4. 迁移具有幂等性；v1-v7 文档的 `waterReminder` 一律采用默认关闭，不根据旧提醒字段推断开启，也不改写已确认、候选、历史、采购、健康记录或个人提醒。
 5. AI 生成只写 `draftPlan`；确认时旧 `activePlan` 进入历史。历史达到 64 份时拒绝确认并提示先归档，不移除任何记录。
 6. schema v1-v5 的 flat `checkedShoppingIds`、`dinnerModeByDay` 和日期选择在迁移时无损绑定到当时的 `activePlanId`；此后按 `planId` 命名空间读写，并继续同步 flat 字段供现有页面兼容。
 7. 确认或恢复计划时，采购勾选只保留目标计划中仍存在的稳定 ID。

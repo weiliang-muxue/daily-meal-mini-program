@@ -10,8 +10,10 @@
 
 ## 2. 版本与数据
 
-- [ ] 当前唯一版本 Branch 与目标正式版本一致；历史版本只由 annotated Tags 保留，命令中已区分 `refs/heads/...` 和 `refs/tags/...`。
-- [ ] 候选 Branch 门禁使用完整 `refs/heads/vX.Y.Z` 上下文，且同版本 Tag 不存在；没有使用短名称、其他 Branch 或 lightweight Tag 绕过门禁。
+- [ ] 当前唯一工作版本 Branch 与目标正式版本一致；`main` 仅保存通过门禁的 squash 候选树，历史版本只由 annotated Tags 保留，命令中已区分 `refs/heads/...` 和 `refs/tags/...`。
+- [ ] GitHub 已启用匹配 `v*` 的 Tag ruleset，禁止删除和强制更新并限制创建者；本地 `pre-push` 已验证现有版本 Tag 删除和移动均失败。
+- [ ] 安全扫描器/Hook/工作流/发布门禁若有升级，已先以独立安全策略变更合入默认 Branch；当前业务 PR 不同时修改扫描器，权威 PR 扫描使用默认 Branch 的受信策略且不执行 PR head 代码。
+- [ ] 候选 Branch 门禁使用完整 `refs/heads/vX.Y.Z` 上下文，且同版本 Tag 不存在；合入 `main` 后 tree OID 与当前版本 Branch 完全一致，没有使用短名称、偏离候选树的默认 Branch 或 lightweight Tag 绕过门禁。
 - [ ] `release-manifest.json`、代码常量和 `CHANGELOG.md` 一致。
 - [ ] 模块提交仍保持同一开发版本；发布冻结时才把预发布版本归档为不带 `-dev` 的正式版本号，并把状态设为 `release-candidate`，不能提前标记 `released`。
 - [ ] schema 变化只做向前迁移，旧字段和未知未来字段不会被旧客户端整份覆盖删除。
@@ -59,7 +61,9 @@
 
 ## 5. 验证与发布
 
-- [ ] schema v7 / AI contract v2 / planner v7 合并后，`node scripts/validate.js` 已重新通过并记录实际测试组数。
+- [ ] schema v8 / AI contract v2 / planner v7 合并后，`node scripts/validate.js` 已重新通过并记录实际测试组数。
+- [ ] 部署顺序为兼容 v7/v8 的新版 `aiPlanner`、`userData` v8、新版小程序；未出现 `userData` v8 与旧 `aiPlanner` v7 的禁止混部。
+- [ ] 真机验证喝水提醒默认关闭、每日/周一至周五、时间边界、间隔、日历权限拒绝与部分失败；确认关闭或清空设置不会误称已删除设备日历事项。
 - [ ] 版本跃迁后开发者工具交互回归已重新执行；条件性跳过项未标记为已验证，并保留对应后续复测项。
 - [ ] 版本跃迁后公开工作树安全扫描和 `git diff --check` 已重新通过；本项不代表暂存区、候选提交或待推送历史已经检查。
 - [ ] GitHub Actions 已在当前 `v*` 版本 Branch 运行版本、迁移、AI 契约与完整提交历史安全检查，工作流未使用任何 Secret。

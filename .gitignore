@@ -44,7 +44,8 @@ Thumbs.db
 *.har
 logs/
 
-# Only the two reviewed repository images are allowed by the safety gate.
+# Reviewed repository images are allowlisted by exact path and content hash in
+# scripts/check-staged-safety.js.
 *.png
 *.jpg
 *.jpeg
@@ -67,3 +68,11 @@ logs/
 *.mp3
 !source-assets/meal-plan-gpt-image-2.png
 !miniprogram/assets/meal-plan-cover.jpg
+!miniprogram/assets/icons/tabbar/plan.png
+!miniprogram/assets/icons/tabbar/plan-selected.png
+!miniprogram/assets/icons/tabbar/record.png
+!miniprogram/assets/icons/tabbar/record-selected.png
+!miniprogram/assets/icons/tabbar/shopping.png
+!miniprogram/assets/icons/tabbar/shopping-selected.png
+!miniprogram/assets/icons/tabbar/profile.png
+!miniprogram/assets/icons/tabbar/profile-selected.png

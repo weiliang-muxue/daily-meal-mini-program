@@ -1,8 +1,10 @@
 'use strict'
 
 const assert = require('assert')
+const childProcess = require('child_process')
 const fs = require('fs')
 const path = require('path')
+const { ASSET_ALLOWLIST, blobReason } = require('./check-staged-safety')
 
 const root = path.resolve(__dirname, '..')
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'))
@@ -29,6 +31,15 @@ for (const [index, [pagePath, text, iconName]] of expected.entries()) {
     const absolute = path.join(root, 'miniprogram', assetPath)
     assert(fs.existsSync(absolute), `TabBar 图标缺失：${assetPath}`)
     const buffer = fs.readFileSync(absolute)
+    const repositoryPath = `miniprogram/${assetPath}`
+    assert.doesNotThrow(() => childProcess.execFileSync(
+      'git', ['ls-files', '--error-unmatch', repositoryPath],
+      { cwd: root, stdio: 'ignore' },
+    ), `TabBar 图标未被 Git 跟踪：${assetPath}`)
+    assert(Object.prototype.hasOwnProperty.call(ASSET_ALLOWLIST, repositoryPath),
+      `TabBar 图标未进入公开素材白名单：${assetPath}`)
+    assert.strictEqual(blobReason(repositoryPath, buffer), '',
+      `TabBar 图标未通过公开素材检查：${assetPath}`)
     assert(buffer.subarray(1, 4).equals(Buffer.from('PNG')), `${assetPath} 必须是 PNG`)
     assert.strictEqual(buffer.readUInt32BE(16), 81, `${assetPath} 宽度必须是 81px`)
     assert.strictEqual(buffer.readUInt32BE(20), 81, `${assetPath} 高度必须是 81px`)

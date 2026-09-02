@@ -10,7 +10,7 @@
 6. **AI 数据同意协议**：客户端、云函数状态握手、生成请求与任务共同使用 `aiDataConsentVersion`。每次新生成要求独立同意；协议升级时旧客户端和旧活动任务失败关闭，不复用历史同意。
 7. **AI provider 请求契约**：云函数与客户端状态握手使用公开整数 `providerContractRevision`。它只表示版本化请求契约，不公开服务地址、请求头、Key、代码哈希或用户数据；缺失或不匹配时生成入口失败关闭。
 
-当前发布候选使用 AI 生成器 `7`、AI task schema v3、数据同意协议 v2 与 provider 请求契约 v9：提纲只保存全局标题和依据，详情按单个餐位分片生成主题、餐名与食材。同意协议版本进入请求指纹和服务状态握手；服务商切换后，旧活动任务会在调用新服务商前失败关闭并要求重新勾选。新生成请求与新计划使用 `contractVersion: 2`，用户数据为 schema v7；schema v7 从 v1-v6 增量迁移，v6 到 v7 只更新生成偏好的当前契约标记，不重写已确认、候选或历史餐单。历史 contract v1 餐单和 legacy contract v0 静态迁移餐单仍可查看、确认和恢复；生成器或契约版本不匹配的活动任务不会被 v7 静默接管，而是明确终止并由用户重新发起。采购勾选与晚餐选择继续按计划 ID 保存，历史达到 64 份时显式拒绝继续替换而不淘汰旧记录；固定 `gpt-5.6`、Responses、`store:false`、16000 输出 token、单片最多 2 次尝试和 2 小时任务期限保持不变。
+当前发布候选使用 AI 生成器 `7`、AI task schema v3、数据同意协议 v2 与 provider 请求契约 v9：提纲只保存全局标题和依据，详情按单个餐位分片生成主题、餐名与食材。同意协议版本进入请求指纹和服务状态握手；服务商切换后，旧活动任务会在调用新服务商前失败关闭并要求重新勾选。新生成请求与新计划使用 `contractVersion: 2`，用户数据为 schema v8；schema v8 从 v1-v7 增量迁移并新增默认关闭的喝水提醒，不重写已确认、候选或历史餐单。历史 contract v1 餐单和 legacy contract v0 静态迁移餐单仍可查看、确认和恢复；生成器或契约版本不匹配的活动任务不会被新版本静默接管，而是明确终止并由用户重新发起。采购勾选与晚餐选择继续按计划 ID 保存，历史达到 64 份时显式拒绝继续替换而不淘汰旧记录；固定 `gpt-5.6`、Responses、`store:false`、16000 输出 token、单片最多 2 次尝试和 2 小时任务期限保持不变。
 
 计划周期属于生成偏好和计划内容，不是应用版本号：当前支持任意 1–14 天整数周期，新用户默认 1 天。增加或缩短周期会创建新的候选计划，确认后才替换当前计划；它不会重置 schema、用户档案、健康数据或既有历史。
 
@@ -20,15 +20,17 @@
 
 - **Branch** 是仍会增加提交的当前版本工作线。按项目约定只长期保留一个版本 Branch，名称为目标正式版本；当前是 `refs/heads/v0.2.0`。开发期间使用预发布版本，冻结后在同一 Branch 上使用 `release-candidate`，不能因为模块提交而逐次升版。
 - **Tag** 是正式版本的不可移动快照，统一使用带 `v` 的版本号；历史基线是 `refs/tags/v0.1.0`，本轮正式发布点将是 `refs/tags/v0.2.0`。上传、审核及微信正式发布完成前不创建 Tag；审核通过、仓库所有者最终确认并完成微信正式发布后，才在审核通过的完全相同 commit 上创建 annotated Tag。Tag 推送后不得移动、覆盖或复用。
-- `main` 只用于首次迁移或 GitHub 默认分支切换的短暂过渡，不与当前版本 Branch 长期并行维护。
+- GitHub 仓库必须为 `v*` 版本 Tag 配置 Tag ruleset：禁止删除和强制更新，并把创建权限限制给仓库所有者或发布角色。本地 `pre-push` 同样只允许版本 Tag 首次创建；Hook 可被 `--no-verify` 绕过，因此远端 ruleset 是不可省略的最终保护。
+- `main` 是 GitHub 默认稳定入口；当前版本 Branch 仍是唯一持续增加模块提交的工作线。候选合并使用 squash，`main` 只接受与当前 `refs/heads/vX.Y.Z` 完全一致的代码树，不把版本 Branch 的中间提交复制进默认分支历史，也不在 `main` 继续追加候选功能提交。
 - Branch 与 Tag 可能在切换下一版本前短期同名。脚本、文档和人工命令必须使用 `refs/heads/...` 或 `refs/tags/...` 全名，GitHub 上分别从 **Branches** 和 **Tags** 页面查看，禁止依赖有歧义的短名称。
 - GitHub Actions 同时监听过渡 `main` 与 `v*` 版本 Branch。安全工作流使用完整历史，既检查最终树，也阻止把敏感内容先提交、后删除再整体推送。
-- 发布门禁必须获得明确的完整 ref 和 commit 上下文。候选 Branch 构建只接受 `refs/heads/vX.Y.Z`，且此时 `refs/tags/vX.Y.Z` 必须不存在；Tag 构建只接受同版本 annotated Tag，并校验 Tag 对象 peel 后确实指向当前候选 commit。Pull Request 使用目标版本 Branch 的完整 ref 和 PR 头 commit，不使用 GitHub 临时 merge commit 推断发布父子关系。lightweight Tag、短名称或其他 Branch 均失败关闭。
+- 安全扫描器、Hook、工作流或发布门禁升级必须先作为独立安全策略变更合入受保护默认 Branch，再让业务 Branch 基于该提交继续；禁止在同一提交或同一 Pull Request 范围内同时修改扫描器与业务文件。Pull Request 的权威敏感信息检查由 `pull_request_target` 使用默认 Branch 的受信扫描器执行，只读取并扫描 PR Git 对象，绝不检出或执行 PR head 代码。
+- 发布门禁必须获得明确的完整 ref 和 commit 上下文。候选 Branch 构建接受 `refs/heads/vX.Y.Z`；默认分支构建仅在 `main` 的 tree OID 与当前版本 Branch 完全一致时接受，且两者都要求同版本 Tag 不存在。Tag 构建只接受同版本 annotated Tag，并校验 Tag 对象 peel 后确实指向当前候选 commit。Pull Request 使用目标版本 Branch 的完整 ref 和 PR 头 commit，不使用 GitHub 临时 merge commit 推断发布父子关系。lightweight Tag、短名称、偏离候选树的 `main` 或其他 Branch 均失败关闭。
 
 版本轮换顺序固定如下：
 
 1. 在唯一当前 Branch 上按模块提交，所有开发中变更继续记录到 `CHANGELOG.md` 的 `Unreleased` 和 `docs/ITERATION_LOG.md`。
-2. 到达冻结点后归档 `CHANGELOG.md`，同步 `release-manifest.json`、README 和微信上传说明，创建唯一的 `release-candidate` 提交并完成上传门禁。
+2. 到达冻结点后归档 `CHANGELOG.md`，同步 `release-manifest.json`、README 和微信上传说明，创建明确的 `release-candidate` 提交并完成上传门禁；候选验证通过后通过 Pull Request squash 到 `main`，并复验两个 Branch 的 tree OID 完全一致。
 3. 获得所有者明确上传确认后，上传完全相同的候选 commit；体验版回归和后台合规材料通过并再次获得确认后提交审核。上传和审核期间不创建 Tag。
 4. 审核通过后由所有者最终确认并本人完成微信正式发布；确认平台发布完成后，才在审核通过的完全相同 commit 上创建 annotated Tag。Tag 指向的树继续保持 `release-candidate`，因此 Tag CI 可以复验与审核、发布完全相同的候选源码，不修改已发布树。随后在同一版本 Branch 上创建唯一一个单父公开元数据提交，把清单状态记为 `released`；门禁要求该提交的唯一父 commit 正是同版本 Tag peel 后的候选。后续版本从该 Tag 建立新的唯一版本 Branch。
 
@@ -71,7 +73,7 @@
 ## 回滚边界
 
 - 小程序界面可以回滚到仍支持当前 `schemaVersion` 和 `contractVersion` 的版本；不满足支持范围时必须停止写入并提示升级。
-- schema v7 一旦写入，旧 schema v6 服务不能作为可用回滚版本；回滚必须保留支持 schema v7、AI contract v2 和历史计划 contract v1/v0 的读写边界。
+- schema v8 一旦写入，旧 schema v7 服务不能作为可用回滚版本；回滚必须保留支持 schema v8、AI contract v2 和历史计划 contract v1/v0 的读写边界。升级时先部署兼容 v7/v8 的新版 `aiPlanner`，再部署 `userData` v8，最后上传新版小程序。
 - 云函数不得回滚到会把当前 schema 降级写回的版本。数据库结构或迁移上线前先做云端备份，回滚代码不等于回滚用户数据。
 - AI 生成器回滚只影响之后新发起的任务，不修改已经确认的计划。进行中的任务继续由创建它的 `plannerVersion` 标识，不能用另一版本静默接管。
 - 发布失败时保留现有 `activePlan` 和用户状态，先撤回有问题的客户端或云函数；不得通过清空集合恢复服务。

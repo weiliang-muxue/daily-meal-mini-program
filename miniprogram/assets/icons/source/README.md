@@ -1,9 +1,11 @@
 # Lucide TabBar icon sources
 
-These SVG files are copied verbatim from the official `lucide-static@1.38.0`
-npm package published by the Lucide project. The package metadata identifies
-the upstream repository as <https://github.com/lucide-icons/lucide> and the
-license as ISC.
+The TabBar PNG files are deterministic renderings of SVGs from the official
+`lucide-static@1.38.0` npm package published by the Lucide project. The table
+records the upstream URL and digest for each source; the repository ships the
+runtime PNGs and the upstream ISC license, but not a duplicate SVG copy. The
+package metadata identifies the upstream repository as
+<https://github.com/lucide-icons/lucide>.
 
 | Tab | PNG basename | Official Lucide icon | Official package URL | SHA-256 |
 | --- | --- | --- | --- | --- |

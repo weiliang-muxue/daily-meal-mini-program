@@ -51,6 +51,7 @@ const CLOUD_FUNCTIONS = [
 ]
 const DEPLOYED_CLOUD_FUNCTIONS = CLOUD_FUNCTIONS.filter((name) => name !== 'ownerBootstrapOnce')
 const WX_SERVER_SDK_VERSION = '4.0.2'
+const OID_PATTERN = /^[a-f0-9]{40,64}$/
 const RETIRED_PROVIDER_DIAGNOSTIC_FILES = [
   'cloudfunctions/aiPlanner/provider-diagnostic.js',
   'cloudfunctions/aiPlanner/provider-diagnostic.test.js',
@@ -106,22 +107,85 @@ function versionTag(version) {
   }
 }
 
+function candidateBranch(version, currentRefName) {
+  const branchRef = `refs/heads/v${version}`
+  if (currentRefName !== 'refs/heads/main') {
+    return { refName: branchRef, commitOid: '', treeOid: '' }
+  }
+
+  const suppliedRef = String(process.env.RELEASE_GATE_CANDIDATE_REF || '').trim()
+  const suppliedCommit = String(process.env.RELEASE_GATE_CANDIDATE_COMMIT || '').trim().toLowerCase()
+  const remoteRef = `refs/remotes/origin/v${version}`
+  const remoteCommit = gitOutput(['rev-parse', '--verify', `${remoteRef}^{commit}`]).toLowerCase()
+  assert.strictEqual(suppliedRef, branchRef,
+    'main 门禁必须显式绑定当前版本 Branch 的完整 ref')
+  assert(OID_PATTERN.test(suppliedCommit), 'main 门禁必须显式提供当前版本 Branch commit')
+  assert(OID_PATTERN.test(remoteCommit), 'main 门禁必须现场解析 origin 当前版本 Branch')
+  assert.strictEqual(suppliedCommit, remoteCommit,
+    'main 门禁提供的候选 commit 与 origin 当前版本 Branch 不一致')
+  return {
+    refName: branchRef,
+    commitOid: remoteCommit,
+    treeOid: gitOutput(['show', '-s', '--format=%T', remoteCommit]),
+  }
+}
+
+function commitChangedEntries(commit, parentOids) {
+  if (parentOids.length !== 1) return []
+  const output = gitOutput([
+    'diff-tree', '--no-commit-id', '--name-status', '-z', '-r', '--no-renames',
+    parentOids[0], commit,
+  ], { fallback: null })
+  assert.notStrictEqual(output, null, '无法读取 released 元数据提交的文件差异')
+  const fields = output.split('\0')
+  if (fields[fields.length - 1] === '') fields.pop()
+  assert.strictEqual(fields.length % 2, 0, 'released 元数据提交的文件差异格式无效')
+  const entries = []
+  for (let index = 0; index < fields.length; index += 2) {
+    entries.push({ status: fields[index], path: fields[index + 1] })
+  }
+  return entries
+}
+
+function parentReleaseManifest(parentOids) {
+  if (parentOids.length !== 1) return null
+  const source = gitOutput(['show', `${parentOids[0]}:release-manifest.json`], { fallback: null })
+  assert.notStrictEqual(source, null, '无法读取 released 元数据提交父版本清单')
+  try {
+    return JSON.parse(source)
+  } catch (_) {
+    assert.fail('released 元数据提交父版本清单不是有效 JSON')
+  }
+}
+
 const requestedCommit = String(process.env.RELEASE_GATE_COMMIT || '').trim()
 const currentCommit = gitOutput(['rev-parse', '--verify', requestedCommit || 'HEAD'])
 const parentLine = gitOutput(['rev-list', '--parents', '-n', '1', currentCommit]).split(/\s+/).filter(Boolean)
+const parentOids = parentLine[0] === currentCommit ? parentLine.slice(1) : []
+const currentRefName = releaseRefName()
+const candidate = candidateBranch(releaseManifest.workingVersion, currentRefName)
+const releasedContext = releaseManifest.releaseStatus === 'released' ? {
+  changedEntries: commitChangedEntries(currentCommit, parentOids),
+  parentManifest: parentReleaseManifest(parentOids),
+} : {}
 
 validateReleaseGate({
   manifest: releaseManifest,
   changelog: read('CHANGELOG.md'),
   readme: read('README.md'),
   refContext: {
-    refName: releaseRefName(),
+    refName: currentRefName,
     commitOid: currentCommit,
-    parentOids: parentLine[0] === currentCommit ? parentLine.slice(1) : [],
+    parentOids,
+    treeOid: gitOutput(['show', '-s', '--format=%T', currentCommit]),
+    candidateBranchRef: candidate.refName,
+    candidateCommitOid: candidate.commitOid,
+    candidateTreeOid: candidate.treeOid,
+    ...releasedContext,
   },
   versionTag: versionTag(releaseManifest.workingVersion),
 })
-assert.strictEqual(releaseManifest.stateSchemaVersion, 7, '当前发布清单必须使用 schema v7')
+assert.strictEqual(releaseManifest.stateSchemaVersion, 8, '当前发布清单必须使用 schema v8')
 assert.strictEqual(stateSchema.CURRENT_SCHEMA, releaseManifest.stateSchemaVersion, '共享 schema 与版本清单不一致')
 assert.strictEqual(aiPlanner.CONTRACT_VERSION, releaseManifest.aiContractVersion, 'AI 契约与版本清单不一致')
 assert.strictEqual(aiPlanner.PLANNER_VERSION, releaseManifest.aiPlannerVersion, 'AI 生成器与版本清单不一致')
@@ -172,7 +236,8 @@ const sharedSource = read('shared/user-state.js')
 assert.strictEqual(read('cloudfunctions/privacy/membership-core.js'), read('cloudfunctions/membership/core.js'), 'privacy 成员控制逻辑未同步')
 
 const fresh = stateSchema.defaults()
-assert.strictEqual(fresh.schemaVersion, 7)
+assert.strictEqual(fresh.schemaVersion, 8)
+assert.strictEqual(fresh.waterReminder.enabled, false, '新用户喝水提醒必须默认关闭')
 assert.strictEqual(fresh.activePlan, null, '新用户不能自动获得静态计划')
 assert.strictEqual(fresh.draftPlan, null, '新用户默认不应存在候选计划')
 assert.deepStrictEqual(fresh.planHistory, [], '新用户历史计划必须为空')
@@ -208,6 +273,7 @@ appConfig.pages.forEach((page) => ['js', 'json', 'wxml', 'wxss'].forEach((extens
 }))
 
 const requiredFiles = [
+  '.github/workflows/trusted-pr-security.yml',
   'project.config.example.json', 'project.private.config.example.json', 'miniprogram/config.example.js',
   'miniprogram/app.json', 'miniprogram/app.js',
   'miniprogram/services/user-state-core.js', 'miniprogram/services/plan-view.js',
@@ -237,6 +303,7 @@ const requiredFiles = [
   'scripts/test-ai-provider-live.js', 'scripts/test-access-page.js', 'scripts/database-rules.test.js',
   'scripts/check-ai-storage-readiness.js',
   'scripts/check-ai-storage-readiness.test.js', 'scripts/check-staged-safety.test.js',
+  'scripts/git-hooks.test.js',
   'scripts/wx-automator/automation-runtime.js', 'scripts/wx-automator/automation-runtime.test.js',
   'scripts/wx-automator/automator-client.js', 'scripts/wx-automator/smoke.js',
   'scripts/wx-automator/visual-regression.js', 'scripts/wx-automator/interactive-smoke.js',
@@ -480,6 +547,7 @@ assert(/<view class="calendar-scroll">/.test(healthMarkup)
 
 const testScripts = [
   'scripts/release-gate.test.js',
+  'scripts/git-hooks.test.js',
   'scripts/deploy-production-function.test.js',
   'shared/user-state.test.js',
   'cloudfunctions/userData/index.test.js',
@@ -511,6 +579,7 @@ const testScripts = [
   'scripts/test-plan-view.js',
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',
+  'scripts/test-water-reminder.js',
   'scripts/test-private-cache.js',
   'scripts/test-private-image.js',
   'scripts/test-cloud-errors.js',
