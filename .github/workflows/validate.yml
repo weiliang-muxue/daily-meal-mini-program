@@ -9,7 +9,6 @@ on:
   pull_request:
     branches:
       - main
-      - 'v*'
 
 permissions:
   contents: read
@@ -21,12 +20,13 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
 
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
 
@@ -38,28 +38,37 @@ jobs:
         working-directory: scripts/wx-automator
         run: npm test
 
+      - name: Resolve the version Branch used by main
+        id: release-candidate
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./release-manifest.json').workingVersion")"
+          CANDIDATE_REF="refs/heads/v$VERSION"
+          REMOTE_REF="refs/remotes/origin/v$VERSION"
+          git fetch --no-tags origin "+$CANDIDATE_REF:$REMOTE_REF"
+          CANDIDATE_COMMIT="$(git rev-parse --verify "$REMOTE_REF^{commit}")"
+          echo "ref=$CANDIDATE_REF" >> "$GITHUB_OUTPUT"
+          echo "commit=$CANDIDATE_COMMIT" >> "$GITHUB_OUTPUT"
+
       - name: Validate versions, migrations and contracts
         env:
           RELEASE_GATE_REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
           RELEASE_GATE_COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          RELEASE_GATE_CANDIDATE_REF: ${{ steps.release-candidate.outputs.ref }}
+          RELEASE_GATE_CANDIDATE_COMMIT: ${{ steps.release-candidate.outputs.commit }}
         run: node scripts/validate.js
 
       - name: Reject secrets and private data in published history
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REF_NAME: ${{ github.ref }}
-          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            node scripts/check-staged-safety.js --range "$BASE_SHA" "$PR_HEAD_SHA" "refs/heads/$HEAD_REF"
-          else
-            TARGET_OID="$(git rev-parse --verify "$REF_NAME")"
-            node scripts/check-staged-safety.js --range "$BEFORE_SHA" "$TARGET_OID" "$REF_NAME"
-          fi
+          TARGET_OID="$(git rev-parse --verify "$REF_NAME")"
+          node scripts/check-staged-safety.js --range "$BEFORE_SHA" "$TARGET_OID" "$REF_NAME"
 
       - name: Check patch whitespace
         shell: bash

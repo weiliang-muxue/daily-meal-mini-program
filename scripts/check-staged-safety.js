@@ -32,6 +32,8 @@ const SECURITY_TRUST_ROOT_PATHS = new Set([
   'scripts/check-staged-safety.js',
   'scripts/release-gate.js',
 ])
+const GITHUB_WORKFLOW_PATH = /^\.github\/workflows\/.+/i
+const GITHUB_LOCAL_ACTION_PATH = /^\.github\/actions\/.+/i
 const TEXT_BASENAMES = new Set([
   '.gitignore', '.gitattributes', 'license', 'license.txt', 'notice', 'notice.txt',
 ])
@@ -174,6 +176,18 @@ const mealLogLiteral = /(?:['"`])?(?:actualMeal|actual_meal|mealLog|meal_log|foo
 
 function normalizedPath(file) {
   return String(file || '').replace(/\\/g, '/').replace(/^\.\//, '')
+}
+
+function isSecurityTrustRootPath(file) {
+  const normalized = normalizedPath(file)
+  return SECURITY_TRUST_ROOT_PATHS.has(normalized)
+    || GITHUB_WORKFLOW_PATH.test(normalized)
+    || GITHUB_LOCAL_ACTION_PATH.test(normalized)
+}
+
+function isSecurityPolicyPath(file) {
+  const normalized = normalizedPath(file)
+  return SECURITY_POLICY_PATHS.has(normalized) || isSecurityTrustRootPath(normalized)
 }
 
 function extension(file) {
@@ -457,15 +471,15 @@ function nulFields(buffer) {
 
 function policyIsolationReason(files) {
   const changed = [...new Set((files || []).map(normalizedPath))]
-  const trustRootFiles = changed.filter((file) => SECURITY_TRUST_ROOT_PATHS.has(file))
+  const trustRootFiles = changed.filter(isSecurityTrustRootPath)
   if (!trustRootFiles.length) return ''
-  const businessFiles = changed.filter((file) => !SECURITY_POLICY_PATHS.has(file))
+  const businessFiles = changed.filter((file) => !isSecurityPolicyPath(file))
   if (!businessFiles.length) return ''
   return `安全信任根只能通过独立策略变更升级；本批次同时修改 ${trustRootFiles.slice(0, 5).join('、')} 和业务文件：${businessFiles.slice(0, 5).join('、')}`
 }
 
 function indexChangedPaths() {
-  return nulFields(git(['diff', '--cached', '--name-only', '-z', 'HEAD', '--']))
+  return nulFields(git(['diff', '--cached', '--no-renames', '--name-only', '-z', 'HEAD', '--']))
 }
 
 function rangeChangedPaths(base, head) {
@@ -473,7 +487,7 @@ function rangeChangedPaths(base, head) {
   const baseCommit = peelCommit(base)
   const targetCommit = peelCommit(head || 'HEAD')
   if (!baseCommit || !targetCommit) return []
-  return nulFields(git(['diff', '--name-only', '-z', `${baseCommit}..${targetCommit}`, '--']))
+  return nulFields(git(['diff', '--no-renames', '--name-only', '-z', `${baseCommit}..${targetCommit}`, '--']))
 }
 
 function indexEntries() {
@@ -708,6 +722,11 @@ function checkPushInput(input) {
       continue
     }
     if (ZERO_OID.test(update.localOid)) continue
+    if (versionTag && objectType(update.localOid) !== 'tag') {
+      errors.push(`${update.remoteRef}: 版本 Tag 首次创建必须使用 annotated Tag，禁止 lightweight Tag`)
+      refs.push(update.remoteRef)
+      continue
+    }
     const result = checkRange(update.remoteOid, update.localOid, { ref: update.remoteRef })
     result.files.forEach((file) => files.add(file))
     result.commits.forEach((commit) => commits.add(commit))
@@ -758,6 +777,8 @@ module.exports = {
   blobReason,
   metadataReason,
   refReason,
+  isSecurityTrustRootPath,
+  isSecurityPolicyPath,
   policyIsolationReason,
   checkIndex,
   checkWorktree,
