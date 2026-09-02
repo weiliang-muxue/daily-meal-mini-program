@@ -338,6 +338,29 @@ test('aiPlanner transactions do not issue parallel database reads', () => {
   assert.strictEqual(/Promise\.all\s*\(/.test(source), false)
 })
 
+test('planner reads schema v7 in memory while older and future schemas fail closed', () => {
+  const legacy = {
+    ...defaults(),
+    schemaVersion: 7,
+    customReminders: [{ id: 'schema-7-reminder', text: '保留旧提醒', done: false }],
+  }
+  delete legacy.waterReminder
+  const before = clone(legacy)
+  const migrated = planner._test.currentStateForPlanning(legacy, { preserveUnknownFrom: legacy })
+  assert.strictEqual(migrated.schemaVersion, 8)
+  assert.strictEqual(migrated.waterReminder.enabled, false)
+  assert.deepStrictEqual(migrated.customReminders, legacy.customReminders)
+  assert.deepStrictEqual(legacy, before, '兼容读取只能在内存迁移，不能改写原始 v7 对象')
+  assert.throws(
+    () => planner._test.currentStateForPlanning({ ...legacy, schemaVersion: 6 }),
+    (error) => error.code === 'STATE_SCHEMA_UPGRADE_REQUIRED',
+  )
+  assert.throws(
+    () => planner._test.currentStateForPlanning({ ...legacy, schemaVersion: 9 }),
+    (error) => error.code === 'STATE_SCHEMA_UNSUPPORTED',
+  )
+})
+
 test('readiness status probes only reserved documents and performs no business writes', async () => {
   reset()
   wxContext = { OPENID: owner }
@@ -1086,6 +1109,89 @@ test('start is idempotent for the same owner, request id, preferences, and state
     (error) => error.code === 'IDEMPOTENCY_CONFLICT',
   )
   assert.strictEqual(collectionStore('meal_ai_tasks').size, 1)
+})
+
+test('schema v7 remains usable across start, claim, finalize, and status without an implicit state rewrite', async () => {
+  reset()
+  const legacyStartState = {
+    ...get('meal_user_states', owner),
+    schemaVersion: 7,
+    customReminders: [{ id: 'schema-7-start', text: '启动期间保留', done: false }],
+  }
+  delete legacyStartState.waterReminder
+  put('meal_user_states', owner, legacyStartState)
+
+  const started = await planner._test.startTask(
+    owner, input, legacyStartState.stateRevision, 'a'.repeat(32), consent,
+  )
+  const startedTaskId = started.task.taskId
+  assert.strictEqual(started.task.status, 'queued')
+  assert.deepStrictEqual(get('meal_user_states', owner), legacyStartState,
+    'start must only migrate schema v7 in memory')
+
+  const claimed = await planner._test.claimWork(owner, startedTaskId)
+  assert(claimed.claim, 'schema v7 task must remain claimable')
+  assert.deepStrictEqual(get('meal_user_states', owner), legacyStartState,
+    'claim must not rewrite schema v7 user state')
+
+  reset()
+  const final = finalClaimTask(108, 41)
+  const legacyFinalizeState = {
+    ...stateWithPlans({
+      stateRevision: 4,
+      customReminders: [{ id: 'schema-7-finalize', text: '写回期间保留', done: true }],
+    }),
+    schemaVersion: 7,
+  }
+  delete legacyFinalizeState.waterReminder
+  put('meal_user_states', owner, legacyFinalizeState)
+  put('meal_ai_tasks', final.task._id, planner._test.taskData(final.task))
+  put('meal_ai_controls', owner, { owner, activeTaskId: final.task._id, generationEpoch: 41 })
+
+  const finalized = await planner._test.settleSuccess(
+    owner, final.task._id, final.claim, final.leaseToken, validPlan(final.task),
+  )
+  assert.strictEqual(finalized.task.status, 'succeeded')
+  const stored = get('meal_user_states', owner)
+  assert.strictEqual(stored.schemaVersion, 7,
+    'aiPlanner must leave the persisted schema migration to userData')
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(stored, 'waterReminder'), false)
+  assert.deepStrictEqual(stored.customReminders, legacyFinalizeState.customReminders)
+  assert.strictEqual(stored.draftPlan.id, final.task.planId)
+  assert.strictEqual(stored.stateRevision, 5)
+
+  const status = await planner._test.readTaskStatus(owner, final.task._id)
+  assert.strictEqual(status.task.status, 'succeeded')
+  assert.strictEqual(status.result.draftPlan.id, final.task.planId)
+  assert.strictEqual(status.result.stateRevision, 5)
+  assert.strictEqual(get('meal_user_states', owner).schemaVersion, 7,
+    'status must only migrate schema v7 in memory')
+})
+
+test('future user-state schemas fail closed before start or finalize can write', async () => {
+  reset()
+  const futureStartState = { ...get('meal_user_states', owner), schemaVersion: 9 }
+  put('meal_user_states', owner, futureStartState)
+  collectionStore('meal_ai_controls')
+  const beforeStart = storesSnapshot()
+  await assert.rejects(
+    planner._test.startTask(owner, input, futureStartState.stateRevision, 'b'.repeat(32), consent),
+    (error) => error.code === 'STATE_SCHEMA_UNSUPPORTED',
+  )
+  assertZeroBusinessWrites(beforeStart, 'future schema start')
+
+  reset()
+  const final = finalClaimTask(109, 42)
+  const futureFinalizeState = { ...stateWithPlans({ stateRevision: 4 }), schemaVersion: 9 }
+  put('meal_user_states', owner, futureFinalizeState)
+  put('meal_ai_tasks', final.task._id, planner._test.taskData(final.task))
+  put('meal_ai_controls', owner, { owner, activeTaskId: final.task._id, generationEpoch: 42 })
+  const beforeFinalize = storesSnapshot()
+  await assert.rejects(
+    planner._test.settleSuccess(owner, final.task._id, final.claim, final.leaseToken, validPlan(final.task)),
+    (error) => error.code === 'STATE_SCHEMA_UNSUPPORTED',
+  )
+  assertZeroBusinessWrites(beforeFinalize, 'future schema finalize')
 })
 
 test('start rejects malformed consent before any database write', async () => {

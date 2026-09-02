@@ -48,6 +48,7 @@
   <view class="surface setting-list">
     <label class="setting-row touch-target" for="calcium-reminder-switch"><view class="setting-copy"><text class="setting-title">补钙食物提醒</text><text class="setting-detail">默认关闭，只在你主动开启后显示</text></view><view class="setting-switch-target"><switch id="calcium-reminder-switch" checked="{{settings.calciumAnchorReminder}}" disabled="{{profileLoading || savingSettings}}" color="{{nativeControlColor}}" data-key="calciumAnchorReminder" bindchange="toggleHealthSetting" aria-label="补钙食物提醒，当前{{settings.calciumAnchorReminder ? '已开启' : '已关闭'}}" /></view></label>
     <label class="setting-row touch-target" for="vitamin-d-reminder-switch"><view class="setting-copy"><text class="setting-title">维生素 D 复诊提醒</text><text class="setting-detail">默认关闭，可随时修改或关闭</text></view><view class="setting-switch-target"><switch id="vitamin-d-reminder-switch" checked="{{settings.vitaminDReminder}}" disabled="{{profileLoading || savingSettings}}" color="{{nativeControlColor}}" data-key="vitaminDReminder" bindchange="toggleHealthSetting" aria-label="维生素 D 复诊提醒，当前{{settings.vitaminDReminder ? '已开启' : '已关闭'}}" /></view></label>
+    <view class="setting-row reminder-navigation touch-target" bindtap="openWaterReminder" hover-class="profile-control-hover" aria-role="button" aria-label="管理喝水提醒，当前{{waterReminderSummary}}"><view class="setting-copy"><text class="setting-title">喝水提醒</text><text class="setting-detail">{{waterReminderSummary}}</text></view><text class="setting-action">管理</text></view>
   </view>
 
   <text class="section-title">同步状态</text>

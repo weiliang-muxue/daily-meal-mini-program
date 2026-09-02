@@ -104,6 +104,7 @@ const DATA_CONFLICT_FAILURE_CODES = new Set([
   'AI_PLANNER_VERSION_UNSUPPORTED', 'AI_CONTRACT_VERSION_UNSUPPORTED',
   'AI_TASK_SCHEMA_VERSION_UNSUPPORTED', 'AI_TASK_VERSION_INVALID', 'AI_DATA_CONSENT_REQUIRED',
 ])
+const MIN_READABLE_STATE_SCHEMA = 7
 
 function atomicFinalizedStateFields(value) {
   return {
@@ -214,10 +215,11 @@ function currentStateForPlanning(rawState, options = {}) {
   if (!rawState || typeof rawState !== 'object' || Array.isArray(rawState)) {
     throw plannerError('INVALID_STATE_REVISION', '请先刷新用户数据')
   }
-  const state = migrate(rawState, options)
-  if (Number(rawState.schemaVersion || 0) !== CURRENT_SCHEMA) {
+  const sourceSchema = Number(rawState.schemaVersion || 0)
+  if (sourceSchema < MIN_READABLE_STATE_SCHEMA) {
     throw plannerError('STATE_SCHEMA_UPGRADE_REQUIRED', '请先刷新并升级个人数据')
   }
+  const state = migrate(rawState, options)
   return state
 }
 
@@ -1233,4 +1235,5 @@ exports._test = {
   retryPolicy,
   providerOptions,
   hasCurrentProviderConfiguration,
+  currentStateForPlanning,
 }

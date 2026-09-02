@@ -10,6 +10,7 @@ const {
   migrate,
   sanitizeState,
   sanitizeGenerationPreferences,
+  sanitizeWaterReminder,
   confirmDraft,
   restoreHistory,
 } = require('./user-state')
@@ -130,9 +131,9 @@ function throwsCode(callback, code) {
 }
 
 const empty = defaults()
-assert.strictEqual(CURRENT_SCHEMA, 7)
+assert.strictEqual(CURRENT_SCHEMA, 8)
 assert.strictEqual(CURRENT_AI_CONTRACT, 2)
-assert.strictEqual(empty.schemaVersion, 7)
+assert.strictEqual(empty.schemaVersion, 8)
 assert.strictEqual(empty.stateRevision, 0)
 assert.strictEqual(empty.activePlan, null)
 assert.strictEqual(empty.draftPlan, null)
@@ -143,6 +144,10 @@ assert.deepStrictEqual(empty.generationPreferences.mealTypes, [])
 assert.strictEqual(empty.generationPreferences.contractVersion, 2)
 assert.strictEqual(empty.generationPreferences.exerciseIntent, '', '新用户运动意图必须保持未确认')
 assert.deepStrictEqual(empty.settings, { calciumAnchorReminder: false, vitaminDReminder: false })
+assert.deepStrictEqual(empty.waterReminder, {
+  enabled: false, cadence: 'daily', startTime: '09:00', endTime: '18:00', intervalMinutes: 60,
+  timeZone: 'Asia/Shanghai', scheduleVersion: 0, updatedAt: '',
+})
 assert.deepStrictEqual(sanitizeState({}).settings, { calciumAnchorReminder: false, vitaminDReminder: false })
 assert.deepStrictEqual(sanitizeState({ settings: { calciumAnchorReminder: true } }).settings, {
   calciumAnchorReminder: true,
@@ -236,7 +241,7 @@ const legacySamples = [
 
 legacySamples.forEach(({ version, state, assertState }) => {
   const result = migrate(state, { legacyPlan: legacyPlan(), preserveUnknownFrom: state })
-  assert.strictEqual(result.schemaVersion, 7, `schema v${version} should migrate to v7`)
+  assert.strictEqual(result.schemaVersion, 8, `schema v${version} should migrate to v8`)
   assert.strictEqual(result.generationPreferences.contractVersion, 2)
   assert.strictEqual(result.activePlan.id, 'week-legacy-1')
   assert.strictEqual(result.activePlan.source, 'legacy')
@@ -282,7 +287,7 @@ assert.deepStrictEqual(migrate({ schemaVersion: 5, settings: { calciumAnchorRemi
 }, 'schema v5 must not inherit a legacy default for a missing reminder setting')
 
 const migrated = migrate(v4, { legacyPlan: legacyPlan(), preserveUnknownFrom: v4 })
-assert.strictEqual(migrated.schemaVersion, 7)
+assert.strictEqual(migrated.schemaVersion, 8)
 assert.strictEqual(migrated.activePlan.id, 'week-legacy-1')
 assert.strictEqual(migrated.activePlan.source, 'legacy')
 assert.strictEqual(migrated.activePlan.days[0].meals.length, 3)
@@ -331,7 +336,7 @@ schemaV6.planUiStateByPlan = {
   },
 }
 const schemaV7 = migrate(schemaV6, { preserveUnknownFrom: schemaV6 })
-assert.strictEqual(schemaV7.schemaVersion, 7)
+assert.strictEqual(schemaV7.schemaVersion, 8)
 assert.strictEqual(schemaV7.stateRevision, 24)
 assert.strictEqual(schemaV7.generationPreferences.contractVersion, 2,
   'schema v6 preferences must migrate to the current request contract')
@@ -343,9 +348,38 @@ assert.deepStrictEqual(schemaV7.checkedShoppingIds, ['schema-v6-item'])
 assert.deepStrictEqual(schemaV7.customReminders, schemaV6.customReminders)
 assert.deepStrictEqual(schemaV7.planUiStateByPlan[legacyV1Plan.id], schemaV6.planUiStateByPlan[legacyV1Plan.id])
 assert.deepStrictEqual(migrate(schemaV7, { preserveUnknownFrom: schemaV7 }), schemaV7,
-  'schema v7 migration must be idempotent')
+  'schema v8 migration must be idempotent')
 
-throwsCode(() => migrate({ ...migrated, schemaVersion: 8 }), 'STATE_SCHEMA_UNSUPPORTED')
+for (let schemaVersion = 1; schemaVersion <= 7; schemaVersion += 1) {
+  const legacy = { ...migrated, schemaVersion, waterReminder: { enabled: true, cadence: 'weekdays' } }
+  const result = migrate(legacy, { preserveUnknownFrom: legacy })
+  assert.strictEqual(result.waterReminder.enabled, false, `schema v${schemaVersion} must default water reminders off`)
+  assert.strictEqual(result.activePlan.id, migrated.activePlan.id)
+  assert.deepStrictEqual(result.customReminders, migrated.customReminders)
+  assert.deepStrictEqual(result.checkedShoppingIds, migrated.checkedShoppingIds)
+}
+
+assert.deepStrictEqual(sanitizeWaterReminder({
+  enabled: true, cadence: 'weekdays', startTime: '08:00', endTime: '18:00', intervalMinutes: 120,
+  timeZone: 'Asia/Shanghai', scheduleVersion: 2, updatedAt: '2026-09-02T00:00:00.000Z',
+}), {
+  enabled: true, cadence: 'weekdays', startTime: '08:00', endTime: '18:00', intervalMinutes: 120,
+  timeZone: 'Asia/Shanghai', scheduleVersion: 2, updatedAt: '2026-09-02T00:00:00.000Z',
+})
+;[
+  { cadence: 'holidays' },
+  { startTime: '8:00' },
+  { startTime: '18:00', endTime: '18:00' },
+  { intervalMinutes: 15 },
+  { timeZone: 'UTC' },
+].forEach((waterReminder) => assert.throws(() => sanitizeWaterReminder(waterReminder)))
+assert.strictEqual(sanitizeWaterReminder({ startTime: '00:00', endTime: '11:30', intervalMinutes: 30 }).enabled, false)
+assert.throws(
+  () => sanitizeWaterReminder({ startTime: '00:00', endTime: '12:00', intervalMinutes: 30 }),
+  /more than 24 reminders/,
+)
+
+throwsCode(() => migrate({ ...migrated, schemaVersion: 9 }), 'STATE_SCHEMA_UNSUPPORTED')
 
 const clientSanitized = sanitizeState(migrated)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(clientSanitized, 'futureServerField'), false)
@@ -671,4 +705,4 @@ const oversized = plan('oversized')
 oversized.untrustedPadding = 'x'.repeat(256 * 1024)
 throwsCode(() => sanitizeState({ ...defaults(), activePlan: oversized }), 'PLAN_TOO_LARGE')
 
-console.log('user-state schema v7 tests passed')
+console.log('user-state schema v8 tests passed')

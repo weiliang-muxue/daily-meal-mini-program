@@ -1,7 +1,7 @@
 'use strict'
 
 const { callFunction } = require('../utils/cloud')
-const { defaults, migrate, sanitizeGenerationPreferences } = require('./user-state-core')
+const { defaults, migrate, sanitizeGenerationPreferences, sanitizeWaterReminder } = require('./user-state-core')
 const { membershipStore } = require('./membership-store')
 
 const CACHE_PREFIX = 'meal_user_state_v3_'
@@ -9,6 +9,7 @@ const PENDING_PREFIX = 'meal_user_pending_v1_'
 const EDITABLE_FIELDS = [
   'generationPreferences', 'selectedDayId', 'selectedDay', 'defaultDinnerMode', 'dinnerModeByDay',
   'planUiStateByPlan', 'mealOverrides', 'checkedShoppingIds', 'customReminders', 'settings',
+  'waterReminder',
 ]
 const PLAN_UI_VALUE_FIELDS = ['selectedDayId', 'selectedDay', 'defaultDinnerMode', 'dinnerModeByDay']
 const PENDING_VALUE_FIELDS = EDITABLE_FIELDS.filter((key) => (
@@ -456,6 +457,7 @@ class UserStore {
     catch (error) { return Promise.reject(error) }
     const allowed = Object.fromEntries(EDITABLE_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(partial || {}, key)).map((key) => [key, partial[key]]))
     if (allowed.generationPreferences) allowed.generationPreferences = sanitizeGenerationPreferences(allowed.generationPreferences)
+    if (allowed.waterReminder) allowed.waterReminder = sanitizeWaterReminder(allowed.waterReminder)
     if (!Object.keys(allowed).length) return Promise.resolve(this.data)
     const before = normalize(this.data)
     this.data = normalize({ ...before, ...allowed, updatedAt: new Date().toISOString() })

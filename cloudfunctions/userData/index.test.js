@@ -188,6 +188,10 @@ async function testBootstrapAndSave() {
       }],
       futureClientPreference: 'must-not-be-stored',
     },
+    waterReminder: {
+      enabled: true, cadence: 'weekdays', startTime: '09:00', endTime: '17:00', intervalMinutes: 60,
+      timeZone: 'Asia/Shanghai', scheduleVersion: 1, updatedAt: '2026-09-02T00:00:00.000Z',
+    },
     activePlan: { futureClientPlan: 'ignored because plans are not client editable' },
     futureTopLevelField: 'must-not-be-stored',
   }, 0, cacheNamespace)
@@ -202,6 +206,9 @@ async function testBootstrapAndSave() {
     stored.generationPreferences.exerciseByDay[0], 'futureClientExerciseField',
   ), false)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(stored.activePlan, 'futureClientPlan'), false)
+  assert.strictEqual(stored.waterReminder.enabled, true)
+  assert.strictEqual(stored.waterReminder.cadence, 'weekdays')
+  assert.strictEqual(stored.activePlan.id, 'active', 'saving a reminder must not replace the active plan')
   assert.deepStrictEqual(stored.futureTopLevelField, { retainedByDatabasePatch: true },
     'top-level future fields remain untouched by the database update patch')
 }
@@ -370,18 +377,20 @@ async function testMigrations() {
     raw.settings.futureServerSetting = { fromSchema: schemaVersion }
     raw.generationPreferences.futureServerPreference = { fromSchema: schemaVersion }
     const migrated = userData._test.migrateStored(raw)
-    assert.strictEqual(migrated.schemaVersion, 7)
+    assert.strictEqual(migrated.schemaVersion, 8)
+    assert.strictEqual(migrated.waterReminder.enabled, false)
     assert.deepStrictEqual(migrated.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(migrated.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     reset(raw)
     const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
     const stored = get('meal_user_states', owner)
-    assert.strictEqual(bootstrapped.schemaVersion, 7)
+    assert.strictEqual(bootstrapped.schemaVersion, 8)
+    assert.strictEqual(bootstrapped.waterReminder.enabled, false)
     assert.deepStrictEqual(stored.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
   }
-  const unsupported = { ...currentState(), schemaVersion: 8 }
+  const unsupported = { ...currentState(), schemaVersion: 9 }
   reset(unsupported)
   await assert.rejects(
     userData._test.bootstrap(owner, cacheNamespace),
@@ -418,6 +427,7 @@ function testStateWritesUseTopLevelAtomicReplacement() {
     'activePlan', 'activePlanId', 'checkedShoppingIds', 'customReminders', 'defaultDinnerMode',
     'dinnerModeByDay', 'draftPlan', 'generationPreferences', 'mealOverrides', 'planHistory',
     'planUiStateByPlan', 'schemaVersion', 'selectedDay', 'selectedDayId', 'settings', 'stateRevision',
+    'waterReminder',
   ])
   Object.entries(replacement).forEach(([key, value]) => {
     assert.strictEqual(isAtomicSet(value), true, `${key} must be replaced atomically instead of flattened into field paths`)

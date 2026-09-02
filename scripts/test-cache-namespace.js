@@ -1303,6 +1303,42 @@ async function testCloudDurationValidationRemainsStrict() {
   }
 }
 
+async function testWaterReminderPendingRetriesWithoutVersionInflation() {
+  const key = `meal_user_state_v3_${namespaceA}`
+  const pending = `meal_user_pending_v1_${namespaceA}`
+  storage.set(key, { ...defaults(), stateRevision: 2 })
+  storage.delete(pending)
+  const store = new UserStore(new FakeMembershipStore(namespaceA))
+  store.bindNamespace()
+  const reminder = {
+    ...defaults().waterReminder,
+    enabled: true,
+    cadence: 'weekdays',
+    scheduleVersion: 1,
+    updatedAt: '2026-09-02T00:00:00.000Z',
+  }
+  cloudHandler = async (_name, action) => {
+    assert.strictEqual(action, 'saveState')
+    throw new Error('offline')
+  }
+  await assert.rejects(store.patch({ waterReminder: reminder }, { immediate: true }), /offline/)
+  assert.deepStrictEqual(store.data.waterReminder, reminder)
+  assert.deepStrictEqual(storage.get(pending).fields.waterReminder, reminder)
+  assert.strictEqual(store.state, 'offline')
+
+  let savedPayload
+  cloudHandler = async (_name, action, payload) => {
+    assert.strictEqual(action, 'saveState')
+    savedPayload = payload
+    return { ...defaults(), stateRevision: 3, waterReminder: payload.state.waterReminder }
+  }
+  const saved = await store.flush()
+  assert.strictEqual(saved.waterReminder.scheduleVersion, 1)
+  assert.strictEqual(savedPayload.state.waterReminder.scheduleVersion, 1,
+    'retrying an existing pending save must not increment the schedule version')
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(storage.get(pending).fields, 'waterReminder'), false)
+}
+
 async function main() {
   await testColdStartRequiresOnlineStatus()
   await testVerifiedIdentityReconcilesOnlyStalePrivateCaches()
@@ -1338,6 +1374,7 @@ async function main() {
   await testLateBootstrapCannotRollBackSuccessfulSave()
   testInvalidCachedDurationRepairsOnlyDurationField()
   await testCloudDurationValidationRemainsStrict()
+  await testWaterReminderPendingRetriesWithoutVersionInflation()
   console.log('cache namespace tests passed')
 }
 

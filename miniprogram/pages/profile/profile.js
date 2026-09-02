@@ -67,6 +67,12 @@ function visibleActiveInvites(summary) {
   }, [])
 }
 
+function waterReminderSummary(value) {
+  if (!value || value.enabled !== true) return '未开启'
+  const cadence = value.cadence === 'weekdays' ? '周一至周五' : '每日'
+  return `${cadence} ${value.startTime || '09:00'}–${value.endTime || '18:00'}，每 ${Number(value.intervalMinutes) || 60} 分钟`
+}
+
 function confirmModal(options) {
   return new Promise((resolve) => wx.showModal({
     ...options,
@@ -84,6 +90,7 @@ Page({
     authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, clearingData: false,
     bindingPhone: false, phoneError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
+    waterReminderSummary: '未开启',
     nativeControlColor: '#176B46',
     member: {}, memberCount: 0, occupiedCount: 0, maxMembers: DEFAULT_MAX_MEMBERS,
     inviteTtlHours: DEFAULT_INVITE_TTL_HOURS, inviteTtlText: inviteTtlText(DEFAULT_INVITE_TTL_HOURS),
@@ -258,6 +265,7 @@ Page({
       authDetail: authState === 'offline' ? authStore.error || this.data.authDetail || '网络连接不可用，请稍后重试' : '正在加载资料',
       updatedText: formatUpdatedAt(userStore.data.updatedAt),
       settings: userStore.data.settings || { calciumAnchorReminder: false, vitaminDReminder: false },
+      waterReminderSummary: waterReminderSummary(userStore.data.waterReminder),
       member: membershipStore.member || {},
     })
   },
@@ -266,7 +274,7 @@ Page({
     this.setData({
       profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
       avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false,
-      phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false },
+      phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false }, waterReminderSummary: '未开启',
       updatedText: '', member: {}, memberCount: 0, occupiedCount: 0,
       activeInvites: [], transferMembers: [], selectedMemberRef: '',
       inviteCode: '', inviteExpiresText: '', inviteLabel: '',
@@ -326,6 +334,7 @@ Page({
   },
 
   openUserAgreement() { return navigateToUserAgreement() },
+  openWaterReminder() { return wx.navigateTo({ url: '/pages/water-reminder/water-reminder' }) },
   async openPrivacyGuide() {
     this.setData({ legalPrivacyError: '' })
     const result = await openPrivacyContractOrLocal()

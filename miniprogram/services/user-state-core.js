@@ -1,6 +1,6 @@
 'use strict'
 
-const CURRENT_SCHEMA = 7
+const CURRENT_SCHEMA = 8
 const CURRENT_AI_CONTRACT = 2
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
@@ -17,6 +17,9 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
 const SCENARIOS = ['default', 'rest', 'workout']
 const INTENSITIES = ['low', 'medium', 'high']
 const EXERCISE_INTENTS = ['none', 'daily']
+const WATER_REMINDER_CADENCES = ['daily', 'weekdays']
+const WATER_REMINDER_INTERVALS = [30, 45, 60, 90, 120]
+const MAX_WATER_REMINDERS_PER_DAY = 24
 
 function fail(message, code = 'INVALID_USER_STATE') {
   const error = new Error(message)
@@ -196,6 +199,19 @@ function defaultGenerationPreferences() {
   }
 }
 
+function defaultWaterReminder() {
+  return {
+    enabled: false,
+    cadence: 'daily',
+    startTime: '09:00',
+    endTime: '18:00',
+    intervalMinutes: 60,
+    timeZone: 'Asia/Shanghai',
+    scheduleVersion: 0,
+    updatedAt: '',
+  }
+}
+
 function defaults() {
   return {
     schemaVersion: CURRENT_SCHEMA,
@@ -214,6 +230,52 @@ function defaults() {
     checkedShoppingIds: [],
     customReminders: [],
     settings: { calciumAnchorReminder: false, vitaminDReminder: false },
+    waterReminder: defaultWaterReminder(),
+  }
+}
+
+function timeToMinute(value, field) {
+  const time = cleanText(value, field, 5, { required: true })
+  if (!/^\d{2}:\d{2}$/.test(time)) fail(`${field} must use HH:mm`)
+  const [hour, minute] = time.split(':').map(Number)
+  if (hour > 23 || minute > 59) fail(`${field} must be a valid time`)
+  return { time, minuteOfDay: hour * 60 + minute }
+}
+
+function sanitizeWaterReminder(raw) {
+  const value = isObject(raw) ? raw : {}
+  const fallback = defaultWaterReminder()
+  const cadence = value.cadence === undefined ? fallback.cadence
+    : cleanText(value.cadence, 'waterReminder.cadence', 20, { required: true })
+  if (!WATER_REMINDER_CADENCES.includes(cadence)) fail('waterReminder.cadence is not supported')
+  const start = timeToMinute(value.startTime === undefined ? fallback.startTime : value.startTime, 'waterReminder.startTime')
+  const end = timeToMinute(value.endTime === undefined ? fallback.endTime : value.endTime, 'waterReminder.endTime')
+  if (end.minuteOfDay <= start.minuteOfDay) fail('waterReminder.endTime must be later than startTime')
+  const intervalMinutes = finiteInteger(
+    value.intervalMinutes, 'waterReminder.intervalMinutes',
+    WATER_REMINDER_INTERVALS[0], WATER_REMINDER_INTERVALS[WATER_REMINDER_INTERVALS.length - 1],
+    fallback.intervalMinutes,
+  )
+  if (!WATER_REMINDER_INTERVALS.includes(intervalMinutes)) fail('waterReminder.intervalMinutes is not supported')
+  const reminderCount = Math.floor((end.minuteOfDay - start.minuteOfDay) / intervalMinutes) + 1
+  if (reminderCount > MAX_WATER_REMINDERS_PER_DAY) {
+    fail(`waterReminder creates more than ${MAX_WATER_REMINDERS_PER_DAY} reminders per day`)
+  }
+  const timeZone = value.timeZone === undefined ? fallback.timeZone
+    : cleanText(value.timeZone, 'waterReminder.timeZone', 40, { required: true })
+  if (timeZone !== fallback.timeZone) fail('waterReminder.timeZone is not supported')
+  return {
+    enabled: value.enabled === true,
+    cadence,
+    startTime: start.time,
+    endTime: end.time,
+    intervalMinutes,
+    timeZone,
+    scheduleVersion: finiteInteger(
+      value.scheduleVersion, 'waterReminder.scheduleVersion', 0, Number.MAX_SAFE_INTEGER - 1,
+      fallback.scheduleVersion,
+    ),
+    updatedAt: optionalTimestamp(value.updatedAt, 'waterReminder.updatedAt'),
   }
 }
 
@@ -660,6 +722,7 @@ function sanitizeState(raw, options = {}) {
       calciumAnchorReminder: isObject(value.settings) && value.settings.calciumAnchorReminder === true,
       vitaminDReminder: isObject(value.settings) && value.settings.vitaminDReminder === true,
     },
+    waterReminder: sanitizeWaterReminder(value.waterReminder),
   })
   const trusted = isObject(options.preserveUnknownFrom) ? options.preserveUnknownFrom : null
   const finalState = trusted ? mergeTrustedUnknown(result, trusted) : result
@@ -675,6 +738,7 @@ function migrate(raw = {}, options = {}) {
   }
   const candidate = { ...value, schemaVersion: CURRENT_SCHEMA }
   if (sourceSchema < CURRENT_SCHEMA) {
+    candidate.waterReminder = defaultWaterReminder()
     const legacyPreferences = isObject(value.generationPreferences) ? value.generationPreferences : {}
     candidate.generationPreferences = {
       ...legacyPreferences,
@@ -790,11 +854,16 @@ module.exports = {
   CURRENT_AI_CONTRACT,
   MAX_HISTORY,
   MAX_MEAL_OVERRIDES,
+  WATER_REMINDER_CADENCES,
+  WATER_REMINDER_INTERVALS,
+  MAX_WATER_REMINDERS_PER_DAY,
   defaults,
+  defaultWaterReminder,
   migrate,
   sanitizeState,
   sanitizePlan,
   sanitizeGenerationPreferences,
+  sanitizeWaterReminder,
   confirmDraft,
   restoreHistory,
 }

@@ -13,11 +13,11 @@ const members = db.collection('meal_members')
 const STATE_FIELDS = [
   'schemaVersion', 'stateRevision', 'activePlan', 'draftPlan', 'planHistory', 'generationPreferences',
   'activePlanId', 'selectedDayId', 'selectedDay', 'defaultDinnerMode', 'dinnerModeByDay',
-  'planUiStateByPlan', 'mealOverrides', 'checkedShoppingIds', 'customReminders', 'settings',
+  'planUiStateByPlan', 'mealOverrides', 'checkedShoppingIds', 'customReminders', 'settings', 'waterReminder',
 ]
 const CLIENT_EDITABLE_FIELDS = [
   'generationPreferences', 'selectedDayId', 'selectedDay', 'defaultDinnerMode', 'dinnerModeByDay',
-  'planUiStateByPlan', 'mealOverrides', 'checkedShoppingIds', 'customReminders', 'settings',
+  'planUiStateByPlan', 'mealOverrides', 'checkedShoppingIds', 'customReminders', 'settings', 'waterReminder',
 ]
 const BUSINESS_ERROR_CODES = new Set([
   'MEMBERSHIP_REQUIRED', 'ACCOUNT_DELETION_IN_PROGRESS', 'INVALID_STATE_REVISION', 'STATE_REVISION_CONFLICT',
