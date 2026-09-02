@@ -33,17 +33,20 @@ const BOTTOM_EVIDENCE_SELECTORS = Object.freeze({
   shopping: ['.reset-button', '.status-panel', '.group'],
   guide: ['.warning', '.reminder-list', '.status-panel', '.reminder-form', '.guide-state'],
   profile: ['.danger-card'],
+  'water-reminder': ['.calendar-card', '.save-button', '.status-panel'],
   'user-agreement': ['.legal-section'],
   privacy: ['.legal-link'],
 })
 const EVIDENCE_ROUTES = Object.freeze({
   plan: 'pages/plan/plan', planner: 'pages/planner/planner', health: 'pages/health/health',
   shopping: 'pages/shopping/shopping', guide: 'pages/guide/guide', profile: 'pages/profile/profile',
+  'water-reminder': 'pages/water-reminder/water-reminder',
   'meal-edit': 'pages/meal-edit/meal-edit', 'user-agreement': 'pages/legal/user-agreement',
   privacy: 'pages/legal/privacy',
 })
 const REQUIRED_EVIDENCE_NAMES = Object.freeze([
   'plan-bottom', 'shopping-bottom', 'guide-bottom', 'profile-bottom',
+  'water-reminder-bottom',
   'user-agreement-bottom', 'privacy-bottom',
   'meal-edit-form', 'meal-edit-form-bottom',
   'planner-duration-1', 'planner-duration-14', 'planner-duration-15-error',
@@ -60,6 +63,7 @@ const ROUTES = [
   ['shopping', '/pages/shopping/shopping', ['.shopping-screen']],
   ['guide', '/pages/guide/guide', ['.screen']],
   ['profile', '/pages/profile/profile', ['.screen', '.profile-header', '.profile-form']],
+  ['water-reminder', '/pages/water-reminder/water-reminder', ['.reminder-screen', '.setting-card', '.master-row']],
   ['meal-edit', '/pages/meal-edit/meal-edit', ['.screen']],
   ['user-agreement', '/pages/legal/user-agreement', ['.legal-screen', '.legal-document']],
   ['privacy', '/pages/legal/privacy', ['.legal-screen', '.legal-document']],

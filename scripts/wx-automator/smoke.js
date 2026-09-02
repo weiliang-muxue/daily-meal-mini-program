@@ -36,6 +36,7 @@ const ROUTES = [
   'pages/shopping/shopping',
   'pages/guide/guide',
   'pages/profile/profile',
+  'pages/water-reminder/water-reminder',
   'pages/meal-edit/meal-edit',
   'pages/legal/user-agreement',
   'pages/legal/privacy',

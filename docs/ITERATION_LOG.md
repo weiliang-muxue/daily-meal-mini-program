@@ -74,6 +74,8 @@ AI task schema v3 增加每次生成的同意协议版本；生成确认页默�
 
 当前门禁证据：
 
+- `2026-09-02` 发布候选自动化覆盖复核将 `app.json` 声明的 13 个页面全部纳入路由与视觉门禁，并补齐喝水提醒入口、开关、工作日/每日、起止时间及间隔的只改草稿后恢复测试；主线同时覆盖餐单入口、1–14 天边界与不触发真实生成的安全交互。`npm test --prefix scripts/wx-automator` 通过 Node 测试 68/68 与 AI 安全发布核心测试 32/32，`node scripts/validate.js` 通过 55 组项目测试，`git diff --check` 和公开工作树安全扫描通过。以上为本地静态与自动化门禁证据，不替代云端真实 AI、开发者工具串行回归或 Android/iOS 真机验证。
+
 - `2026-09-02` GitHub 首轮候选验证发现干净 checkout 缺少 8 个被全局图片规则忽略的 TabBar PNG；本机此前因保留被忽略文件而出现假绿。修复将 8 个 81px Lucide 衍生运行时图标按路径、签名、大小和 SHA-256 精确加入公开素材白名单，并要求导航测试确认文件已由 Git 跟踪。历史扫描仅对两个已人工审计的旧占位文件采用“规范化路径 + SHA-256”精确豁免，直接 Key、AppID、私钥、个人数据、路径和文件类型检查继续执行；任一字节或路径变化即失效。Actions 升级到 Node 24 运行时版本，颜色令牌测试同时兼容 LF 与 CRLF。候选通过后 squash 到 `main`，门禁要求默认分支 tree OID 与 `refs/heads/v0.2.0` 完全一致；本轮不创建 Tag。
 
 - 历史证据：schema v7 / AI contract v2 / planner v7 合并后的 `node scripts/validate.js` 曾有 53 组通过；schema v8 合并后必须重新执行，不能沿用该结果。

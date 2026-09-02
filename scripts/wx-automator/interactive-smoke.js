@@ -48,10 +48,12 @@ const STEP_RISKS = Object.freeze({
   GUIDE_SETTINGS: 'W',
   TEST_REMINDER: 'W',
   PROFILE_SETTINGS: 'W',
+  WATER_REMINDER_DRAFT: 'S',
   PROFILE_LEGAL: 'S',
   CLEAR_CANCEL: 'D',
   TEST_INVITE: 'D',
   TRANSFER_CANCEL: 'D',
+  AVATAR_ERROR: 'S',
   AVATAR_MANUAL: 'S',
   PHONE_AUTH_CANCEL: 'D',
   PRIVACY_LEGAL: 'S',
@@ -1042,6 +1044,57 @@ async function main() {
       if (JSON.stringify(restored.settings) !== JSON.stringify(original.settings)) throw new Error('profile settings not restored')
     })
 
+    await step('WATER_REMINDER_DRAFT', '喝水提醒入口、开关、周期和时间草稿恢复', async () => {
+      stage('WATER_REMINDER_OPEN_PROFILE')
+      let page = await navigateAndAcquire(miniProgram, '/pages/profile/profile', { method: 'switchTab' })
+      await waitForData(page, (next) => next.authState !== 'connecting' && next.profileLoading === false)
+      await tapControl(page, '.reminder-navigation')
+      page = await current('pages/water-reminder/water-reminder')
+      const original = await waitForData(page, (next) => next.loading === false && !next.loadError)
+      const originalDraft = JSON.parse(JSON.stringify(original.draft))
+      const reminderFields = ['enabled', 'cadence', 'startTime', 'endTime', 'intervalMinutes', 'timeZone']
+      const sameDraft = (candidate) => reminderFields.every((key) => candidate
+        && candidate[key] === originalDraft[key])
+
+      try {
+        stage('WATER_REMINDER_TOGGLE')
+        await tapControl(page, '.master-row switch', 0, 250)
+        let data = await waitForData(page, (next) => next.draft.enabled === !originalDraft.enabled)
+        if (!data.draft.enabled) {
+          await tapControl(page, '.master-row switch', 0, 250)
+          data = await waitForData(page, (next) => next.draft.enabled === true)
+        }
+
+        stage('WATER_REMINDER_CADENCE')
+        const cadenceIndex = data.draft.cadence === 'daily' ? 1 : 0
+        await tapControl(page, '.segment', cadenceIndex, 250)
+        data = await waitForData(page, (next) => next.draft.cadence !== originalDraft.cadence
+          || next.draft.cadence !== data.draft.cadence)
+
+        stage('WATER_REMINDER_TIME_DRAFTS')
+        await page.callMethod('changeStartTime', { detail: { value: '08:00' } })
+        await page.callMethod('changeEndTime', { detail: { value: '18:00' } })
+        const intervalOptions = data.intervalOptions || []
+        const intervalIndex = intervalOptions.findIndex((item) => item.value === 90)
+        if (intervalIndex < 0) throw new Error('water reminder interval option missing')
+        await page.callMethod('changeInterval', { detail: { value: String(intervalIndex) } })
+        data = await waitForData(page, (next) => next.draft.startTime === '08:00'
+          && next.draft.endTime === '18:00' && next.draft.intervalMinutes === 90
+          && next.scheduleInvalid === false && next.previewTimes.length > 0)
+        if (!data.dirty) throw new Error('water reminder draft did not become dirty')
+      } finally {
+        stage('WATER_REMINDER_RESTORE_DRAFT')
+        await page.callMethod('changeInterval', { detail: { value: String(original.intervalIndex) } })
+        await page.callMethod('updateDraft', originalDraft)
+        await waitForData(page, (next) => next.dirty === false
+          && next.intervalIndex === original.intervalIndex && sameDraft(next.draft))
+      }
+
+      stage('WATER_REMINDER_RETURN_PROFILE')
+      await page.callMethod('navigateFromPage')
+      await current('pages/profile/profile')
+    })
+
     await step('PROFILE_LEGAL', '资料页用户协议入口', async () => {
       let page = await navigateAndAcquire(miniProgram, '/pages/profile/profile', { method: 'switchTab' })
       await waitForData(page, (next) => next.authState !== 'connecting')
@@ -1122,6 +1175,39 @@ async function main() {
       await tapControl(page, '.member-option', 0)
       await tapControl(page, '.transfer-button')
       await cancelModal()
+    })
+
+    await step('AVATAR_ERROR', '头像失败提示与取消恢复', async () => {
+      const page = await navigateAndAcquire(miniProgram, '/pages/profile/profile', { method: 'switchTab' })
+      const original = await waitForData(page, (next) => next.authState !== 'connecting'
+        && next.profileLoading === false)
+      await waitForElements(page, '.avatar-button')
+
+      stage('AVATAR_UNSUPPORTED_ERROR')
+      await page.callMethod('onChooseAvatar', {
+        detail: { errMsg: 'chooseAvatar:fail api is not supported' },
+      })
+      let data = await waitForData(page, (next) => next.avatarPrivacyMode === 'native'
+        && Boolean(next.avatarPrivacyError))
+      if (/scope|api|未声明/i.test(data.avatarPrivacyError)) {
+        throw new Error('avatar failure exposed internal platform terms')
+      }
+      if (!(await elements(page, '.avatar-privacy-message')).length) {
+        throw new Error('avatar failure message was not rendered')
+      }
+      if ((await elements(page, '.avatar-error-actions')).length) {
+        throw new Error('unsupported avatar state exposed an ineffective retry action')
+      }
+
+      stage('AVATAR_CANCEL_RECOVERY')
+      await page.callMethod('onChooseAvatar', {
+        detail: { errMsg: 'chooseAvatar:fail user cancel' },
+      })
+      data = await waitForData(page, (next) => next.avatarPrivacyMode === 'native'
+        && next.avatarPrivacyError === '')
+      if (data.avatarLocalPath !== original.avatarLocalPath || data.avatarPreview !== original.avatarPreview) {
+        throw new Error('avatar failure path changed the current avatar')
+      }
     })
 
     await step('AVATAR_MANUAL', '头像授权入口人工跳过', async () => {

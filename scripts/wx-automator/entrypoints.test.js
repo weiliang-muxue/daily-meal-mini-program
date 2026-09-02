@@ -29,6 +29,17 @@ test('smoke collects ordinary route failures but fails fast on a closed session'
   assert.match(source, /if \(isFatalSessionError\(error\)\) throw error/)
   assert.match(source, /report\.routes\.some\(\(item\) => item\.category !== 'PASSED'\)/)
   assert.doesNotMatch(source, /item\.stage === 'CAPTURE_SCREENSHOT'\) throw error/)
+  assert.match(source, /'pages\/water-reminder\/water-reminder'/)
+})
+
+test('route and visual smoke cover every page declared by the mini program', () => {
+  const app = JSON.parse(fs.readFileSync(path.join(root, '..', '..', 'miniprogram', 'app.json'), 'utf8'))
+  const smoke = read('smoke.js')
+  const visual = read('visual-regression.js')
+  for (const route of app.pages) {
+    assert.match(smoke, new RegExp(`['"]${route.replaceAll('/', '\\/')}['"]`), `${route} missing from smoke`)
+    assert.match(visual, new RegExp(`['"]\\/${route.replaceAll('/', '\\/')}['"]`), `${route} missing from visual`)
+  }
 })
 
 test('visual checks use viewport dimensions and viewport-relative element offsets', () => {
@@ -98,6 +109,65 @@ test('planner visual gate validates exact button geometry and screenshot glyph p
   assert.match(source, /assertPngStepperGlyphs/)
   assert.match(source, /state\.durationAtMin !== \(durationDays === 1\)/)
   assert.match(source, /state\.durationAtMax !== \(durationDays === 14\)/)
+})
+
+test('visual gate covers the complete water reminder page including its bottom actions', () => {
+  const source = read('visual-regression.js')
+  assert.match(source, /\['water-reminder', '\/pages\/water-reminder\/water-reminder'/)
+  assert.match(source, /'water-reminder': \['\.calendar-card', '\.save-button', '\.status-panel'\]/)
+  assert.match(source, /'water-reminder-bottom'/)
+})
+
+test('water reminder interaction changes only an unsaved draft and restores it', () => {
+  const source = read('interactive-smoke.js')
+  const step = source.match(/await step\('WATER_REMINDER_DRAFT'[\s\S]*?await step\('PROFILE_LEGAL'/)
+  assert(step, 'WATER_REMINDER_DRAFT step missing')
+  assert.match(source, /WATER_REMINDER_DRAFT: 'S'/)
+  assert.match(step[0], /tapControl\(page, '\.reminder-navigation'\)/)
+  assert.match(step[0], /tapControl\(page, '\.master-row switch'/)
+  assert.match(step[0], /tapControl\(page, '\.segment'/)
+  assert.match(step[0], /callMethod\('changeStartTime'/)
+  assert.match(step[0], /callMethod\('changeEndTime'/)
+  assert.match(step[0], /callMethod\('changeInterval'/)
+  assert.match(step[0], /String\(original\.intervalIndex\)/)
+  assert.match(step[0], /next\.intervalIndex === original\.intervalIndex/)
+  assert.match(step[0], /finally \{[\s\S]*callMethod\('updateDraft', originalDraft\)/)
+  assert.doesNotMatch(step[0], /callMethod\(['"](?:save|addToCalendar)['"]|\.save-button|\.calendar-button/)
+})
+
+test('mainline includes planner boundaries and water drafts without granting its own risk opt-ins', () => {
+  const source = read('run-mainline-smoke.js')
+  for (const step of [
+    'PLANNER_ENTRY', 'DRAFT_SAFE', 'PLANNER_CONTROLS', 'AI_NO_GENERATE', 'WATER_REMINDER_DRAFT', 'AVATAR_ERROR',
+  ]) assert.match(source, new RegExp(`'${step}'`), `${step} must remain in the mainline`)
+  assert.doesNotMatch(source, /MINIPROGRAM_SMOKE_ALLOW_(?:WRITE|DANGEROUS)\s*=/)
+})
+
+test('avatar failure copy is automated without replacing the native device test', () => {
+  const source = read('interactive-smoke.js')
+  const errorStep = source.match(/await step\('AVATAR_ERROR'[\s\S]*?await step\('AVATAR_MANUAL'/)
+  assert(errorStep, 'AVATAR_ERROR step missing')
+  assert.match(source, /AVATAR_ERROR: 'S'/)
+  assert.match(errorStep[0], /callMethod\('onChooseAvatar'/)
+  assert.match(errorStep[0], /chooseAvatar:fail api is not supported/)
+  assert.match(errorStep[0], /chooseAvatar:fail user cancel/)
+  assert.match(errorStep[0], /'\.avatar-privacy-message'/)
+  assert.match(errorStep[0], /'\.avatar-error-actions'/)
+  assert.doesNotMatch(errorStep[0], /callMethod\(['"](?:saveProfile|authorizeAvatarPrivacy)['"]|\.profile-save/)
+  const manualStep = source.match(/await step\('AVATAR_MANUAL'[\s\S]*?await step\('PHONE_AUTH_CANCEL'/)
+  assert(manualStep && /chooseAvatar 由人工设备测试覆盖/.test(manualStep[0]),
+    'native chooseAvatar must remain an explicit device-only check')
+})
+
+test('exercise visibility remains covered by a rendered saved state and a safe form toggle', () => {
+  const visual = read('visual-regression.js')
+  const interactive = read('interactive-smoke.js')
+  assert.match(visual, /'health-exercise-completed'/)
+  const healthStep = interactive.match(/await step\('HEALTH_FORM'[\s\S]*?await step\('HEALTH_TRENDS'/)
+  assert(healthStep, 'HEALTH_FORM step missing')
+  assert.match(healthStep[0], /tapControl\(page, '\.exercise-switch-target switch'/)
+  assert.match(healthStep[0], /exerciseCompleted !== true/)
+  assert.match(healthStep[0], /exerciseCompleted !== false/)
 })
 
 test('entrypoints subscribe through the guarded diagnostics helper', () => {
