@@ -21,11 +21,15 @@ const {
   checkWorktree,
   checkRange,
   checkPushInput,
+  isSecurityTrustRootPath,
+  isSecurityPolicyPath,
   policyIsolationReason,
   SECURITY_TRUST_ROOT_PATHS,
 } = require('./check-staged-safety')
+const { directoryReleaseTreeMode } = require('./release-gate')
 
 const root = path.resolve(__dirname, '..')
+const FULL_RELEASE_TREE = directoryReleaseTreeMode(root) === 'full'
 const zeroOid = '0'.repeat(40)
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 const write = (cwd, file, content) => {
@@ -71,7 +75,13 @@ const hasError = (result, fragment) => result.errors.some((error) => error.inclu
   .forEach((file) => assert(blobReason(`scripts/${file}`, Buffer.from('public')), `${file} 必须默认拒绝`))
 
 for (const [file, policy] of Object.entries(ASSET_ALLOWLIST)) {
-  const source = fs.readFileSync(path.join(root, file))
+  const target = path.join(root, file)
+  if (!fs.existsSync(target)) {
+    assert.strictEqual(FULL_RELEASE_TREE, false,
+      `${file} 只能在不完整的安全 bootstrap 树中暂时缺失`)
+    continue
+  }
+  const source = fs.readFileSync(target)
   assert.strictEqual(blobReason(file, source), '', `${file} 真实素材应通过`)
   const changed = Buffer.from(source)
   changed[changed.length - 1] ^= 1
@@ -205,10 +215,32 @@ for (const trustRoot of SECURITY_TRUST_ROOT_PATHS) {
     'miniprogram/app.js',
   ]).includes('独立策略变更'), `${trustRoot} 与业务代码同批变更必须失败关闭`)
 }
+for (const trustRoot of [
+  '.github/workflows/validate.yml',
+  '.github/workflows/nested/untrusted-name.yaml',
+  '.github/workflows/helpers/scan.js',
+  '.github/actions/local-check/action.yml',
+  '.github/actions/local-check/index.js',
+]) {
+  assert(isSecurityTrustRootPath(trustRoot), `${trustRoot} 必须动态归入安全信任根`)
+  assert(isSecurityPolicyPath(trustRoot), `${trustRoot} 必须同时归入安全策略路径`)
+  assert(policyIsolationReason([
+    trustRoot,
+    'miniprogram/app.js',
+  ]).includes('独立策略变更'), `${trustRoot} 与业务代码同批变更必须失败关闭`)
+}
+assert(isSecurityTrustRootPath('.github\\workflows\\nested\\check.yml'),
+  'Windows 分隔符必须规范化后识别工作流信任根')
+assert.strictEqual(isSecurityTrustRootPath('.github/workflows-evil/check.yml'), false,
+  '相似工作流目录前缀不能误归入信任根')
+assert.strictEqual(isSecurityTrustRootPath('.github/actionss/check/action.yml'), false,
+  '相似本地 Action 目录前缀不能误归入信任根')
+assert.strictEqual(isSecurityTrustRootPath('.github/ISSUE_TEMPLATE/bug.yml'), false,
+  '非工作流 GitHub 配置不应误充当可执行信任根')
 assert.strictEqual(policyIsolationReason([
   '.github/workflows/validate.yml',
-  'miniprogram/app.js',
-]), '', '普通候选测试工作流可以随业务版本演进，不充当权威扫描信任根')
+  'scripts/check-staged-safety.test.js',
+]), '', '工作流与安全测试可以作为独立策略变更')
 
 const privateWeightRecord = JSON.stringify({
   date: '2027-01-14',
@@ -251,7 +283,13 @@ for (const file of [
   'cloudfunctions/aiPlanner/.env.example',
   'cloudfunctions/aiPlanner/provider-config.test.js',
 ]) {
-  const source = fs.readFileSync(path.join(root, file))
+  const target = path.join(root, file)
+  if (!fs.existsSync(target)) {
+    assert.strictEqual(FULL_RELEASE_TREE, false,
+      `${file} 只能在不完整的安全 bootstrap 树中暂时缺失`)
+    continue
+  }
+  const source = fs.readFileSync(target)
   assert.strictEqual(blobReason(file, source), '', `${file} 的明确占位符和测试值不应触发误报`)
 }
 
@@ -329,6 +367,13 @@ try {
   repositories.push(clean)
   process.chdir(clean)
   const cleanHead = git(clean, ['rev-parse', 'HEAD'])
+  git(clean, ['tag', 'v0.9.9', cleanHead])
+  const lightweightTagOid = git(clean, ['rev-parse', 'refs/tags/v0.9.9'])
+  const lightweightPush = checkPushInput(
+    `refs/tags/v0.9.9 ${lightweightTagOid} refs/tags/v0.9.9 ${zeroOid}\n`,
+  )
+  assert(hasError(lightweightPush, 'annotated Tag'),
+    'pre-push 必须在首次远端写入前拒绝 lightweight 版本 Tag')
   git(clean, ['tag', '-a', 'v1.0.0', '-m', 'release: v1.0.0'])
   const cleanTagOid = git(clean, ['rev-parse', 'refs/tags/v1.0.0'])
   const pushResult = checkPushInput(`refs/tags/v1.0.0 ${cleanTagOid} refs/tags/v1.0.0 ${zeroOid}\n`)
@@ -367,6 +412,27 @@ try {
   const combinedPolicyCommit = commit(policyRepo, 'test: combined policy and business change')
   assert(hasError(checkRange(policyBase, combinedPolicyCommit, { ref: 'refs/heads/v1.1.0' }), '独立策略变更'),
     'PR/push 范围同时包含 scanner 与业务变更时必须失败关闭')
+
+  const workflowRenameRepo = initRepo()
+  repositories.push(workflowRenameRepo)
+  write(workflowRenameRepo, '.github/workflows/validate.yml', 'name: Trusted fixture\n')
+  const workflowRenameBase = commit(workflowRenameRepo, 'test: add workflow fixture')
+  git(workflowRenameRepo, ['config', 'diff.renames', 'true'])
+  fs.mkdirSync(path.join(workflowRenameRepo, 'docs'), { recursive: true })
+  fs.renameSync(
+    path.join(workflowRenameRepo, '.github', 'workflows', 'validate.yml'),
+    path.join(workflowRenameRepo, 'docs', 'moved-workflow.yml'),
+  )
+  write(workflowRenameRepo, 'miniprogram/app.js', '// TEST_BUSINESS_CHANGE\n')
+  git(workflowRenameRepo, ['add', '-A'])
+  process.chdir(workflowRenameRepo)
+  assert(hasError(checkIndex(), '独立策略变更'),
+    '工作流移出信任根并混入业务变更时，暂存扫描必须识别删除端')
+  const workflowRenameHead = commit(workflowRenameRepo, 'test: move workflow with business change')
+  assert(hasError(
+    checkRange(workflowRenameBase, workflowRenameHead, { ref: 'refs/heads/v1.1.0' }),
+    '独立策略变更',
+  ), '工作流移出信任根并混入业务变更时，范围扫描必须识别删除端')
 } finally {
   process.chdir(originalCwd)
   repositories.forEach((directory) => fs.rmSync(directory, { recursive: true, force: true }))

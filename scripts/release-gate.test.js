@@ -3,7 +3,14 @@
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
-const { validatePullRequestBinding, validateReleaseGate } = require('./release-gate')
+const {
+  RELEASE_TREE_MARKERS,
+  classifyReleaseTree,
+  directoryReleaseTreeMode,
+  releaseTreeModeFromCommits,
+  validatePullRequestBinding,
+  validateReleaseGate,
+} = require('./release-gate')
 
 const candidateOid = 'a'.repeat(40)
 const metadataOid = 'b'.repeat(40)
@@ -14,6 +21,8 @@ const otherTreeOid = 'f'.repeat(40)
 const description = '公开微信上传说明'
 const docs = { changelog: '## [0.2.0] - 2026-08-27', readme: '版本 `0.2.0`' }
 const repository = 'example/daily-meal-mini-program'
+const root = path.resolve(__dirname, '..')
+const FULL_RELEASE_TREE = directoryReleaseTreeMode(root) === 'full'
 const base = {
   lastReleasedVersion: '0.1.0',
   workingVersion: '0.2.0-dev.1',
@@ -45,6 +54,39 @@ const tagContext = { refName: 'refs/tags/v0.2.0', commitOid: candidateOid, paren
 const annotatedTag = {
   refName: 'refs/tags/v0.2.0', objectType: 'tag', objectOid: tagObjectOid, peeledCommitOid: candidateOid,
 }
+
+assert.strictEqual(classifyReleaseTree({
+  headMarkers: [], baseMarkers: [],
+}), 'bootstrap', '旧 bootstrap 基准树可以继续执行安全 bootstrap 检查')
+assert.strictEqual(classifyReleaseTree({
+  headMarkers: RELEASE_TREE_MARKERS, baseMarkers: [],
+}), 'full', '完整候选树必须执行完整发布验证')
+assert.throws(() => classifyReleaseTree({
+  headMarkers: RELEASE_TREE_MARKERS.slice(0, 1), baseMarkers: [],
+}), /部分标志树/, '候选树仅存在部分完整发布标志时必须失败')
+assert.throws(() => classifyReleaseTree({
+  headMarkers: [], baseMarkers: RELEASE_TREE_MARKERS,
+}), /禁止删除发布标志/, '完整基准树不能通过删除全部标志降级为 bootstrap')
+assert.throws(() => classifyReleaseTree({
+  headMarkers: [], baseMarkers: RELEASE_TREE_MARKERS.slice(0, 2),
+}), /部分标志树/, '基准树仅存在部分完整发布标志时必须失败')
+assert.throws(() => classifyReleaseTree({
+  headMarkers: [],
+}), /状态未知/, '无法解析基准树时必须失败关闭')
+
+const markerLookup = (markersByCommit) => (commit, file) => (
+  (markersByCommit[commit] || []).includes(file)
+)
+assert.strictEqual(releaseTreeModeFromCommits(candidateOid, otherOid, markerLookup({
+  [candidateOid]: RELEASE_TREE_MARKERS,
+  [otherOid]: [],
+}), () => true), 'full', 'commit 级检测必须识别完整候选树')
+assert.throws(() => releaseTreeModeFromCommits(candidateOid, otherOid, markerLookup({
+  [candidateOid]: [],
+  [otherOid]: RELEASE_TREE_MARKERS,
+}), () => true), /禁止删除发布标志/, 'commit 级检测必须拒绝从完整 base 删除全部标志')
+assert.throws(() => releaseTreeModeFromCommits(candidateOid, otherOid, markerLookup({}), () => false),
+  /候选树 commit 无法解析/, 'commit 级检测不能把不可解析对象当成无标志 bootstrap 树')
 
 // 1. Development builds require an explicit Branch context.
 validateReleaseGate({
@@ -211,6 +253,11 @@ assert(workflow.includes('RELEASE_GATE_CANDIDATE_REF: ${{ steps.release-candidat
 'main 门禁必须显式传入现场解析的远端版本 Branch ref 与 commit')
 assert(workflow.includes('git fetch --no-tags origin "+$CANDIDATE_REF:$REMOTE_REF"'),
   'main 门禁必须刷新 origin 版本 Branch，不能优先使用可能过期的本地 Branch')
+assert(workflow.includes('RELEASE_TREE_HEAD_COMMIT: ${{ github.event_name == \'pull_request\' && github.event.pull_request.head.sha || github.sha }}')
+  && workflow.includes('RELEASE_TREE_BASE_COMMIT="$BASE_SHA"'),
+  '工作流必须把事件候选 commit 与已解析基准 commit 一并交给发布树模式检测')
+assert(workflow.includes('node scripts/release-gate.js --source-tree-mode >> "$GITHUB_OUTPUT"'),
+  '工作流必须调用统一发布树分类器，不能只检查单个文件')
 const trustedWorkflow = fs.readFileSync(
   path.join(__dirname, '..', '.github', 'workflows', 'trusted-pr-security.yml'), 'utf8',
 )
@@ -236,7 +283,9 @@ assert(!/trusted-pr-security:[\s\S]*?checkout[^\n]*head\.sha/.test(trustedWorkfl
 const validationSource = fs.readFileSync(path.join(__dirname, 'validate.js'), 'utf8')
 assert(!validationSource.includes('const candidates = [branchRef,'),
   'main 门禁不能优先解析可能过期的本地版本 Branch')
-assert(validationSource.includes('refs/remotes/origin/v${version}'),
-  'main 门禁必须从 origin 版本 Branch 解析候选 commit')
+if (FULL_RELEASE_TREE) {
+  assert(validationSource.includes('refs/remotes/origin/v${version}'),
+    '完整候选树的 main 门禁必须从 origin 版本 Branch 解析候选 commit')
+}
 
 console.log('发布状态、Branch、annotated Tag 与元数据父提交门禁测试通过。')

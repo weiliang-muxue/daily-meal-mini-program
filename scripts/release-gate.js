@@ -1,6 +1,9 @@
 'use strict'
 
 const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+const { execFileSync } = require('child_process')
 
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 const STABLE_SEMVER_PATTERN = /^\d+\.\d+\.\d+$/
@@ -12,6 +15,79 @@ const RELEASE_METADATA_FILES = Object.freeze([
   'docs/ITERATION_LOG.md',
   'release-manifest.json',
 ])
+const RELEASE_TREE_MARKERS = Object.freeze([
+  'release-manifest.json',
+  'scripts/wx-automator/package.json',
+  'scripts/wx-automator/package-lock.json',
+])
+
+function normalizedMarkerSet(value, label) {
+  assert(Array.isArray(value), `${label}完整发布标志状态未知，拒绝降级为 bootstrap`)
+  const markers = [...new Set(value.map((file) => String(file).replace(/\\/g, '/')))]
+  markers.forEach((file) => assert(RELEASE_TREE_MARKERS.includes(file), `${label}包含未知完整发布标志`))
+  return markers
+}
+
+function markerSetState(value, label) {
+  const markers = normalizedMarkerSet(value, label)
+  assert(markers.length === 0 || markers.length === RELEASE_TREE_MARKERS.length,
+    `${label}完整发布标志只能全部存在或全部缺失，禁止部分标志树`)
+  return markers.length === RELEASE_TREE_MARKERS.length ? 'full' : 'bootstrap'
+}
+
+function classifyReleaseTree({ headMarkers, baseMarkers }) {
+  const headMode = markerSetState(headMarkers, '候选树')
+  const baseMode = markerSetState(baseMarkers, '基准树')
+  if (headMode === 'full') return 'full'
+  assert.strictEqual(baseMode, 'bootstrap',
+    '基准树已是完整发布树，候选树禁止删除发布标志并降级为 bootstrap')
+  return 'bootstrap'
+}
+
+function directoryReleaseTreeMode(root) {
+  const markers = RELEASE_TREE_MARKERS.filter((file) => fs.existsSync(path.join(root, file)))
+  return classifyReleaseTree({ headMarkers: markers, baseMarkers: [] })
+}
+
+function gitObjectExists(commitOid, file) {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${commitOid}:${file}`], { stdio: 'ignore' })
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+function gitCommitExists(commitOid) {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', `${commitOid}^{commit}`], { stdio: 'ignore' })
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+function releaseTreeModeFromCommits(
+  headOid,
+  baseOid,
+  objectExists = gitObjectExists,
+  commitExists = gitCommitExists,
+) {
+  const normalizedHead = String(headOid || '').trim().toLowerCase()
+  const normalizedBase = String(baseOid || '').trim().toLowerCase()
+  assert(OID_PATTERN.test(normalizedHead) && !/^0+$/.test(normalizedHead),
+    '候选树 commit OID 无效')
+  assert(OID_PATTERN.test(normalizedBase) && !/^0+$/.test(normalizedBase),
+    '基准树 commit OID 无效，拒绝降级为 bootstrap')
+  assert.strictEqual(commitExists(normalizedHead), true, '候选树 commit 无法解析')
+  assert.strictEqual(commitExists(normalizedBase), true,
+    '基准树 commit 无法解析，拒绝降级为 bootstrap')
+  const presentAt = (commit) => RELEASE_TREE_MARKERS.filter((file) => objectExists(commit, file))
+  return classifyReleaseTree({
+    headMarkers: presentAt(normalizedHead),
+    baseMarkers: presentAt(normalizedBase),
+  })
+}
 
 function normalizedChangedEntries(value) {
   if (!Array.isArray(value)) return []
@@ -191,8 +267,19 @@ function validatePullRequestBinding(value) {
 }
 
 if (require.main === module) {
-  if (process.argv[2] !== '--trusted-pr-binding') {
-    console.error('用法：node scripts/release-gate.js --trusted-pr-binding')
+  if (process.argv[2] === '--source-tree-mode') {
+    try {
+      const mode = releaseTreeModeFromCommits(
+        process.env.RELEASE_TREE_HEAD_COMMIT,
+        process.env.RELEASE_TREE_BASE_COMMIT,
+      )
+      console.log(`full=${mode === 'full'}`)
+    } catch (error) {
+      console.error(`发布树模式检测失败：${error.message}`)
+      process.exitCode = 1
+    }
+  } else if (process.argv[2] !== '--trusted-pr-binding') {
+    console.error('用法：node scripts/release-gate.js [--trusted-pr-binding | --source-tree-mode]')
     process.exitCode = 2
   } else {
     validatePullRequestBinding({
@@ -215,4 +302,12 @@ if (require.main === module) {
   }
 }
 
-module.exports = { RELEASE_METADATA_FILES, validatePullRequestBinding, validateReleaseGate }
+module.exports = {
+  RELEASE_METADATA_FILES,
+  RELEASE_TREE_MARKERS,
+  classifyReleaseTree,
+  directoryReleaseTreeMode,
+  releaseTreeModeFromCommits,
+  validatePullRequestBinding,
+  validateReleaseGate,
+}
