@@ -24,6 +24,7 @@ const RECOVERY_PATH = path.join(OUTPUT_BASE, 'recovery.json')
 const WAIT_MS = 700
 const NATIVE_TIMEOUT_MS = 2500
 const RESTORE_TIMEOUT_MS = 30000
+const CLOUD_WRITE_SETTLE_TIMEOUT_MS = 30000
 const STEP_FILTER = new Set(String(process.env.MINIPROGRAM_SMOKE_STEPS || '')
   .split(',').map((item) => item.trim()).filter(Boolean))
 const ALLOW_WRITE = process.env.MINIPROGRAM_SMOKE_ALLOW_WRITE === '1'
@@ -486,17 +487,21 @@ async function main() {
     await page.callMethod('connect', true)
     page = await current('pages/guide/guide')
     let data = await waitForData(page, (next) => next.loading === false && next.saving !== true
-      && !next.error && next.offline !== true)
+      && !next.error && next.offline !== true, CLOUD_WRITE_SETTLE_TIMEOUT_MS)
     const target = (data.reminders || []).find((item) => (
       journalState.reminderId ? item.id === journalState.reminderId : item.text === journalState.label
     ))
     if (target) {
-      await page.callMethod('removeReminder', { currentTarget: { dataset: { id: target.id } } })
-      await waitForData(page, (next) => next.saving !== true && !next.reminders.some((item) => item.id === target.id))
+      await withMockModal(true, () => page.callMethod('removeReminder', {
+        currentTarget: { dataset: { id: target.id } },
+      }))
+      await waitForData(page, (next) => next.saving !== true && next.offline !== true
+        && !next.reminders.some((item) => item.id === target.id), CLOUD_WRITE_SETTLE_TIMEOUT_MS)
     }
     await page.callMethod('connect', true)
     page = await current('pages/guide/guide')
-    data = await waitForData(page, (next) => next.loading === false && !next.error && next.offline !== true)
+    data = await waitForData(page, (next) => next.loading === false && next.saving !== true
+      && !next.error && next.offline !== true, CLOUD_WRITE_SETTLE_TIMEOUT_MS)
     if ((data.reminders || []).some((item) => (
       journalState.reminderId ? item.id === journalState.reminderId : item.text === journalState.label
     ))) throw new Error('test reminder cleanup unconfirmed')
@@ -1004,19 +1009,28 @@ async function main() {
     })
 
     await writableStep('TEST_REMINDER', '个人提醒新增、勾选、取消和删除测试项', async () => {
+      stage('TEST_REMINDER_OPEN_GUIDE')
       let page = await openPage('/pages/guide/guide')
       await waitForData(page, (next) => next.loading === false)
       const marker = `TEST-${Date.now().toString(36)}`
       const journalState = { label: marker, reminderId: '' }
       await withRestoredMutation('TEST_REMINDER', () => removeTestReminder(journalState), async () => {
+        stage('TEST_REMINDER_INPUT')
         const input = await element(page, '.reminder-form textarea')
         await input.input(marker)
+        stage('TEST_REMINDER_ADD')
         await tapControl(page, '.reminder-form .primary-button')
-        const data = await waitForData(page, (next) => next.saving === false && next.reminders.some((item) => item.text === marker))
+        stage('TEST_REMINDER_WAIT_ADD')
+        const data = await waitForData(page, (next) => next.saving === false && next.offline !== true
+          && !next.error && next.reminders.some((item) => item.text === marker), CLOUD_WRITE_SETTLE_TIMEOUT_MS)
         const targetId = data.reminders.find((item) => item.text === marker).id
         journalState.reminderId = targetId
+        stage('TEST_REMINDER_TOGGLE')
         await page.callMethod('toggleReminder', { currentTarget: { dataset: { id: targetId } } })
-        await waitForData(page, (next) => next.saving === false && next.reminders.find((item) => item.id === targetId).done === true)
+        stage('TEST_REMINDER_WAIT_TOGGLE')
+        await waitForData(page, (next) => next.saving === false && next.offline !== true
+          && !next.error && next.reminders.find((item) => item.id === targetId)?.done === true,
+        CLOUD_WRITE_SETTLE_TIMEOUT_MS)
       })
     })
 

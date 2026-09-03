@@ -135,6 +135,18 @@ test('water reminder interaction changes only an unsaved draft and restores it',
   assert.doesNotMatch(step[0], /callMethod\(['"](?:save|addToCalendar)['"]|\.save-button|\.calendar-button/)
 })
 
+test('personal reminder interaction waits for cloud writes and confirms cleanup', () => {
+  const source = read('interactive-smoke.js')
+  const step = source.match(/await writableStep\('TEST_REMINDER'[\s\S]*?await writableStep\('PROFILE_SETTINGS'/)
+  assert(step, 'TEST_REMINDER step missing')
+  assert.match(source, /const CLOUD_WRITE_SETTLE_TIMEOUT_MS = 30000/)
+  assert.match(source, /withMockModal\(true, \(\) => page\.callMethod\('removeReminder'/)
+  assert.match(step[0], /TEST_REMINDER_WAIT_ADD/)
+  assert.match(step[0], /TEST_REMINDER_WAIT_TOGGLE/)
+  assert.match(step[0], /\.find\(\(item\) => item\.id === targetId\)\?\.done === true/)
+  assert.match(step[0], /next\.offline !== true/)
+})
+
 test('mainline includes planner boundaries and water drafts without granting its own risk opt-ins', () => {
   const source = read('run-mainline-smoke.js')
   for (const step of [
