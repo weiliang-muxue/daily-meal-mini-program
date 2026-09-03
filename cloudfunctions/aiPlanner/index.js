@@ -866,7 +866,9 @@ function retryPolicy(error) {
   return { code, retryable, retryAfterMs }
 }
 
-async function settleFailure(openid, taskId, claim, leaseToken, failure, expectedCacheNamespace) {
+async function settleFailure(
+  openid, taskId, claim, leaseToken, failure, expectedCacheNamespace, runtimeConfig,
+) {
   const now = Date.now()
   const policy = typeof failure === 'string'
     ? { code: failure, retryable: true, retryAfterMs: MIN_RETRY_DELAY_MS }
@@ -899,7 +901,7 @@ async function settleFailure(openid, taskId, claim, leaseToken, failure, expecte
       await controlRef.set({ data: control })
       return { task: publicProgress(task, now, openid), result: null }
     }
-    const currentConfig = configuration(process.env)
+    const currentConfig = runtimeConfig || configuration(process.env)
     if (!terminal(rawTask.status) && !hasCurrentPlannerContract(rawTask)) {
       let task = unsupportedPlannerTask({ ...rawTask, _id: taskId }, now)
       let control = normalizeControl(rawControl, openid)
@@ -934,6 +936,7 @@ async function settleFailure(openid, taskId, claim, leaseToken, failure, expecte
 
 async function settleSuccess(
   openid, taskId, claim, leaseToken, result, expectedCacheNamespace, rawProviderRequestProfile,
+  runtimeConfig,
 ) {
   const now = Date.now()
   return db.runTransaction(async (transaction) => {
@@ -965,7 +968,7 @@ async function settleSuccess(
       await controlRef.set({ data: control })
       return { task: publicProgress(task, now, openid), result: null }
     }
-    const currentConfig = configuration(process.env)
+    const currentConfig = runtimeConfig || configuration(process.env)
     if (!terminal(task.status) && !hasCurrentPlannerContract(task)) {
       task = unsupportedPlannerTask(task, now)
       control = terminalControl(control, task, now)
@@ -1079,7 +1082,7 @@ async function advanceTask(openid, taskId, config, expectedCacheNamespace, opera
     }
     try {
       return await settleFailed(
-        openid, claimed.task._id, claimed.claim, leaseToken, policy, expectedCacheNamespace,
+        openid, claimed.task._id, claimed.claim, leaseToken, policy, expectedCacheNamespace, config,
       )
     } catch (settlementError) {
       throw markPublicStage(settlementError, 'ADVANCE_SETTLE_FAILURE')
@@ -1088,7 +1091,7 @@ async function advanceTask(openid, taskId, config, expectedCacheNamespace, opera
   try {
     return await settleSucceeded(
       openid, claimed.task._id, claimed.claim, leaseToken, result, expectedCacheNamespace,
-      providerRequestProfile,
+      providerRequestProfile, config,
     )
   } catch (error) {
     // This write may have committed remotely even when its response was lost.
@@ -1195,8 +1198,8 @@ exports.main = async (event = {}) => {
     if (event.action === 'cancel') {
       return { success: true, data: await cancelGeneration(OPENID, event.taskId, event.expectedTaskRevision, expectedCacheNamespace) }
     }
-    if (!config.configured) throw plannerError('AI_CONFIGURATION_INVALID', 'AI 服务尚未配置，请联系管理员')
     if (event.action === 'start') {
+      if (!config.configured) throw plannerError('AI_CONFIGURATION_INVALID', 'AI 服务尚未配置，请联系管理员')
       return {
         success: true,
         data: await startTask(
@@ -1205,7 +1208,10 @@ exports.main = async (event = {}) => {
         ),
       }
     }
-    if (event.action === 'advance') return { success: true, data: await advanceTask(OPENID, event.taskId, config, expectedCacheNamespace) }
+    if (event.action === 'advance') {
+      if (!config.configured) throw plannerError('AI_CONFIGURATION_INVALID', 'AI 服务尚未配置，请联系管理员')
+      return { success: true, data: await advanceTask(OPENID, event.taskId, config, expectedCacheNamespace) }
+    }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的计划操作' }
   } catch (error) {
     const failure = publicError(error)

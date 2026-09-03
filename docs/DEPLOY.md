@@ -55,7 +55,7 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 | `AI_API_KEY` | 是 | AI 服务凭据；绝不进入代码、日志或 Git |
 | `AI_API_BASE_URL` | 是 | 非秘密 HTTPS 基础地址；服务根地址规范化为 `/responses`，明确填写 `/v1` 才规范化为 `/v1/responses`，完整 Responses 地址原样保留 |
 | `AI_PROVIDER_DISPLAY_NAME` | 是 | 非秘密、面向用户展示的数据接收方名称，1–40 个字符 |
-| `AI_PROVIDER_REVISION` | 是 | 正整数；标识本次数据接收方配置，默认示例为 `8` |
+| `AI_PROVIDER_REVISION` | 是 | 正整数；标识本次数据接收方配置，不能使用占位值 |
 
 只轮换同一数据接收方的 Key 时，保持 `AI_PROVIDER_REVISION` 不变，用户无需因密钥轮换重新授权。只要 `AI_API_BASE_URL`、实际数据接收方或 `AI_PROVIDER_DISPLAY_NAME` 任一变化，就必须先将 `AI_PROVIDER_REVISION` 增加到新的正整数，再一起保存并重新部署；旧活动任务会以 `AI_DATA_CONSENT_REQUIRED` 关闭，用户下一次生成时必须重新勾选发送同意。禁止改变 URL 或接收方却沿用旧 revision。模型名、协议、推理强度、请求头和 temperature 仍不能由环境变量覆盖；contract v9 只允许标准 Bearer 鉴权和 JSON 内容头。
 

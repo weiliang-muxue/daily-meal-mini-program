@@ -52,7 +52,7 @@ AI task schema v3 增加每次生成的同意协议版本；生成确认页默�
 
 `2026-09-01` 目标云环境真实生成在首个提纲请求前后以 `AI_UPSTREAM_REQUEST_REJECTED` 终止，公开投影为 `failed / terminal / 0% / retryable=false / provider_configuration`。任务创建和私有状态保存成功，未进入餐食详情或最终计划校验；当时兼容降级的 `minimal` 请求实际始终保留 `model`、`instructions`、`input`、`store:false` 和 `stream:false`，并同样收到 HTTP 400。provider 请求契约 v6 在 full 到 minimal 仍遇可兼容的 HTTP 400/422 且 deadline 足够时，新增一次仅省略 `stream` 的末级尝试；该档位仍保留 `model`、`instructions`、`input` 和 `store:false`，不得省略指令或关闭无存储约束。公开 provider 源码确认 `/responses` 与非流式 Responses 均受支持，剩余阻断仍可能集中在 Key 所属订阅组、服务端应用调用资格、Responses 权限、模型映射或显式 `stream:false` 的兼容差异。历史脱敏诊断曾出现同一服务分组无有效订阅，但当前 400 未返回可安全确认的具体子原因，故不把推断写成定论。发布前仍必须完成虚构 1 天端到端生成；不得在此之前发送真实健康或饮食数据。
 
-`2026-09-02` 根据独立小程序测试服务配置迁移到 provider 请求契约 v7：云函数固定请求 `https://www.modelhub.shop/v1/responses`，模型为 `gpt-5.6`，使用 Responses、`store:false` 与固定非秘密兼容头，不主动发送服务配置未声明的推理强度。AI 数据同意协议同步升级为 v2，旧活动任务会在调用新服务商前失败关闭并要求重新勾选。Key 仍只由 `aiPlanner` 云函数环境变量提供；本机 Codex/CCS 配置与该小程序 provider 完全隔离。本机代理链路结果不作为小程序发布依据，必须由微信云函数使用固定虚构 1 天输入完成真实连通与端到端恢复验证后才可放行。
+`2026-09-02` 根据独立小程序测试服务配置迁移到 provider 请求契约 v7：云函数通过运行时配置的 HTTPS Responses 地址请求，模型为 `gpt-5.6`，使用 Responses、`store:false` 与固定非秘密兼容头，不主动发送服务配置未声明的推理强度。AI 数据同意协议同步升级为 v2，旧活动任务会在调用新服务商前失败关闭并要求重新勾选。Key 仍只由 `aiPlanner` 云函数环境变量提供；本机 Codex/CCS 配置与该小程序 provider 完全隔离。本机代理链路结果不作为小程序发布依据，必须由微信云函数使用固定虚构 1 天输入完成真实连通与端到端恢复验证后才可放行。
 
 同日目标云环境部署 v7 后，虚构 1 天早餐探针确认请求已从小程序运行时到达服务商，但兼容 `/v1/responses` 返回鉴权拒绝；首轮探针完整恢复原偏好且未留下候选。根据服务商提供的根地址 Responses 语义，将请求契约升级到 v8：根地址规范化为 `/responses`，只有部署者明确填写 `/v1` 时才使用 `/v1/responses`，完整 Responses 地址保持不变；默认 provider revision 同步升到 8，旧同意不能跨端点沿用。用户 schema、已确认餐单、候选、历史和私人记录均不迁移或清空。
 

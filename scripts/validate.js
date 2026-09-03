@@ -373,22 +373,22 @@ assert.deepStrictEqual(Object.keys(aiPlaceholders).sort(), [
   'AI_PROVIDER_DISPLAY_NAME', 'AI_PROVIDER_REVISION', 'AI_TIMEOUT_MS',
 ])
 assert.strictEqual(aiPlaceholders.AI_API_KEY, 'YOUR_AI_API_KEY')
-assert.strictEqual(aiPlaceholders.AI_API_BASE_URL, 'https://www.modelhub.shop')
-assert.strictEqual(aiPlaceholders.AI_PROVIDER_DISPLAY_NAME, 'ModelHub AI 服务')
-assert.strictEqual(aiPlaceholders.AI_PROVIDER_REVISION, '8')
+assert.strictEqual(aiPlaceholders.AI_API_BASE_URL, '<YOUR_AI_API_BASE_URL>')
+assert.strictEqual(aiPlaceholders.AI_PROVIDER_DISPLAY_NAME, '<YOUR_AI_PROVIDER_DISPLAY_NAME>')
+assert.strictEqual(aiPlaceholders.AI_PROVIDER_REVISION, '<YOUR_AI_PROVIDER_REVISION>')
 assert.strictEqual(aiPlaceholders.AI_TIMEOUT_MS, '45000')
 assert.strictEqual(aiPlaceholders.AI_MAX_TOKENS, '16000')
-assert.strictEqual(aiProviderConfig.DEFAULT_ENDPOINT, 'https://www.modelhub.shop/responses')
+assert.strictEqual(aiProviderConfig.DEFAULT_ENDPOINT, '')
 assert.strictEqual(aiProviderConfig.DEFAULT_MODEL, 'gpt-5.6')
 assert.strictEqual(aiProviderConfig.DEFAULT_API_STYLE, 'responses')
 assert.strictEqual(aiProviderConfig.DEFAULT_REASONING_EFFORT, '')
 assert.deepStrictEqual(aiProviderConfig.configuration({ AI_API_KEY: 'TEST_PLACEHOLDER_ONLY' }), {
-  configured: true,
-  providerDisplayName: 'ModelHub AI 服务',
+  configured: false,
+  providerDisplayName: '',
   providerContractRevision: 9,
-  providerRevision: 8,
-  providerConfigVersion: '0e0371163d386b43dda8f7c6117cd6b8354fd90e20a864ff6a49665820cdcd8f',
-  url: new URL('https://www.modelhub.shop/responses'),
+  providerRevision: 0,
+  providerConfigVersion: '',
+  url: null,
   apiKey: 'TEST_PLACEHOLDER_ONLY',
   model: 'gpt-5.6',
   apiStyle: 'responses',

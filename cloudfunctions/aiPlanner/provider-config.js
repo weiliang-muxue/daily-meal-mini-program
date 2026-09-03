@@ -2,10 +2,12 @@
 
 const crypto = require('crypto')
 
-const DEFAULT_ENDPOINT = 'https://www.modelhub.shop/responses'
+// Provider connection details are deliberately never bundled. They must be
+// supplied by the cloud-function environment at runtime.
+const DEFAULT_ENDPOINT = ''
 const PROVIDER_CONTRACT_REVISION = 9
-const DEFAULT_PROVIDER_REVISION = 8
-const DEFAULT_PROVIDER_DISPLAY_NAME = 'ModelHub AI 服务'
+const DEFAULT_PROVIDER_REVISION = 0
+const DEFAULT_PROVIDER_DISPLAY_NAME = ''
 const DEFAULT_MODEL = 'gpt-5.6'
 const DEFAULT_API_STYLE = 'responses'
 const DEFAULT_REASONING_EFFORT = ''
@@ -40,7 +42,7 @@ function responsesPath(pathname) {
 }
 
 function resolveResponsesEndpoint(rawBaseUrl) {
-  if (rawBaseUrl === undefined) return new URL(DEFAULT_ENDPOINT)
+  if (rawBaseUrl === undefined) return null
   if (typeof rawBaseUrl !== 'string') return null
   const value = rawBaseUrl.trim()
   if (!value || value.length > MAX_PROVIDER_URL_LENGTH || /[\u0000-\u0020\u007f]/.test(value)) return null
@@ -55,7 +57,7 @@ function resolveResponsesEndpoint(rawBaseUrl) {
 }
 
 function normalizeProviderDisplayName(value) {
-  const source = value === undefined ? DEFAULT_PROVIDER_DISPLAY_NAME : value
+  const source = value === undefined ? '' : value
   if (typeof source !== 'string') return ''
   const displayName = source.trim()
   if (!displayName || Array.from(displayName).length > MAX_PROVIDER_DISPLAY_NAME_LENGTH) return ''
@@ -64,7 +66,7 @@ function normalizeProviderDisplayName(value) {
 }
 
 function normalizeProviderRevision(value) {
-  const source = value === undefined ? DEFAULT_PROVIDER_REVISION : value
+  const source = value === undefined ? 0 : value
   if (typeof source === 'number') {
     return Number.isSafeInteger(source) && source > 0 ? source : 0
   }
@@ -119,8 +121,8 @@ function buildConfiguration(rawApiKey, tuningEnv = {}, runtimeEnv = {}) {
   }
 }
 
-function configurationForApiKey(rawApiKey, tuningEnv = {}) {
-  return buildConfiguration(rawApiKey, tuningEnv)
+function configurationForApiKey(rawApiKey, tuningEnv = {}, runtimeEnv = {}) {
+  return buildConfiguration(rawApiKey, tuningEnv, runtimeEnv)
 }
 
 function configuration(env = process.env) {

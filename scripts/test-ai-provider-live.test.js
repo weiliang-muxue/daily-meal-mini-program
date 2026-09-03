@@ -16,6 +16,9 @@ const {
   MAX_DETAIL_RETRIES,
   DETAIL_RETRY_DELAY_MS,
   LIVE_TEST_KEY_VARIABLE,
+  LIVE_TEST_BASE_URL_VARIABLE,
+  LIVE_TEST_PROVIDER_NAME_VARIABLE,
+  LIVE_TEST_PROVIDER_REVISION_VARIABLE,
   LIVE_MODE_SMOKE,
   LIVE_MODE_CONTRACT,
   parseLiveMode,
@@ -29,6 +32,11 @@ const {
 } = require('./test-ai-provider-live')
 
 const TEST_KEY = 'TEST_PLACEHOLDER_ONLY'
+const LIVE_RUNTIME = Object.freeze({
+  [LIVE_TEST_BASE_URL_VARIABLE]: 'https://example.invalid',
+  [LIVE_TEST_PROVIDER_NAME_VARIABLE]: 'Synthetic AI',
+  [LIVE_TEST_PROVIDER_REVISION_VARIABLE]: '1',
+})
 const TEST_ENDPOINT = Object.freeze({ address: '203.0.113.1', family: 4 })
 const TEST_CONFIG = Object.freeze({
   url: new URL('https://example.invalid/responses'),
@@ -218,7 +226,7 @@ async function run() {
   let smokeRequests = 0
   const smokeResult = await runLive({
     argv: ['--smoke'],
-    env: { [LIVE_TEST_KEY_VARIABLE]: TEST_KEY },
+    env: { [LIVE_TEST_KEY_VARIABLE]: TEST_KEY, ...LIVE_RUNTIME },
     writer: (line) => smokeLines.push(line),
     now: () => 1000,
     async resolveEndpoint() { return TEST_ENDPOINT },
@@ -248,7 +256,7 @@ async function run() {
   const script = path.resolve(__dirname, 'test-ai-provider-live.js')
   const defaultRun = spawnSync(process.execPath, [script], {
     encoding: 'utf8',
-    env: { [LIVE_TEST_KEY_VARIABLE]: TEST_KEY },
+    env: { [LIVE_TEST_KEY_VARIABLE]: TEST_KEY, ...LIVE_RUNTIME },
   })
   assert.strictEqual(defaultRun.status, 1)
   assert.strictEqual(defaultRun.stdout, '')
@@ -257,7 +265,7 @@ async function run() {
 
   const missingDedicatedKey = spawnSync(process.execPath, [script, '--smoke'], {
     encoding: 'utf8',
-    env: { [genericKeyName]: TEST_KEY },
+    env: { [genericKeyName]: TEST_KEY, ...LIVE_RUNTIME },
   })
   assert.strictEqual(missingDedicatedKey.status, 1)
   assert.strictEqual(missingDedicatedKey.stdout, '')

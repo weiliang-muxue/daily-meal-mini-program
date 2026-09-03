@@ -30,6 +30,9 @@ const {
 const MAX_DETAIL_RETRIES = 2
 const DETAIL_RETRY_DELAY_MS = MIN_RETRY_DELAY_MS
 const LIVE_TEST_KEY_VARIABLE = 'MEAL_AI_LIVE_TEST_KEY'
+const LIVE_TEST_BASE_URL_VARIABLE = 'MEAL_AI_LIVE_TEST_BASE_URL'
+const LIVE_TEST_PROVIDER_NAME_VARIABLE = 'MEAL_AI_LIVE_TEST_PROVIDER_NAME'
+const LIVE_TEST_PROVIDER_REVISION_VARIABLE = 'MEAL_AI_LIVE_TEST_PROVIDER_REVISION'
 const LIVE_MODE_SMOKE = 'smoke'
 const LIVE_MODE_CONTRACT = 'contract'
 const SAFE_PROFILES = new Set(PROFILES)
@@ -199,9 +202,17 @@ async function runLive(runOptions = {}) {
   const liveTestKey = typeof environment[LIVE_TEST_KEY_VARIABLE] === 'string'
     ? environment[LIVE_TEST_KEY_VARIABLE].trim()
     : ''
-  // Live tests deliberately ignore generic process credentials and provider
-  // overrides. This prevents an unrelated developer credential from being sent.
-  const config = configurationForApiKey(liveTestKey)
+  // Live tests deliberately use a separate, explicit runtime configuration.
+  // No provider URL, display name, revision, or credential is bundled here.
+  const runtime = {
+    baseUrl: typeof environment[LIVE_TEST_BASE_URL_VARIABLE] === 'string'
+      ? environment[LIVE_TEST_BASE_URL_VARIABLE].trim() : '',
+    displayName: typeof environment[LIVE_TEST_PROVIDER_NAME_VARIABLE] === 'string'
+      ? environment[LIVE_TEST_PROVIDER_NAME_VARIABLE].trim() : '',
+    revision: typeof environment[LIVE_TEST_PROVIDER_REVISION_VARIABLE] === 'string'
+      ? environment[LIVE_TEST_PROVIDER_REVISION_VARIABLE].trim() : '',
+  }
+  const config = configurationForApiKey(liveTestKey, {}, runtime)
   if (!config.configured) throw liveTestError('LIVE_TEST_CONFIGURATION_MISSING')
   const writer = typeof runOptions.writer === 'function' ? runOptions.writer : console.log
   report(liveStage, liveStageStartedAt, liveStageAttempts, 'passed', writer)
@@ -287,6 +298,9 @@ module.exports = {
   MAX_DETAIL_RETRIES,
   DETAIL_RETRY_DELAY_MS,
   LIVE_TEST_KEY_VARIABLE,
+  LIVE_TEST_BASE_URL_VARIABLE,
+  LIVE_TEST_PROVIDER_NAME_VARIABLE,
+  LIVE_TEST_PROVIDER_REVISION_VARIABLE,
   LIVE_MODE_SMOKE,
   LIVE_MODE_CONTRACT,
   parseLiveMode,

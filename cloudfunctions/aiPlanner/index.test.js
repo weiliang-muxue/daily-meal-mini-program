@@ -102,7 +102,14 @@ const owner = 'openid-owner'
 const otherOwner = 'openid-other'
 const cacheNamespace = 'a'.repeat(32)
 const otherCacheNamespace = 'b'.repeat(32)
-const providerConfig = configuration({ AI_API_KEY: 'TEST_PLACEHOLDER_ONLY' })
+// Tests use a synthetic runtime identity. Production endpoint, display name,
+// revision and key are supplied only by the cloud-function environment.
+const providerConfig = configuration({
+  AI_API_KEY: 'TEST_PLACEHOLDER_ONLY',
+  AI_API_BASE_URL: 'https://example.invalid',
+  AI_PROVIDER_DISPLAY_NAME: 'Synthetic AI',
+  AI_PROVIDER_REVISION: '1',
+})
 const input = {
   contractVersion: CONTRACT_VERSION,
   durationDays: 7,
@@ -318,10 +325,10 @@ planner._test.readCurrentTask = (openid) => rawPlannerTest.readCurrentTask(openi
 planner._test.readRecentFailure = (openid) => rawPlannerTest.readRecentFailure(openid, namespaceFor(openid))
 planner._test.claimWork = (openid, taskId) => rawPlannerTest.claimWork(openid, taskId, namespaceFor(openid), providerConfig)
 planner._test.settleSuccess = (openid, taskId, claim, token, result) => (
-  rawPlannerTest.settleSuccess(openid, taskId, claim, token, result, namespaceFor(openid))
+  rawPlannerTest.settleSuccess(openid, taskId, claim, token, result, namespaceFor(openid), undefined, providerConfig)
 )
 planner._test.settleFailure = (openid, taskId, claim, token, failure) => (
-  rawPlannerTest.settleFailure(openid, taskId, claim, token, failure, namespaceFor(openid))
+  rawPlannerTest.settleFailure(openid, taskId, claim, token, failure, namespaceFor(openid), providerConfig)
 )
 planner._test.advanceTask = (openid, taskId, config, operations) => (
   rawPlannerTest.advanceTask(openid, taskId, config, namespaceFor(openid), operations)
@@ -372,7 +379,11 @@ test('readiness status probes only reserved documents and performs no business w
     assert.strictEqual(response.data.plannerVersion, PLANNER_VERSION)
     assert.strictEqual(response.data.providerContractRevision, PROVIDER_CONTRACT_REVISION)
     assert(Number.isSafeInteger(response.data.providerContractRevision))
-    assert.match(response.data.providerConfigVersion, /^[a-f0-9]{64}$/)
+    // A test process without cloud runtime identity must remain explicitly
+    // unconfigured. Production values are supplied only by cloud env vars.
+    assert.strictEqual(response.data.configured, false)
+    assert.strictEqual(response.data.providerRevision, 0)
+    assert.strictEqual(response.data.providerConfigVersion, '')
     assert.deepStrictEqual(databaseCalls, [
       { operation: 'get', name: 'meal_members', id: owner },
       { operation: 'get', name: 'meal_ai_tasks', id: planner._test.STORAGE_PROBE_DOCUMENT_ID },
@@ -1268,6 +1279,9 @@ test('public start exposes a fixed intent error without creating a task', async 
   wxContext = { OPENID: owner }
   const apiKeyName = ['AI', 'API', 'KEY'].join('_')
   process.env[apiKeyName] = 'TEST_PLACEHOLDER_ONLY'
+  process.env.AI_API_BASE_URL = 'https://example.invalid'
+  process.env.AI_PROVIDER_DISPLAY_NAME = 'Synthetic AI'
+  process.env.AI_PROVIDER_REVISION = '1'
   const logs = []
   const originalError = console.error
   console.error = (...values) => logs.push(values)
@@ -1293,6 +1307,9 @@ test('public start exposes a fixed intent error without creating a task', async 
     console.error = originalError
     wxContext = {}
     delete process.env[apiKeyName]
+    delete process.env.AI_API_BASE_URL
+    delete process.env.AI_PROVIDER_DISPLAY_NAME
+    delete process.env.AI_PROVIDER_REVISION
   }
 })
 
@@ -1301,6 +1318,9 @@ test('public start rejects missing consent without task writes or private loggin
   wxContext = { OPENID: owner }
   const apiKeyName = ['AI', 'API', 'KEY'].join('_')
   process.env[apiKeyName] = 'TEST_PLACEHOLDER_ONLY'
+  process.env.AI_API_BASE_URL = 'https://example.invalid'
+  process.env.AI_PROVIDER_DISPLAY_NAME = 'Synthetic AI'
+  process.env.AI_PROVIDER_REVISION = '1'
   const logs = []
   const originalError = console.error
   console.error = (...values) => logs.push(values)
@@ -1324,6 +1344,9 @@ test('public start rejects missing consent without task writes or private loggin
     console.error = originalError
     wxContext = {}
     delete process.env[apiKeyName]
+    delete process.env.AI_API_BASE_URL
+    delete process.env.AI_PROVIDER_DISPLAY_NAME
+    delete process.env.AI_PROVIDER_REVISION
   }
 })
 
@@ -1357,6 +1380,9 @@ test('public start reports only fixed transaction stages and never exposes priva
     scenario.install(error)
     const apiKeyName = ['AI', 'API', 'KEY'].join('_')
     process.env[apiKeyName] = 'TEST_PLACEHOLDER_ONLY'
+    process.env.AI_API_BASE_URL = 'https://example.invalid'
+    process.env.AI_PROVIDER_DISPLAY_NAME = 'Synthetic AI'
+    process.env.AI_PROVIDER_REVISION = '1'
     const logs = []
     const originalError = console.error
     console.error = (...values) => logs.push(values)
@@ -1386,6 +1412,9 @@ test('public start reports only fixed transaction stages and never exposes priva
       console.error = originalError
       wxContext = {}
       delete process.env[apiKeyName]
+      delete process.env.AI_API_BASE_URL
+      delete process.env.AI_PROVIDER_DISPLAY_NAME
+      delete process.env.AI_PROVIDER_REVISION
     }
   }
 })
@@ -1457,6 +1486,16 @@ test('public task status reports only fixed transaction stages and never exposes
 test('queued task status does not read the full user state', async () => {
   reset()
   wxContext = { OPENID: owner }
+  const runtimeEnv = {
+    AI_API_KEY: process.env.AI_API_KEY,
+    AI_API_BASE_URL: process.env.AI_API_BASE_URL,
+    AI_PROVIDER_DISPLAY_NAME: process.env.AI_PROVIDER_DISPLAY_NAME,
+    AI_PROVIDER_REVISION: process.env.AI_PROVIDER_REVISION,
+  }
+  process.env.AI_API_KEY = 'TEST_PLACEHOLDER_ONLY'
+  process.env.AI_API_BASE_URL = 'https://example.invalid'
+  process.env.AI_PROVIDER_DISPLAY_NAME = 'Synthetic AI'
+  process.env.AI_PROVIDER_REVISION = '1'
   const task = storedTask(owner, 41, 101)
   put('meal_ai_tasks', task._id, planner._test.taskData(task))
   put('meal_ai_controls', owner, {
@@ -1477,6 +1516,10 @@ test('queued task status does not read the full user state', async () => {
     )), false)
   } finally {
     wxContext = {}
+    Object.entries(runtimeEnv).forEach(([name, value]) => {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    })
   }
 })
 
@@ -1525,7 +1568,7 @@ test('provider compatibility profile is persisted once and can only move toward 
   await rawPlannerTest.settleSuccess(
     owner, task._id, outlineWork.claim, outlineToken,
     { title: '兼容提纲', rationale: ['合成测试依据'] }, cacheNamespace,
-    PROFILE_NO_MAX_TOKENS,
+    PROFILE_NO_MAX_TOKENS, providerConfig,
   )
   const afterOutline = { ...get('meal_ai_tasks', task._id), _id: task._id }
   assert.strictEqual(afterOutline.providerRequestProfile, PROFILE_NO_MAX_TOKENS)
@@ -1535,13 +1578,13 @@ test('provider compatibility profile is persisted once and can only move toward 
   put('meal_ai_tasks', task._id, planner._test.taskData(detailWork.task))
   await assert.rejects(rawPlannerTest.settleSuccess(
     owner, task._id, detailWork.claim, detailToken, { days: [] }, cacheNamespace,
-    PROFILE_FULL,
+    PROFILE_FULL, providerConfig,
   ), (error) => error.code === 'AI_REQUEST_INVALID')
   assert.strictEqual(get('meal_ai_tasks', task._id).providerRequestProfile, PROFILE_NO_MAX_TOKENS)
 
   await rawPlannerTest.settleSuccess(
     owner, task._id, detailWork.claim, detailToken, { days: [] }, cacheNamespace,
-    PROFILE_NO_MAX_TOKENS_OR_REASONING,
+    PROFILE_NO_MAX_TOKENS_OR_REASONING, providerConfig,
   )
   assert.strictEqual(
     get('meal_ai_tasks', task._id).providerRequestProfile,
