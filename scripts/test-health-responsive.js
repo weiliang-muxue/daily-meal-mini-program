@@ -56,18 +56,18 @@ assertBoundToMedia('.calendar-scroll', 'max-width', '100%')
 assertBoundToMedia('.calendar-scroll', 'overflow', 'visible')
 assertBoundToMedia('.calendar-content', 'min-width', '0')
 assertBoundToMedia('.calendar .day-cell', 'min-width', '0')
-assertBoundToMedia('.calendar .day-cell', 'min-height', '60px')
+assertBoundToMedia('.calendar .day-cell', 'min-height', '52px')
 assertDeclaration('.calendar-scroll', 'max-width', '100%', portraitViewports[0])
 assertDeclaration('.calendar-scroll', 'overflow', 'visible', portraitViewports[0])
 assertDeclaration('.calendar-content', 'min-width', '0', portraitViewports[0])
-assertDeclaration('.calendar .day-cell', 'min-height', '60px', portraitViewports[0])
+assertDeclaration('.calendar .day-cell', 'min-height', '52px', portraitViewports[0])
 assert.strictEqual(computedStyle(rules, '.calendar-content', { width: 401, height: 850 })['min-width'], '0',
   '月历内容不得设置会裁切七列的固定最小宽度')
 
 const weightNumber = computedStyle(rules, '.weight-number', portraitViewports[0])
-assert.strictEqual(weightNumber['white-space'], 'nowrap', '长体重值必须保持单行')
-assert.strictEqual(weightNumber.overflow, 'hidden', '长体重值必须在日期格内裁切')
-assert.strictEqual(weightNumber['text-overflow'], 'ellipsis', '长体重值必须显示省略号')
+assert.strictEqual(weightNumber['overflow-wrap'], 'anywhere', '长体重值必须允许换行而不是裁切')
+assert.strictEqual(weightNumber['white-space'], undefined, '体重值不得强制单行')
+assert.strictEqual(weightNumber['text-overflow'], undefined, '体重值不得用省略号隐藏内容')
 
 const narrowFontSelectors = [
   '.month-subtitle', '.field-hint', '.weight-number', '.exercise-mark', '.ring-unit', '.picker-field',

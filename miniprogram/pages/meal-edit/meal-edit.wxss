@@ -11,31 +11,31 @@
 .retry { margin-top: 24rpx; }
 .intro { padding: 28rpx; background: var(--primary-soft); }
 .meal-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; }
-.meal-type, .scenario { min-height: 48rpx; padding: 6rpx 14rpx; display: inline-flex; align-items: center; border-radius: 8rpx; font-size: 23rpx; line-height: 1.4; font-weight: 700; }
+.meal-type, .scenario { min-height: 48rpx; padding: 6rpx 14rpx; display: inline-flex; align-items: center; border-radius: 8rpx; font-size: 12px; line-height: 1.4; font-weight: 700; }
 .meal-type { background: var(--primary-fill); color: var(--on-primary); }
 .scenario { border: 1rpx solid var(--line-strong); background: var(--surface); color: var(--primary); }
-.day-label { display: block; margin-top: 14rpx; color: var(--muted); font-size: 24rpx; line-height: 1.5; }
-.intro-title { display: block; margin-top: 18rpx; color: var(--primary); font-size: 32rpx; line-height: 1.4; font-weight: 740; }
-.intro-copy { display: block; margin-top: 8rpx; color: var(--muted-strong); font-size: 25rpx; line-height: 1.65; overflow-wrap: anywhere; }
+.day-label { display: block; margin-top: 14rpx; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.intro-title { display: block; margin-top: 18rpx; color: var(--primary); font-size: 18px; line-height: 1.4; font-weight: 740; }
+.intro-copy { display: block; margin-top: 8rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .original { margin-top: 24rpx; padding: 26rpx; }
-.block-title { display: block; font-size: 29rpx; line-height: 1.4; font-weight: 730; }
-.block-copy { display: block; margin-top: 8rpx; color: var(--muted); font-size: 23rpx; line-height: 1.55; }
+.block-title { display: block; font-size: 16px; line-height: 1.4; font-weight: 730; }
+.block-copy { display: block; margin-top: 8rpx; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .ingredient-table { margin-top: 18rpx; border-top: 1rpx solid var(--line); }
 .ingredient-row { min-height: 88rpx; padding: 14rpx 0; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; border-bottom: 1rpx solid var(--line); }
 .ingredient-row:last-child { border-bottom: 0; }
 .ingredient-main { min-width: 0; flex: 1; }
-.ingredient-name { display: block; font-size: 26rpx; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
-.ingredient-category { display: block; margin-top: 3rpx; color: var(--muted); font-size: 21rpx; line-height: 1.4; }
-.ingredient-amount { flex: none; color: var(--primary); font-size: 25rpx; line-height: 1.4; font-weight: 700; }
+.ingredient-name { display: block; font-size: 14px; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
+.ingredient-category { display: block; margin-top: 3rpx; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.ingredient-amount { flex: none; color: var(--primary); font-size: 14px; line-height: 1.4; font-weight: 700; }
 .form { margin-top: 24rpx; padding: 0 28rpx; }
 .field { border-bottom: 1rpx solid var(--line); }
 .field:last-child { border-bottom: 0; }
 .field.vertical { display: block; padding: 26rpx 0; }
-.field-label { display: block; margin-bottom: 14rpx; font-size: 26rpx; line-height: 1.4; font-weight: 700; }
-.field input { width: 100%; min-height: 92rpx; padding: 0 20rpx; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--input-surface); color: var(--ink); font-size: 28rpx; }
-.field textarea { width: 100%; height: 180rpx; min-height: 180rpx; padding: 18rpx 20rpx; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--input-surface); color: var(--ink); font-size: 27rpx; line-height: 1.6; }
-.field-help { display: block; margin-top: 10rpx; color: var(--muted); font-size: 22rpx; line-height: 1.55; }
-.contract-note { margin-top: 24rpx; padding: 24rpx 26rpx; border-left: 6rpx solid var(--gold); background: var(--gold-soft); color: var(--gold-ink); font-size: 24rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.field-label { display: block; margin-bottom: 14rpx; font-size: 14px; line-height: 1.4; font-weight: 700; }
+.field input { width: 100%; min-height: 92rpx; padding: 0 20rpx; border: 1rpx solid var(--line-strong); border-radius: var(--radius-control); background: var(--input-surface); color: var(--ink); font-size: 16px; }
+.field textarea { width: 100%; height: 180rpx; min-height: 180rpx; padding: 18rpx 20rpx; border: 1rpx solid var(--line-strong); border-radius: var(--radius-control); background: var(--input-surface); color: var(--ink); font-size: 16px; line-height: 1.6; }
+.field-help { display: block; margin-top: 10rpx; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.contract-note { margin-top: 24rpx; padding: 24rpx 26rpx; border-left: 6rpx solid var(--gold); background: var(--gold-soft); color: var(--gold-ink); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .contract-title { display: block; color: var(--gold-ink); font-weight: 750; }
 .contract-copy { display: block; margin-top: 6rpx; }
 .save { margin-top: 28rpx; }

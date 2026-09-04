@@ -40,7 +40,7 @@
 .vitamin-note { margin-top: 24rpx; padding: 26rpx; border-left: 6rpx solid var(--gold); }
 .block-title { display: block; font-size: 15px; line-height: 1.4; font-weight: 730; }
 .block-copy { display: block; margin-top: 8rpx; color: var(--muted); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
-.guide-state { min-height: 560rpx; padding: 56rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.guide-state { min-height: 360rpx; padding: 48rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .guide-state.error-state { border-color: var(--danger-line); }
 .guide-retry { width: 100%; margin-top: 28rpx; }
 .guide-title-skeleton { width: 58%; height: 44rpx; border-radius: 8rpx; }

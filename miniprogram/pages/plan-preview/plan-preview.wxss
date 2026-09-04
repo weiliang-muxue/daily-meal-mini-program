@@ -61,7 +61,7 @@ button { letter-spacing: 0; }
 .primary-action::after, .secondary-action::after, .danger-action::after { border: 0; }
 .primary-action[disabled], .secondary-action[disabled], .danger-action[disabled] { opacity: .5; }
 .button-pressed { opacity: .78; }
-.state-panel { box-sizing: border-box; min-height: 560rpx; padding: 80rpx 34rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.state-panel { box-sizing: border-box; min-height: 360rpx; padding: 56rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .state-title { display: block; font-size: 17px; line-height: 1.4; font-weight: 750; }
 .state-copy { display: block; max-width: 600rpx; margin-top: 16rpx; color: var(--muted); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .state-action { margin-top: 30rpx; }

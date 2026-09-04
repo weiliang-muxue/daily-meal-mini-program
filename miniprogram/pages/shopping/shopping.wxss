@@ -5,36 +5,36 @@
 .page-title { display: block; font-size: 24px; line-height: 1.25; font-weight: 760; letter-spacing: 0; overflow-wrap: anywhere; }
 .plan-title { display: block; margin-top: 8rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .progress { flex: none; min-width: 112rpx; text-align: right; }
-.progress-number { display: block; color: var(--primary); font-size: 35rpx; line-height: 1.25; font-weight: 750; }
-.progress-label { display: block; margin-top: 3rpx; color: var(--muted); font-size: 22rpx; line-height: 1.4; }
-.plan-summary { display: flex; flex-wrap: wrap; gap: 8rpx 22rpx; margin: -4rpx 4rpx 22rpx; color: var(--muted); font-size: 22rpx; line-height: 1.55; }
-.offline-strip, .saving-strip { box-sizing: border-box; min-height: 88rpx; padding: 18rpx 20rpx; border-radius: 10rpx; margin-bottom: 22rpx; display: flex; align-items: center; font-size: 24rpx; line-height: 1.5; }
+.progress-number { display: block; color: var(--primary); font-size: 18px; line-height: 1.25; font-weight: 750; }
+.progress-label { display: block; margin-top: 3rpx; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.plan-summary { display: flex; flex-wrap: wrap; gap: 8rpx 22rpx; margin: -4rpx 4rpx 22rpx; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.offline-strip, .saving-strip { box-sizing: border-box; min-height: 88rpx; padding: 18rpx 20rpx; border-radius: var(--radius-control); margin-bottom: 22rpx; display: flex; align-items: center; font-size: 14px; line-height: 1.5; }
 .offline-strip { border: 1rpx solid var(--warm-line); background: var(--warm-soft); color: var(--warm-ink); }
 .offline-hover { opacity: .76; }
 .saving-strip { border: 1rpx solid var(--line-strong); background: var(--primary-soft); color: var(--primary-soft-ink); }
 .progress-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10rpx; margin-bottom: 22rpx; padding: 22rpx 14rpx; border-top: 1rpx solid var(--line); border-bottom: 1rpx solid var(--line); }
 .progress-summary view { min-width: 0; text-align: center; }
-.summary-value { display: block; color: var(--primary); font-size: 32rpx; line-height: 1.3; font-weight: 750; }
-.summary-label { display: block; margin-top: 4rpx; color: var(--muted); font-size: 22rpx; line-height: 1.4; }
+.summary-value { display: block; color: var(--primary); font-size: 16px; line-height: 1.3; font-weight: 750; }
+.summary-label { display: block; margin-top: 4rpx; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .group { margin-bottom: 22rpx; overflow: hidden; }
 .group-heading { min-height: 88rpx; padding: 16rpx 26rpx; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; border-bottom: 1rpx solid var(--line); }
-.group-title { min-width: 0; font-size: 30rpx; line-height: 1.4; font-weight: 730; overflow-wrap: anywhere; }
-.group-count { flex: none; color: var(--muted); font-size: 24rpx; line-height: 1.4; }
+.group-title { min-width: 0; font-size: 16px; line-height: 1.4; font-weight: 730; overflow-wrap: anywhere; }
+.group-count { flex: none; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .shopping-row { min-height: 112rpx; padding: 20rpx 26rpx; display: flex; align-items: center; gap: 22rpx; border-bottom: 1rpx solid var(--line); }
 .shopping-row:last-child { border-bottom: 0; }
 .checkbox { flex: none; width: 48rpx; height: 48rpx; border: 2rpx solid var(--line-strong); border-radius: 8rpx; display: flex; align-items: center; justify-content: center; color: var(--on-primary); }
 .checked .checkbox { background: var(--primary-fill); border-color: var(--primary-fill); }
 .check-mark { width: 22rpx; height: 12rpx; margin-top: -4rpx; border-left: 4rpx solid var(--on-primary); border-bottom: 4rpx solid var(--on-primary); transform: rotate(-45deg); }
 .food-copy { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(120rpx, auto); gap: 12rpx 18rpx; align-items: center; }
-.food-name { min-width: 0; font-size: 28rpx; line-height: 1.45; font-weight: 620; overflow-wrap: anywhere; }
-.food-amount { max-width: 260rpx; color: var(--muted); font-size: 24rpx; line-height: 1.45; text-align: right; overflow-wrap: anywhere; }
+.food-name { min-width: 0; font-size: 14px; line-height: 1.45; font-weight: 620; overflow-wrap: anywhere; }
+.food-amount { max-width: 260rpx; color: var(--muted); font-size: 12px; line-height: 1.45; text-align: right; overflow-wrap: anywhere; }
 .checked .food-name { color: var(--checked-text); text-decoration: line-through; }
 .row-hover { background: var(--pressed); }
 .reset-button { width: 100%; margin: 30rpx 0 12rpx; padding: 16rpx 22rpx; letter-spacing: 0; }
 .reset-button[disabled] { opacity: .45; }
 .status-panel { min-height: 390rpx; padding: 56rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.status-title { font-size: 32rpx; line-height: 1.4; }
-.status-detail { max-width: 600rpx; margin-top: 12rpx; font-size: 25rpx; line-height: 1.65; overflow-wrap: anywhere; }
+.status-title { font-size: 16px; line-height: 1.4; }
+.status-detail { max-width: 600rpx; margin-top: 12rpx; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .status-action { width: 100%; margin-top: 28rpx; padding: 16rpx 22rpx; letter-spacing: 0; }
 .loading-state { padding-top: 18rpx; }
 .heading-skeleton { width: 56%; height: 84rpx; margin-bottom: 30rpx; border-radius: 10rpx; }

@@ -15,8 +15,8 @@
 .day-cell.exercised.selected { box-shadow: inset 0 0 0 1px var(--exercise-calendar-border), 0 0 0 1px var(--primary); }
 .day-cell.day-hover { opacity: .74; background: var(--pressed); }
 .day-number { font-size: 14px; line-height: 1.1; }
-.weight-number { max-width: 100%; margin-top: 5px; color: var(--muted-strong); font-size: 12px; line-height: 1.2; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.exercise-mark { position: absolute; bottom: 4px; left: 1px; right: 1px; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--exercise-calendar-ink); font-size: 12px; line-height: 1.2; font-weight: 800; white-space: nowrap; }
+.weight-number { max-width: 100%; margin-top: 5px; color: var(--muted-strong); font-size: 12px; line-height: 1.15; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+.exercise-mark { position: absolute; bottom: 3px; left: 1px; right: 1px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px; color: var(--exercise-calendar-ink); font-size: 12px; line-height: 1.15; font-weight: 800; }
 .exercise-dot { width: 14rpx; height: 14rpx; flex: none; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3rpx var(--exercise-saved-chip); }
 .photo-mark { position: absolute; top: 7rpx; right: 7rpx; width: 10rpx; height: 10rpx; border: 2rpx solid var(--gold); border-radius: 2rpx; }
 .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 16rpx; color: var(--muted); font-size: 12px; }
@@ -92,7 +92,7 @@
 .summary-value { display: block; max-width: 44px; color: var(--ink); font-size: 16px; line-height: 1; font-weight: 780; overflow: hidden; text-overflow: ellipsis; }
 .ring-unit { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1; }
 .control-hover { opacity: .76; background: var(--pressed); }
-.page-state { min-height: 560rpx; margin-top: 18rpx; padding: 56rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.page-state { min-height: 360rpx; margin-top: 18rpx; padding: 48rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .error-state { border-color: var(--danger-line); }
 .state-title { display: block; font-size: 16px; line-height: 1.4; font-weight: 750; }
 .state-detail { display: block; max-width: 600rpx; margin-top: 16rpx; color: var(--muted); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -117,10 +117,30 @@
   }
   .month-nav { grid-template-columns: 48px minmax(0, 1fr) 48px; }
   .month-button { width: 48px; height: 48px; }
-  .calendar { margin-left: -12px; margin-right: -12px; padding-left: 0; padding-right: 0; border-left: 0; border-right: 0; border-radius: 0; }
+  .calendar {
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-top: 10px;
+    padding-right: 0;
+    padding-bottom: 6px;
+    padding-left: 0;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
   .calendar-scroll { width: 100%; max-width: 100%; min-width: 0; overflow: visible; }
   .calendar-content { width: 100%; min-width: 0; overflow: visible; }
-  .calendar .day-cell { min-width: 0; min-height: 60px; padding-left: 1px; padding-right: 1px; }
+  .week-row text { height: 24px; }
+  .calendar .day-cell {
+    min-width: 0;
+    min-height: 52px;
+    padding-top: 4px;
+    padding-right: 1px;
+    padding-bottom: 20px;
+    padding-left: 1px;
+  }
+  .record-card { margin-top: 16px; }
+  .legend { margin-top: 8px; gap: 6px 14px; }
   .month-subtitle, .record-caption, .trend-copy, .field-hint, .saved-badge,
   .offline-strip, .photo-privacy-error, .field-error, .form-error, .state-detail,
   .week-row text, .weight-number, .legend, .ring-unit, .photo-button, .remove-photo,
