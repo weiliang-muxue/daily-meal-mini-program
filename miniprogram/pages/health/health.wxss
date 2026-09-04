@@ -12,14 +12,15 @@
 .week-row text { height: 28px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
 .day-cell { position: relative; width: 100%; min-width: 0; min-height: 120rpx; padding: 8rpx 4rpx 27rpx; border-radius: 10rpx; display: flex; flex-direction: column; align-items: center; border: 2rpx solid transparent; }
 .day-cell.empty { pointer-events: none; }
-.day-cell.exercised { background: var(--exercise-calendar-surface); box-shadow: inset 0 0 0 2px var(--exercise-calendar-border); }
+.day-cell.exercised { background: var(--exercise-calendar-surface); border-top-color: var(--exercise-calendar-border); border-top-width: 4rpx; box-shadow: inset 0 0 0 2px var(--exercise-calendar-border); }
+.day-cell.exercised .day-number { color: var(--exercise-calendar-ink); font-weight: 800; }
 .day-cell.today .day-number { color: var(--primary); font-weight: 800; }
 .day-cell.selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .day-cell.exercised.selected { box-shadow: inset 0 0 0 1px var(--exercise-calendar-border), 0 0 0 1px var(--primary); }
 .day-cell.day-hover { opacity: .74; background: var(--pressed); }
 .day-number { font-size: 14px; line-height: 1.1; }
 .weight-number { max-width: 100%; margin-top: 5px; color: var(--muted-strong); font-size: 12px; line-height: 1.15; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
-.exercise-mark { position: absolute; bottom: 3px; left: 1px; right: 1px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px; color: var(--exercise-calendar-ink); font-size: 12px; line-height: 1.15; font-weight: 800; }
+.exercise-mark { position: absolute; bottom: 3px; left: 1px; right: 1px; min-width: 0; min-height: 20rpx; padding: 2rpx 4rpx; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px; border-radius: var(--radius-pill); background: var(--exercise-saved-chip); color: var(--exercise-calendar-ink); font-size: 12px; line-height: 1.15; font-weight: 800; }
 .exercise-dot { width: 14rpx; height: 14rpx; flex: none; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3rpx var(--exercise-saved-chip); }
 .photo-mark { position: absolute; top: 7rpx; right: 7rpx; width: 10rpx; height: 10rpx; border: 2rpx solid var(--gold); border-radius: 2rpx; }
 .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 16rpx; color: var(--muted); font-size: 12px; }
@@ -42,10 +43,10 @@
 .photo-error-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 16rpx; }
 .photo-error-button { min-height: 88rpx; margin: 0; padding: 12rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.4; }
 .photo-error-button[disabled] { opacity: .48; }
-.exercise-card { margin: 16rpx 0 0; padding: 20rpx 16rpx 18rpx; border: 2rpx solid var(--line-strong); border-left-width: 6rpx; border-radius: var(--radius-control); background: var(--surface-muted); box-shadow: 0 2rpx 10rpx var(--shadow-soft); transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease; }
-.exercise-card.pending { border-color: var(--gold-line); background: var(--gold-soft); box-shadow: 0 2rpx 10rpx rgba(133, 95, 18, .12); }
-.exercise-card.saved { border-color: var(--exercise-saved-border); background: var(--exercise-saved-surface); box-shadow: 0 2rpx 12rpx rgba(21, 148, 71, .14); }
-.exercise-card.cancel { border-color: var(--warm-line); background: var(--warm-soft); box-shadow: 0 2rpx 10rpx rgba(200, 95, 69, .12); }
+.exercise-card { margin: 16rpx 0 0; padding: 20rpx 16rpx 18rpx; border: 2rpx solid var(--line-strong); border-left-width: 8rpx; border-radius: var(--radius-control); background: var(--surface-muted); box-shadow: var(--shadow-card); transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.exercise-card.pending { border-color: var(--gold-line); background: var(--gold-soft); box-shadow: var(--shadow-card); }
+.exercise-card.saved { border-color: var(--exercise-saved-border); background: var(--exercise-saved-surface); box-shadow: var(--shadow-card); }
+.exercise-card.cancel { border-color: var(--warm-line); background: var(--warm-soft); box-shadow: var(--shadow-card); }
 .exercise-row { min-height: 60px; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .exercise-row:active { opacity: .78; }
 .activity-ring { width: 56px; height: 56px; padding: 5px; border: 6px solid var(--exercise-idle-ring); border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surface); }
@@ -63,7 +64,7 @@
 .exercise-state.pending { background: var(--gold-soft); color: var(--gold-ink); }
 .exercise-state.saved { background: var(--exercise-saved-chip); color: var(--exercise-saved-ink); border-color: var(--exercise-saved-border); }
 .exercise-state.cancel { background: var(--warm-soft); color: var(--warm-ink); }
-.exercise-switch-target { width: 58px; min-height: 48px; padding: 2px; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line); border-radius: 999px; background: var(--surface); }
+.exercise-switch-target { width: 58px; min-height: 48px; padding: 2px; display: flex; align-items: center; justify-content: center; border: 2rpx solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface); box-shadow: var(--shadow-control); }
 .exercise-card.pending .exercise-switch-target { border-color: var(--gold-line); background: var(--gold-soft); }
 .exercise-card.saved .exercise-switch-target { border-color: var(--exercise-saved-border); background: var(--exercise-saved-chip); }
 .exercise-card.cancel .exercise-switch-target { border-color: var(--warm-line); background: var(--warm-soft); }
@@ -163,6 +164,8 @@
     min-height: 48px;
   }
   .exercise-mark { font-size: 12px; }
+  .record-caption, .trend-copy, .saved-badge, .trend-notice,
+  .trend-switch view, .photo-button, .remove-photo, .photo-error-button { font-size: 13px; }
 }
 
 @media (max-width: 340px) {

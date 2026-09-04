@@ -16,7 +16,7 @@
 .progress-summary view { min-width: 0; text-align: center; }
 .summary-value { display: block; color: var(--primary); font-size: 16px; line-height: 1.3; font-weight: 750; }
 .summary-label { display: block; margin-top: 4rpx; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.group { margin-bottom: 22rpx; overflow: hidden; }
+.group { margin-bottom: 22rpx; overflow: hidden; border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
 .group-heading { min-height: 88rpx; padding: 16rpx 26rpx; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; border-bottom: 1rpx solid var(--line); }
 .group-title { min-width: 0; font-size: 16px; line-height: 1.4; font-weight: 730; overflow-wrap: anywhere; }
 .group-count { flex: none; color: var(--muted); font-size: 12px; line-height: 1.4; }
@@ -32,17 +32,22 @@
 .row-hover { background: var(--pressed); }
 .reset-button { width: 100%; margin: 30rpx 0 12rpx; padding: 16rpx 22rpx; letter-spacing: 0; }
 .reset-button[disabled] { opacity: .45; }
-.status-panel { min-height: 300rpx; padding: 40rpx 24rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.status-panel { min-height: 240rpx; padding: 32rpx 24rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .status-title { font-size: 16px; line-height: 1.4; }
 .status-detail { max-width: 600rpx; margin-top: 12rpx; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .status-action { width: 100%; margin-top: 28rpx; padding: 16rpx 22rpx; letter-spacing: 0; }
 .loading-state { padding-top: 18rpx; }
-.heading-skeleton { width: 56%; height: 84rpx; margin-bottom: 30rpx; border-radius: 10rpx; }
-.group-skeleton { height: 320rpx; border-radius: 16rpx; margin-bottom: 22rpx; }
+.heading-skeleton { width: 56%; height: 64rpx; margin-bottom: 22rpx; border-radius: var(--radius-control); }
+.group-skeleton { height: 240rpx; border-radius: var(--radius-card); margin-bottom: 18rpx; }
 @media (max-width: 340px) {
   .food-copy { grid-template-columns: minmax(0, 1fr); }
   .food-amount { max-width: none; text-align: left; }
 }
 @media (max-width: 400px) {
   .offline-strip, .shopping-row { min-height: 48px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .status-panel { min-height: 200px; padding-top: 24px; padding-bottom: 24px; }
+  .heading-skeleton { height: 52px; margin-bottom: 16px; }
+  .group-skeleton { height: 180px; margin-bottom: 16px; }
 }

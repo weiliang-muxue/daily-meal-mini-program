@@ -25,7 +25,7 @@ button { letter-spacing: 0; }
 .meta-row { display: flex; flex-wrap: wrap; gap: 8rpx 24rpx; margin-top: 18rpx; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .safety-note { display: block; margin-top: 22rpx; padding: 18rpx 20rpx; border-left: 6rpx solid var(--gold); background: var(--gold-soft); color: var(--gold-ink); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .offline-strip { box-sizing: border-box; min-height: 88rpx; margin-bottom: 18rpx; padding: 18rpx 20rpx; display: flex; align-items: center; border: 1rpx solid var(--warm-line); border-radius: 8rpx; background: var(--warm-soft); color: var(--warm-ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.section-block { margin-top: 18rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: 0 4rpx 14rpx var(--shadow-soft); }
+.section-block { margin-top: 18rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
 .section-title { display: block; font-size: 17px; line-height: 1.35; font-weight: 740; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
 .section-count { flex: none; color: var(--primary); font-size: 12px; font-weight: 700; }
@@ -55,7 +55,7 @@ button { letter-spacing: 0; }
 .meal-tag { display: block; margin-top: 12rpx; color: var(--gold-ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .action-area { display: grid; gap: 16rpx; margin-top: 28rpx; }
 .primary-action, .secondary-action, .danger-action { box-sizing: border-box; width: 100%; min-height: 96rpx; padding: 18rpx 24rpx; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-control); font-size: 14px; line-height: 1.35; font-weight: 700; transition: opacity .18s ease, background-color .18s ease; }
-.primary-action { background: var(--primary-fill); color: var(--on-primary); box-shadow: 0 6rpx 16rpx var(--shadow-soft); }
+.primary-action { background: var(--primary-fill); color: var(--on-primary); box-shadow: var(--shadow-control); }
 .secondary-action { border: 1rpx solid var(--line-strong); background: var(--surface); color: var(--primary); }
 .danger-action { border: 2rpx solid var(--danger-line); background: var(--surface); color: var(--danger); }
 .primary-action::after, .secondary-action::after, .danger-action::after { border: 0; }

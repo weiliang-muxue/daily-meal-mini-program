@@ -23,7 +23,7 @@ button { letter-spacing: 0; }
 .page-copy { display: block; margin-top: 12rpx; color: var(--muted); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .offline-strip { box-sizing: border-box; min-height: 88rpx; margin-bottom: 18rpx; padding: 18rpx 20rpx; display: flex; align-items: center; border: 1rpx solid var(--warm-line); border-radius: 8rpx; background: var(--warm-soft); color: var(--warm-ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .history-list { display: grid; gap: 22rpx; }
-.history-item { overflow: hidden; border: 1rpx solid var(--line); border-radius: 8rpx; background: var(--surface); }
+.history-item { overflow: hidden; border: 1rpx solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
 .plan-summary { padding: 26rpx 26rpx 20rpx; }
 .summary-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12rpx 20rpx; }
 .plan-title { min-width: 0; flex: 1; font-size: 16px; line-height: 1.4; font-weight: 740; overflow-wrap: anywhere; }

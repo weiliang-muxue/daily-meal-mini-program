@@ -182,4 +182,10 @@ button::after { border: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after { animation: none; }
+  .primary-button, .secondary-button, .text-action, button,
+  .surface, .exercise-card, .progress-fill, .page-navigation,
+  .month-button, .segment, .segment-button, .week-button,
+  .day-button, .metric-switch view, .trend-switch view {
+    transition: none !important;
+  }
 }

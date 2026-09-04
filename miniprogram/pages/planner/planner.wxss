@@ -1,12 +1,13 @@
 .planner-screen {
+  box-sizing: border-box;
   max-width: 720px;
   margin: 0 auto;
   padding-left: calc(28rpx + constant(safe-area-inset-left));
   padding-left: calc(28rpx + env(safe-area-inset-left));
   padding-right: calc(28rpx + constant(safe-area-inset-right));
   padding-right: calc(28rpx + env(safe-area-inset-right));
-  padding-bottom: calc(184rpx + constant(safe-area-inset-bottom));
-  padding-bottom: calc(184rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(180rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
 }
 .planner-screen.form-control-focused {
   padding-bottom: calc(48rpx + constant(safe-area-inset-bottom));
@@ -155,6 +156,7 @@ textarea { width: 100%; height: 180rpx; min-height: 180rpx; padding: 20rpx 22rpx
 .inline-error { margin-top: 24rpx; padding: 20rpx 22rpx; border: 1rpx solid var(--danger-line); border-radius: 10rpx; background: var(--danger-soft); color: var(--danger); font-size: 13px; line-height: 1.5; }
 .error-retry { min-height: 88rpx; margin: 8rpx 0 -16rpx; padding: 0; display: flex; align-items: center; justify-content: flex-start; background: transparent; color: var(--danger); font-size: 13px; font-weight: 700; }
 .bottom-actions {
+  box-sizing: border-box;
   position: fixed;
   left: 0;
   right: 0;
@@ -167,6 +169,7 @@ textarea { width: 100%; height: 180rpx; min-height: 180rpx; padding: 20rpx 22rpx
   gap: 16rpx;
   border-top: 1rpx solid var(--line);
   background: var(--surface);
+  box-shadow: 0 -4rpx 14rpx var(--shadow-soft);
 }
 .bottom-actions .back-button { width: 210rpx; flex: none; margin: 0; }
 .bottom-actions .next-button { min-width: 0; flex: 1; margin: 0; }
@@ -189,15 +192,15 @@ textarea { width: 100%; height: 180rpx; min-height: 180rpx; padding: 20rpx 22rpx
   }
 }
 @media (max-width: 340px) {
-  .planner-screen.task-actions-visible { padding-bottom: calc(296rpx + constant(safe-area-inset-bottom)); padding-bottom: calc(296rpx + env(safe-area-inset-bottom)); }
+  .planner-screen.task-actions-visible { padding-bottom: calc(288rpx + constant(safe-area-inset-bottom)); padding-bottom: calc(288rpx + env(safe-area-inset-bottom)); }
   .choice-grid { grid-template-columns: minmax(0, 1fr); }
   .summary-row { display: block; }
   .summary-label { width: auto; }
   .summary-value { margin-top: 6rpx; text-align: left; }
   .task-head { display: block; }
   .task-percent { display: block; margin-top: 10rpx; }
-  .bottom-actions.task-layout { min-height: 252rpx; flex-wrap: wrap; align-content: center; }
-  .bottom-actions .task-action { flex: 1 1 280rpx; font-size: 13px; }
+  .bottom-actions.task-layout { min-height: 252rpx; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex-wrap: wrap; align-content: center; }
+  .bottom-actions .task-action { width: 100%; flex: none; font-size: 13px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   .planner-screen,
@@ -261,6 +264,9 @@ textarea { width: 100%; height: 180rpx; min-height: 180rpx; padding: 20rpx 22rpx
 }
 @media (max-width: 400px) {
   .option-row, .date-picker, .choice { min-height: 48px; }
+  .option-detail, .service-detail, .duration-help, .intensity-hint,
+  .task-detail, .stage-detail, .privacy-intro, .privacy-scope-copy,
+  .ai-consent-detail { font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .progress-fill { transition: none; }
