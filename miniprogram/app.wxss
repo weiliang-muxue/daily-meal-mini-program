@@ -48,6 +48,12 @@ page {
   --shimmer: rgba(255, 255, 255, .75);
   --chart-surface: #ffffff;
   --shadow-soft: rgba(31, 48, 40, .08);
+  --type-page-title: 24px;
+  --type-section-title: 18px;
+  --type-body: 14px;
+  --type-caption: 12px;
+  --radius-card: 12rpx;
+  --radius-control: 10rpx;
   color-scheme: light;
   background: var(--background);
   color: var(--ink);
@@ -69,7 +75,7 @@ button::after { border: 0; }
   padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
   padding-left: calc(28rpx + env(safe-area-inset-left));
 }
-.surface { background: var(--surface); border: 1rpx solid var(--line); border-radius: 16rpx; }
+.surface { background: var(--surface); border: 1rpx solid var(--line); border-radius: var(--radius-card); }
 .ai-origin-notice {
   display: flex; align-items: flex-start; gap: 14rpx; margin: 18rpx 0; padding: 18rpx 20rpx;
   border: 1rpx solid var(--gold-line); border-radius: 8rpx; background: var(--gold-soft); color: var(--gold-ink);
@@ -79,16 +85,18 @@ button::after { border: 0; }
   border-radius: 6rpx; background: var(--gold-fill); color: var(--on-gold); font-size: 12px; line-height: 1.4; font-weight: 750;
 }
 .ai-origin-copy { min-width: 0; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
-.section-title { display: block; margin: 40rpx 0 18rpx; font-size: 18px; line-height: 1.25; font-weight: 700; }
+.section-title { display: block; margin: 32rpx 0 14rpx; font-size: var(--type-section-title); line-height: 1.3; font-weight: 720; }
 .section-copy { color: var(--muted); line-height: 1.65; overflow-wrap: anywhere; }
 .primary-button, .secondary-button {
-  min-height: 92rpx; border-radius: 14rpx; display: flex; align-items: center; justify-content: center;
+  min-height: 96rpx; border-radius: var(--radius-control); display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 650; letter-spacing: 0;
 }
 .primary-button { background: var(--primary-fill); color: var(--on-primary); }
+.primary-button, .secondary-button { transition: opacity .18s ease, background-color .18s ease, border-color .18s ease; }
 .primary-button[disabled], .secondary-button[disabled] { opacity: .48; }
 .primary-button.button-hover { opacity: .82; }
 .secondary-button { background: var(--surface); color: var(--primary); border: 1rpx solid var(--line-strong); }
+.secondary-button.button-hover { background: var(--pressed); opacity: .84; }
 .text-action { color: var(--primary); font-weight: 650; padding: 20rpx 0; min-height: 88rpx; display: flex; align-items: center; }
 .status-panel { padding: 28rpx; text-align: center; margin-top: 24rpx; }
 .status-title { display: block; font-weight: 700; margin-bottom: 8rpx; }

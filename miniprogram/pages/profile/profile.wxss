@@ -10,7 +10,7 @@
 .avatar-edit-icon image { width: 13px; height: 13px; filter: brightness(0) invert(1); }
 .avatar-action { display: block; max-width: 76px; color: var(--primary); font-size: 12px; line-height: 1.2; font-weight: 680; white-space: nowrap; }
 .header-copy { min-width: 0; }
-.header-title { display: block; font-size: 18px; line-height: 1.35; font-weight: 730; }
+.header-title { display: block; font-size: 20px; line-height: 1.3; font-weight: 730; }
 .header-subtitle { display: block; margin-top: 8rpx; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .avatar-privacy-message { margin-top: 16rpx; padding: 20rpx 22rpx; border: 1rpx solid var(--line-strong); border-radius: 9rpx; background: var(--surface-muted); color: var(--muted-strong); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .avatar-privacy-message.hint { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }

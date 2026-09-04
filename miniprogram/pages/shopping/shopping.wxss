@@ -1,9 +1,9 @@
 .shopping-screen { width: 100%; max-width: 680px; margin: 0 auto; }
 .heading-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20rpx 28rpx; padding: 12rpx 4rpx 24rpx; }
 .heading-copy { min-width: 0; flex: 1; }
-.eyebrow { display: block; color: var(--gold); font-size: 24rpx; line-height: 1.5; font-weight: 700; margin-bottom: 7rpx; }
-.page-title { display: block; font-size: 44rpx; line-height: 1.25; font-weight: 760; letter-spacing: 0; overflow-wrap: anywhere; }
-.plan-title { display: block; margin-top: 8rpx; color: var(--muted-strong); font-size: 25rpx; line-height: 1.5; overflow-wrap: anywhere; }
+.eyebrow { display: block; color: var(--gold); font-size: 12px; line-height: 1.5; font-weight: 700; margin-bottom: 7rpx; }
+.page-title { display: block; font-size: 24px; line-height: 1.25; font-weight: 760; letter-spacing: 0; overflow-wrap: anywhere; }
+.plan-title { display: block; margin-top: 8rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .progress { flex: none; min-width: 112rpx; text-align: right; }
 .progress-number { display: block; color: var(--primary); font-size: 35rpx; line-height: 1.25; font-weight: 750; }
 .progress-label { display: block; margin-top: 3rpx; color: var(--muted); font-size: 22rpx; line-height: 1.4; }

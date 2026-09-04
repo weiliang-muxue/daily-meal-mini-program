@@ -1,22 +1,22 @@
-.meal-card { background: var(--surface); border: 1rpx solid var(--line); border-radius: 16rpx; padding: 30rpx; margin-bottom: 22rpx; }
-.meal-card.workout { background: var(--primary-soft); border-color: var(--line-strong); }
-.meal-topline { display: flex; align-items: center; gap: 12rpx; margin-bottom: 16rpx; }
+.meal-card { background: var(--surface); border: 1rpx solid var(--line); border-radius: var(--radius-card); padding: 24rpx 26rpx; margin-bottom: 16rpx; box-shadow: 0 4rpx 14rpx var(--shadow-soft); }
+.meal-card.workout { background: var(--primary-soft); border: 2rpx solid var(--exercise-saved-border); box-shadow: inset 5px 0 0 var(--exercise-saved-border), 0 4rpx 14rpx var(--shadow-soft); }
+.meal-topline { display: flex; align-items: center; gap: 12rpx; margin-bottom: 12rpx; }
 .meal-mark { width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--warm); }
 .rest .meal-mark { background: var(--primary); }
-.workout .meal-mark { background: var(--gold); }
+.workout .meal-mark { width: 18rpx; height: 18rpx; background: var(--success); box-shadow: 0 0 0 3rpx var(--exercise-saved-chip); }
 .meal-label { min-width: 0; flex: 1; color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
 .edit-action { margin-left: auto; min-width: 88rpx; min-height: 88rpx; display: flex; align-items: center; justify-content: flex-end; color: var(--primary); font-size: 13px; font-weight: 700; }
 .edit-hover { opacity: .72; }
-.meal-title { display: block; font-size: 19px; line-height: 1.32; font-weight: 750; color: var(--ink); overflow-wrap: anywhere; }
-.meal-ingredients { display: block; margin-top: 18rpx; font-size: 15px; line-height: 1.68; font-weight: 550; color: var(--muted-strong); overflow-wrap: anywhere; }
-.meal-divider { height: 1rpx; background: var(--line); margin: 22rpx 0; }
-.meal-method { display: block; font-size: 14px; line-height: 1.68; color: var(--muted); overflow-wrap: anywhere; }
-.meal-tag { display: inline-flex; max-width: 100%; margin-top: 22rpx; padding: 10rpx 16rpx; border-radius: 8rpx; background: var(--primary-soft); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
+.meal-title { display: block; font-size: 18px; line-height: 1.35; font-weight: 750; color: var(--ink); overflow-wrap: anywhere; }
+.meal-ingredients { display: block; margin-top: 12rpx; font-size: 14px; line-height: 1.58; font-weight: 550; color: var(--muted-strong); overflow-wrap: anywhere; }
+.meal-divider { height: 1rpx; background: var(--line); margin: 16rpx 0; }
+.meal-method { display: block; font-size: 14px; line-height: 1.58; color: var(--muted); overflow-wrap: anywhere; }
+.meal-tag { display: inline-flex; max-width: 100%; margin-top: 16rpx; padding: 8rpx 14rpx; border-radius: 6rpx; background: var(--primary-soft); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
 .workout .meal-tag { background: var(--gold-soft); color: var(--gold-ink); }
-.personal-tag { display: inline-flex; max-width: 100%; margin: 22rpx 0 0 10rpx; padding: 10rpx 14rpx; border-radius: 8rpx; border: 1rpx solid var(--line-strong); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
+.personal-tag { display: inline-flex; max-width: 100%; margin: 16rpx 0 0 10rpx; padding: 8rpx 12rpx; border-radius: 6rpx; border: 1rpx solid var(--line-strong); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
 
 @media (max-width: 340px) {
-  .meal-card { padding: 24rpx; }
+  .meal-card { padding: 20rpx; }
   .personal-tag { margin-left: 0; }
 }
 @media (max-width: 400px) {

@@ -18,15 +18,15 @@ button { letter-spacing: 0; }
 .page-navigation-icon.back::after { content: ""; position: absolute; left: 6px; top: 11px; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
 .page-navigation-icon.home::before { content: ""; position: absolute; left: 6px; top: 3px; width: 11px; height: 11px; border-top: 2px solid currentColor; border-left: 2px solid currentColor; transform: rotate(45deg); }
 .page-navigation-icon.home::after { content: ""; position: absolute; left: 5px; bottom: 3px; width: 14px; height: 11px; border: 2px solid currentColor; border-top: 0; border-radius: 0 0 2px 2px; }
-.hero-section { padding: 10rpx 2rpx 30rpx 20rpx; border-left: 6rpx solid var(--gold); }
+.hero-section { padding: 14rpx 2rpx 32rpx 20rpx; border-left: 8rpx solid var(--gold); }
 .eyebrow { display: block; color: var(--gold); font-size: 12px; font-weight: 700; }
-.page-title { display: block; margin-top: 10rpx; font-size: 21px; line-height: 1.28; font-weight: 760; overflow-wrap: anywhere; }
+.page-title { display: block; margin-top: 10rpx; font-size: 24px; line-height: 1.28; font-weight: 760; overflow-wrap: anywhere; }
 .date-range { display: block; margin-top: 12rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .meta-row { display: flex; flex-wrap: wrap; gap: 8rpx 24rpx; margin-top: 18rpx; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .safety-note { display: block; margin-top: 22rpx; padding: 18rpx 20rpx; border-left: 6rpx solid var(--gold); background: var(--gold-soft); color: var(--gold-ink); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .offline-strip { box-sizing: border-box; min-height: 88rpx; margin-bottom: 18rpx; padding: 18rpx 20rpx; display: flex; align-items: center; border: 1rpx solid var(--warm-line); border-radius: 8rpx; background: var(--warm-soft); color: var(--warm-ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.section-block { margin-top: 22rpx; padding: 26rpx; border: 1rpx solid var(--line); border-radius: 8rpx; background: var(--surface); }
-.section-title { display: block; font-size: 16px; line-height: 1.35; font-weight: 740; }
+.section-block { margin-top: 18rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: 0 4rpx 14rpx var(--shadow-soft); }
+.section-title { display: block; font-size: 17px; line-height: 1.35; font-weight: 740; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
 .section-count { flex: none; color: var(--primary); font-size: 12px; font-weight: 700; }
 .basis-list { margin-top: 18rpx; }
@@ -36,14 +36,14 @@ button { letter-spacing: 0; }
 .basis-value { min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
 .rationale-row { display: grid; grid-template-columns: 14rpx minmax(0, 1fr); gap: 16rpx; align-items: start; margin-top: 18rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.65; }
 .rationale-mark { width: 10rpx; height: 10rpx; margin-top: 15rpx; border-radius: 50%; background: var(--primary); }
-.day-block { margin-top: 24rpx; padding-top: 26rpx; border-top: 2rpx solid var(--line); }
+.day-block { margin-top: 20rpx; padding-top: 22rpx; border-top: 2rpx solid var(--line); }
 .day-heading { display: grid; grid-template-columns: 56rpx minmax(0, 1fr); gap: 16rpx; align-items: start; }
 .day-index { width: 56rpx; height: 56rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--primary-fill); color: var(--on-primary); font-size: 12px; font-weight: 750; }
 .day-copy { min-width: 0; }
 .day-title { display: block; font-size: 15px; line-height: 1.42; font-weight: 720; overflow-wrap: anywhere; }
 .day-theme { display: block; margin-top: 4rpx; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .exercise-note { display: block; margin: 16rpx 0 0 72rpx; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.meal-list { margin-top: 20rpx; }
+.meal-list { margin-top: 14rpx; }
 .meal-block { padding: 22rpx 0; border-top: 1rpx solid var(--line); }
 .meal-block:first-child { border-top: 0; padding-top: 0; }
 .meal-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8rpx 16rpx; }
@@ -54,13 +54,13 @@ button { letter-spacing: 0; }
 .meal-method { display: block; margin-top: 16rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .meal-tag { display: block; margin-top: 12rpx; color: var(--gold-ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .action-area { display: grid; gap: 16rpx; margin-top: 28rpx; }
-.primary-action, .secondary-action, .danger-action { box-sizing: border-box; width: 100%; min-height: 96rpx; padding: 18rpx 24rpx; display: flex; align-items: center; justify-content: center; border-radius: 8rpx; font-size: 14px; line-height: 1.35; font-weight: 700; }
-.primary-action { background: var(--primary-fill); color: var(--on-primary); }
-.secondary-action { border: 2rpx solid var(--line-strong); background: var(--surface); color: var(--primary); }
+.primary-action, .secondary-action, .danger-action { box-sizing: border-box; width: 100%; min-height: 96rpx; padding: 18rpx 24rpx; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-control); font-size: 14px; line-height: 1.35; font-weight: 700; transition: opacity .18s ease, background-color .18s ease; }
+.primary-action { background: var(--primary-fill); color: var(--on-primary); box-shadow: 0 6rpx 16rpx var(--shadow-soft); }
+.secondary-action { border: 1rpx solid var(--line-strong); background: var(--surface); color: var(--primary); }
 .danger-action { border: 2rpx solid var(--danger-line); background: var(--surface); color: var(--danger); }
 .primary-action::after, .secondary-action::after, .danger-action::after { border: 0; }
 .primary-action[disabled], .secondary-action[disabled], .danger-action[disabled] { opacity: .5; }
-.button-pressed { opacity: .76; }
+.button-pressed { opacity: .78; }
 .state-panel { box-sizing: border-box; min-height: 560rpx; padding: 80rpx 34rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .state-title { display: block; font-size: 17px; line-height: 1.4; font-weight: 750; }
 .state-copy { display: block; max-width: 600rpx; margin-top: 16rpx; color: var(--muted); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
