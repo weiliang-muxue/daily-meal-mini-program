@@ -1,9 +1,12 @@
 .month-nav { min-height: 100rpx; display: grid; grid-template-columns: 88rpx 1fr 88rpx; align-items: center; text-align: center; }
-.month-button { width: 88rpx; height: 88rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface); border: 1rpx solid var(--line); font-size: 26px; color: var(--primary); }
+.month-button { width: 88rpx; height: 88rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface); border: 1rpx solid var(--line); color: var(--primary); }
+.month-chevron { width: 14rpx; height: 14rpx; flex: none; border-right: 2rpx solid currentColor; border-bottom: 2rpx solid currentColor; }
+.month-chevron-left { transform: rotate(135deg); }
+.month-chevron-right { transform: rotate(-45deg); }
 .month-title { display: block; font-size: 19px; font-weight: 760; }
 .month-subtitle { display: block; margin-top: 5rpx; color: var(--muted); font-size: 12px; }
 .offline-strip { min-height: 88rpx; padding: 18rpx; margin: 14rpx 0; display: flex; align-items: center; border: 1rpx solid var(--warm-line); border-radius: 10rpx; background: var(--warm-soft); color: var(--warm-ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.calendar { margin-top: 18rpx; padding: 20rpx 14rpx 16rpx; overflow: hidden; }
+.calendar { margin-top: 12rpx; padding: 16rpx 14rpx 12rpx; overflow: hidden; }
 .calendar-scroll, .calendar-content { width: 100%; min-width: 0; }
 .week-row, .calendar-grid { width: 100%; min-width: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .week-row text { height: 28px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
@@ -39,10 +42,10 @@
 .photo-error-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 16rpx; }
 .photo-error-button { min-height: 88rpx; margin: 0; padding: 12rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.4; }
 .photo-error-button[disabled] { opacity: .48; }
-.exercise-card { margin: 24rpx -12rpx 0; padding: 24rpx 12rpx; border-top: 2rpx solid var(--line-strong); border-bottom: 2rpx solid var(--line-strong); background: var(--surface-muted); transition: background-color .2s ease, border-color .2s ease; }
-.exercise-card.pending { border-color: var(--gold-line); background: var(--gold-soft); }
-.exercise-card.saved { border-color: var(--exercise-saved-border); background: var(--exercise-saved-surface); box-shadow: inset 5px 0 0 var(--exercise-saved-border); }
-.exercise-card.cancel { border-color: var(--warm-line); background: var(--warm-soft); }
+.exercise-card { margin: 16rpx 0 0; padding: 20rpx 16rpx 18rpx; border: 2rpx solid var(--line-strong); border-left-width: 6rpx; border-radius: var(--radius-control); background: var(--surface-muted); box-shadow: 0 2rpx 10rpx var(--shadow-soft); transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.exercise-card.pending { border-color: var(--gold-line); background: var(--gold-soft); box-shadow: 0 2rpx 10rpx rgba(133, 95, 18, .12); }
+.exercise-card.saved { border-color: var(--exercise-saved-border); background: var(--exercise-saved-surface); box-shadow: 0 2rpx 12rpx rgba(21, 148, 71, .14); }
+.exercise-card.cancel { border-color: var(--warm-line); background: var(--warm-soft); box-shadow: 0 2rpx 10rpx rgba(200, 95, 69, .12); }
 .exercise-row { min-height: 60px; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .exercise-row:active { opacity: .78; }
 .activity-ring { width: 56px; height: 56px; padding: 5px; border: 6px solid var(--exercise-idle-ring); border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surface); }
@@ -55,12 +58,15 @@
 .activity-ring.cancel .activity-ring-core { background: var(--warm-soft); color: var(--warm-ink); font-size: 12px; }
 .exercise-heading-copy { min-width: 0; flex: 1; }
 .exercise-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; }
-.exercise-title-line .field-label { margin-bottom: 0; font-size: 17px; line-height: 1.3; }
+.exercise-title-line .field-label { margin-bottom: 0; font-size: 18px; line-height: 1.3; font-weight: 760; }
 .exercise-state { padding: 5rpx 10rpx; border: 1rpx solid var(--line-strong); border-radius: 6rpx; background: var(--surface-muted); color: var(--muted-strong); font-size: 12px; line-height: 1.25; font-weight: 750; }
 .exercise-state.pending { background: var(--gold-soft); color: var(--gold-ink); }
 .exercise-state.saved { background: var(--exercise-saved-chip); color: var(--exercise-saved-ink); border-color: var(--exercise-saved-border); }
 .exercise-state.cancel { background: var(--warm-soft); color: var(--warm-ink); }
-.exercise-switch-target { width: 48px; min-height: 48px; display: flex; align-items: center; justify-content: flex-end; }
+.exercise-switch-target { width: 58px; min-height: 48px; padding: 2px; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line); border-radius: 999px; background: var(--surface); }
+.exercise-card.pending .exercise-switch-target { border-color: var(--gold-line); background: var(--gold-soft); }
+.exercise-card.saved .exercise-switch-target { border-color: var(--exercise-saved-border); background: var(--exercise-saved-chip); }
+.exercise-card.cancel .exercise-switch-target { border-color: var(--warm-line); background: var(--warm-soft); }
 .exercise-fields { padding-top: 22rpx; display: grid; grid-template-columns: 1fr 180rpx; gap: 14rpx; border-top: 1rpx solid var(--line); }
 .exercise-card.pending .exercise-fields { border-top-color: var(--gold-line); }
 .exercise-card.saved .exercise-fields { border-top-color: var(--exercise-saved-border); }
@@ -120,9 +126,10 @@
   .calendar {
     margin-left: -12px;
     margin-right: -12px;
-    padding-top: 10px;
+    margin-top: 8px;
+    padding-top: 6px;
     padding-right: 0;
-    padding-bottom: 6px;
+    padding-bottom: 4px;
     padding-left: 0;
     border-left: 0;
     border-right: 0;
@@ -130,17 +137,18 @@
   }
   .calendar-scroll { width: 100%; max-width: 100%; min-width: 0; overflow: visible; }
   .calendar-content { width: 100%; min-width: 0; overflow: visible; }
-  .week-row text { height: 24px; }
+  .week-row text { height: 22px; }
   .calendar .day-cell {
     min-width: 0;
-    min-height: 52px;
+    min-height: 48px;
     padding-top: 4px;
     padding-right: 1px;
-    padding-bottom: 20px;
+    padding-bottom: 18px;
     padding-left: 1px;
   }
-  .record-card { margin-top: 16px; }
-  .legend { margin-top: 8px; gap: 6px 14px; }
+  .record-card { margin-top: 10px; padding-top: 16px; padding-bottom: 18px; }
+  .exercise-card { margin-top: 12px; padding-top: 16px; padding-right: 12px; padding-bottom: 16px; padding-left: 12px; }
+  .legend { margin-top: 6px; gap: 6px 14px; }
   .month-subtitle, .record-caption, .trend-copy, .field-hint, .saved-badge,
   .offline-strip, .photo-privacy-error, .field-error, .form-error, .state-detail,
   .week-row text, .weight-number, .legend, .ring-unit, .photo-button, .remove-photo,
@@ -155,4 +163,12 @@
     min-height: 48px;
   }
   .exercise-mark { font-size: 12px; }
+}
+
+@media (max-width: 340px) {
+  /* Keep a little extra vertical room for wrapped weight values in 320px cells. */
+  .calendar .day-cell { min-height: 52px; padding-bottom: 20px; }
+  .record-card { padding-top: 16px; padding-bottom: 18px; }
+  .exercise-card { padding-right: 10px; padding-left: 10px; }
+  .exercise-switch-target { width: 48px; }
 }

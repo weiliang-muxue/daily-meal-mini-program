@@ -56,11 +56,13 @@ assertBoundToMedia('.calendar-scroll', 'max-width', '100%')
 assertBoundToMedia('.calendar-scroll', 'overflow', 'visible')
 assertBoundToMedia('.calendar-content', 'min-width', '0')
 assertBoundToMedia('.calendar .day-cell', 'min-width', '0')
-assertBoundToMedia('.calendar .day-cell', 'min-height', '52px')
+assertBoundToMedia('.calendar .day-cell', 'min-height', '48px')
+assertBoundToMedia('.calendar .day-cell', 'min-height', '52px', narrowestMedia)
 assertDeclaration('.calendar-scroll', 'max-width', '100%', portraitViewports[0])
 assertDeclaration('.calendar-scroll', 'overflow', 'visible', portraitViewports[0])
 assertDeclaration('.calendar-content', 'min-width', '0', portraitViewports[0])
 assertDeclaration('.calendar .day-cell', 'min-height', '52px', portraitViewports[0])
+assertDeclaration('.calendar .day-cell', 'min-height', '48px', portraitViewports[1])
 assert.strictEqual(computedStyle(rules, '.calendar-content', { width: 401, height: 850 })['min-width'], '0',
   '月历内容不得设置会裁切七列的固定最小宽度')
 
@@ -96,7 +98,9 @@ assert(/<label class="exercise-row"[^>]*>[\s\S]*<switch /s.test(markup),
   '整条运动状态行必须通过原生 label 扩大开关触控区')
 assert(markup.indexOf('class="exercise-card') < markup.indexOf('class="weight-row"'),
   '当天运动打卡必须排在体重与照片之前，避免首屏隐藏主任务')
+assertDeclaration('.exercise-switch-target', 'width', '58px')
 assertDeclaration('.exercise-switch-target', 'min-height', '48px')
+assertBoundToMedia('.exercise-switch-target', 'width', '48px', narrowestMedia)
 assert.strictEqual(gridRepeatCount(computedStyle(rules, '.exercise-summary', portraitViewports[2])['grid-template-columns']), 2,
   '周/月汇总必须使用两个稳定周期区')
 assertDeclaration('.metric-ring', 'border', '5px solid var(--exercise-summary-idle-ring)')
@@ -121,6 +125,16 @@ assertBoundToMedia('.month-button', 'height', '48px')
 assertDeclaration('.month-nav', 'grid-template-columns', '48px minmax(0, 1fr) 48px', portraitViewports[0])
 assertDeclaration('.month-button', 'width', '48px', portraitViewports[0])
 assertDeclaration('.month-button', 'height', '48px', portraitViewports[0])
+assert(markup.includes('class="month-chevron month-chevron-left"'),
+  '上个月按钮必须使用统一的 CSS chevron 图形')
+assert(markup.includes('class="month-chevron month-chevron-right"'),
+  '下个月按钮必须使用统一的 CSS chevron 图形')
+assert(!markup.includes('>‹</view>') && !markup.includes('>›</view>'),
+  '月份导航不得依赖字体字符箭头，避免平台字形不一致')
+assertDeclaration('.month-chevron', 'width', '14rpx')
+assertDeclaration('.month-chevron', 'height', '14rpx')
+assertDeclaration('.month-chevron', 'border-right', '2rpx solid currentColor')
+assertDeclaration('.month-chevron', 'border-bottom', '2rpx solid currentColor')
 
 for (const token of ['class="exercise-mark"', '<text>运动</text>', '{{exerciseStatus}}', '{{exerciseStatusSymbol}}']) {
   assert(markup.includes(token), `运动状态缺少非颜色标识：${token}`)
@@ -232,6 +246,8 @@ assertBoundToMedia('.exercise-row', 'grid-template-columns', '48px minmax(0, 1fr
 assertBoundToMedia('.metric-ring', 'width', '53px', narrowestMedia)
 assert.strictEqual(computedStyle(rules, '.exercise-row', portraitViewports[0])['grid-template-columns'],
   '48px minmax(0, 1fr) 48px', '320px 运动状态行必须实际应用窄屏列宽')
+assert.strictEqual(computedStyle(rules, '.exercise-switch-target', portraitViewports[0]).width, '48px',
+  '320px 运动开关容器不得超出窄屏网格列')
 assert.strictEqual(computedStyle(rules, '.metric-ring', portraitViewports[0]).width, '53px',
   '320px 汇总环必须实际应用窄屏尺寸')
 assert.strictEqual(computedStyle(rules, '.metric-ring', portraitViewports[1]).width, '56px',

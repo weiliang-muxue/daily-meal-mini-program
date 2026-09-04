@@ -13,9 +13,9 @@
 
   <block wx:else>
     <view class="month-nav">
-      <view class="month-button touch-target" bindtap="previousMonth" hover-class="control-hover" aria-role="button" aria-label="上个月">‹</view>
+      <view class="month-button touch-target" bindtap="previousMonth" hover-class="control-hover" aria-role="button" aria-label="上个月"><view class="month-chevron month-chevron-left" aria-hidden="true"></view></view>
       <view><text class="month-title">{{monthText}}</text><text class="month-subtitle">体重与运动日历</text></view>
-      <view class="month-button touch-target" bindtap="nextMonth" hover-class="control-hover" aria-role="button" aria-label="下个月">›</view>
+      <view class="month-button touch-target" bindtap="nextMonth" hover-class="control-hover" aria-role="button" aria-label="下个月"><view class="month-chevron month-chevron-right" aria-hidden="true"></view></view>
     </view>
     <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retryLoad" hover-class="control-hover" aria-role="button"><text>当前显示最近保存的记录，点此重试</text></view>
 

@@ -66,13 +66,13 @@
 .plan-actions { display: grid; gap: 14rpx; margin-top: 26rpx; padding-top: 24rpx; border-top: 1rpx solid var(--line); }
 .text-button { width: 100%; min-height: 88rpx; margin: 0; padding: 14rpx 20rpx; display: flex; align-items: center; justify-content: center; background: transparent; color: var(--primary); font-size: 14px; line-height: 1.4; font-weight: 650; }
 .version-text { display: block; padding-top: 4rpx; color: var(--muted); font-size: 12px; text-align: center; }
-.loading-wrap { min-height: 720rpx; padding: 40rpx 2rpx; }
+.loading-wrap { padding: 32rpx 2rpx 28rpx; }
 .skeleton-title { width: 56%; height: 52rpx; border-radius: 6rpx; }
 .skeleton-line { width: 82%; height: 26rpx; margin-top: 20rpx; border-radius: 6rpx; }
 .skeleton-card { height: 300rpx; margin-top: 34rpx; border-radius: 8rpx; }
 .skeleton-card.short { height: 210rpx; margin-top: 20rpx; }
 .loading-copy { display: block; margin-top: 28rpx; color: var(--muted); font-size: 12px; text-align: center; }
-.error-panel { min-height: 580rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.error-panel { min-height: 300rpx; padding: 40rpx 24rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .state-button { width: 100%; margin-top: 28rpx; }
 .status-panel.compact { padding: 42rpx 24rpx; }
 .plan-page .primary-button { font-size: 15px; }

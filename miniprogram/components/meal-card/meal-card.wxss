@@ -1,5 +1,5 @@
-.meal-card { background: var(--surface); border: 1rpx solid var(--line); border-radius: var(--radius-card); padding: 24rpx 26rpx; margin-bottom: 16rpx; box-shadow: 0 4rpx 14rpx var(--shadow-soft); }
-.meal-card.workout { background: var(--primary-soft); border: 2rpx solid var(--exercise-saved-border); box-shadow: inset 5px 0 0 var(--exercise-saved-border), 0 4rpx 14rpx var(--shadow-soft); }
+.meal-card { background: var(--surface); border: 1rpx solid var(--line); border-radius: var(--radius-card); padding: 24rpx 26rpx; margin-bottom: 16rpx; box-shadow: var(--shadow-card); }
+.meal-card.workout { background: var(--primary-soft); border: 2rpx solid var(--exercise-saved-border); box-shadow: inset 5px 0 0 var(--exercise-saved-border), var(--shadow-card); }
 .meal-topline { display: flex; align-items: center; gap: 12rpx; margin-bottom: 12rpx; }
 .meal-mark { width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--warm); }
 .rest .meal-mark { background: var(--primary); }
@@ -11,9 +11,9 @@
 .meal-ingredients { display: block; margin-top: 12rpx; font-size: 14px; line-height: 1.58; font-weight: 550; color: var(--muted-strong); overflow-wrap: anywhere; }
 .meal-divider { height: 1rpx; background: var(--line); margin: 16rpx 0; }
 .meal-method { display: block; font-size: 14px; line-height: 1.58; color: var(--muted); overflow-wrap: anywhere; }
-.meal-tag { display: inline-flex; max-width: 100%; margin-top: 16rpx; padding: 8rpx 14rpx; border-radius: 6rpx; background: var(--primary-soft); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
+.meal-tag { display: inline-flex; max-width: 100%; margin-top: 16rpx; padding: 8rpx 14rpx; border-radius: var(--radius-chip); background: var(--primary-soft); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
 .workout .meal-tag { background: var(--gold-soft); color: var(--gold-ink); }
-.personal-tag { display: inline-flex; max-width: 100%; margin: 16rpx 0 0 10rpx; padding: 8rpx 12rpx; border-radius: 6rpx; border: 1rpx solid var(--line-strong); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
+.personal-tag { display: inline-flex; max-width: 100%; margin: 16rpx 0 0 10rpx; padding: 8rpx 12rpx; border-radius: var(--radius-chip); border: 1rpx solid var(--line-strong); color: var(--primary); font-size: 12px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
 
 @media (max-width: 340px) {
   .meal-card { padding: 20rpx; }
