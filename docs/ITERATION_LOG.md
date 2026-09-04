@@ -58,7 +58,7 @@ AI task schema v3 增加每次生成的同意协议版本；生成确认页默�
 4. 320–400px 及系统大字号下月历体重、运动标记和开关存在拥挤风险；日期格、文字换行、运动行列和开关容器采用稳定的窄屏约束，并保留安全区。
 5. 卡片、按钮、标签、圆角、阴影和月份导航图形语言不一致；统一语义 token、状态阴影和 chip/pill 圆角，月份箭头改为 CSS chevron，避免依赖平台字形。
 
-本批只涉及 WXSS/WXML 表现层和响应式门禁断言，不修改餐单、用户数据、登录、云函数或 AI 配置。专项回归已通过 `test-health-responsive`、`test-page-responsive`、`test-color-contrast`、`test-health-guide-pages`；完整门禁完成后，这些视觉修改必须重新上传微信开发版本，旧的 `115cc5d` 上传证据不代表本批运行时。
+本批只涉及 WXSS/WXML 表现层和响应式门禁断言，不修改餐单、用户数据、登录、云函数或 AI 配置。专项与完整门禁已通过，并已提交为 `6eb3e6c`；这些视觉修改尚未重新上传微信开发版本，旧的 `115cc5d` 上传证据不代表本批运行时，后续必须按发布门禁重新上传。
 
 `2026-09-01` 目标云环境真实生成在首个提纲请求前后以 `AI_UPSTREAM_REQUEST_REJECTED` 终止，公开投影为 `failed / terminal / 0% / retryable=false / provider_configuration`。任务创建和私有状态保存成功，未进入餐食详情或最终计划校验；当时兼容降级的 `minimal` 请求实际始终保留 `model`、`instructions`、`input`、`store:false` 和 `stream:false`，并同样收到 HTTP 400。provider 请求契约 v6 在 full 到 minimal 仍遇可兼容的 HTTP 400/422 且 deadline 足够时，新增一次仅省略 `stream` 的末级尝试；该档位仍保留 `model`、`instructions`、`input` 和 `store:false`，不得省略指令或关闭无存储约束。公开 provider 源码确认 `/responses` 与非流式 Responses 均受支持，剩余阻断仍可能集中在 Key 所属订阅组、服务端应用调用资格、Responses 权限、模型映射或显式 `stream:false` 的兼容差异。历史脱敏诊断曾出现同一服务分组无有效订阅，但当前 400 未返回可安全确认的具体子原因，故不把推断写成定论。发布前仍必须完成虚构 1 天端到端生成；不得在此之前发送真实健康或饮食数据。
 
