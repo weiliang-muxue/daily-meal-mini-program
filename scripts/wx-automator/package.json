@@ -1,0 +1,11 @@
+{
+  "name": "meal-mini-wx-automator",
+  "private": true,
+  "scripts": {
+    "test": "node --test automation-runtime.test.js entrypoints.test.js plan-preview-evidence.test.js visual-pixel-core.test.js && node ai-safe-release-core.test.js"
+  },
+  "dependencies": {
+    "miniprogram-automator": "0.12.1",
+    "pngjs": "3.4.0"
+  }
+}

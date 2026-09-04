@@ -1,18 +1,4 @@
 {
-  "avatar-inbox/*": {
-    "read": false,
-    "write": "auth != null"
-  },
-  "health-inbox/*": {
-    "read": false,
-    "write": "auth != null"
-  },
-  "health-photos/*": {
-    "read": false,
-    "write": false
-  },
-  "avatars/*": {
-    "read": false,
-    "write": false
-  }
+  "read": false,
+  "write": false
 }

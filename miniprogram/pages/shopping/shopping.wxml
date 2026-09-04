@@ -1,26 +1,79 @@
-<view class="screen">
-  <view class="heading-row">
-    <view><text class="eyebrow">一人份 · 叶菜分两次买</text><text class="page-title">采购清单</text></view>
-    <view class="progress"><text class="progress-number">{{checked}}/{{total}}</text><text class="progress-label">已买到</text></view>
-  </view>
-
-  <view wx:if="{{offline}}" class="offline-strip" bindtap="retrySync"><text>当前显示本机快照，点此重试云同步</text></view>
-  <view wx:elif="{{saving}}" class="saving-strip"><text>正在保存到云端…</text></view>
-
-  <view wx:if="{{loading}}">
+<view class="screen shopping-screen">
+  <view wx:if="{{viewState === 'loading'}}" class="loading-state" aria-label="正在加载采购清单">
+    <view class="skeleton heading-skeleton"></view>
     <view wx:for="{{skeletons}}" wx:key="*this" class="skeleton group-skeleton"></view>
   </view>
-  <view wx:elif="{{!groups.length}}" class="surface status-panel">
-    <text class="status-title">暂无采购项</text><text class="status-detail">下拉刷新后再试。</text>
+
+  <view wx:elif="{{viewState === 'error'}}" class="surface status-panel" aria-role="alert">
+    <text class="status-title">采购清单暂时无法加载</text>
+    <text class="status-detail">{{errorMessage}}</text>
+    <button class="primary-button status-action" bindtap="retrySync" hover-class="button-hover">重新加载</button>
   </view>
+
   <block wx:else>
-    <view wx:for="{{groups}}" wx:key="id" class="group surface">
-      <view class="group-heading"><text class="group-title">{{item.name}}</text><text class="group-count">{{item.checkedCount}} / {{item.items.length}}</text></view>
-      <view wx:for="{{item.items}}" wx:for-item="food" wx:key="id" class="shopping-row {{food.checked ? 'checked' : ''}}" data-id="{{food.id}}" bindtap="toggleItem" hover-class="row-hover" aria-label="{{food.checked ? '取消勾选' : '勾选'}}{{food.name}}">
-        <view class="checkbox"><text wx:if="{{food.checked}}">✓</text></view>
-        <view class="food-copy"><text class="food-name">{{food.name}}</text><text class="food-amount">{{food.amount}}</text></view>
+    <view class="heading-row">
+      <view class="heading-copy">
+        <text class="eyebrow">{{durationDays ? durationDays + ' 天已确认餐单' : '已确认餐单汇总'}}</text>
+        <text class="page-title">食材采购进度</text>
+        <text wx:if="{{planTitle}}" class="plan-title">{{planTitle}}</text>
+      </view>
+      <view wx:if="{{total}}" class="progress" aria-label="已买到 {{checked}} 项，共 {{total}} 项">
+        <text class="progress-number">{{checked}}/{{total}}</text>
+        <text class="progress-label">已买到</text>
       </view>
     </view>
-    <button class="secondary-button reset-button" bindtap="resetChecked">重置勾选</button>
+
+    <view wx:if="{{dateRangeText || mealSummaryText}}" class="plan-summary">
+      <text wx:if="{{dateRangeText}}">{{dateRangeText}}</text>
+      <text wx:if="{{mealSummaryText}}">{{mealSummaryText}}</text>
+    </view>
+
+    <view wx:if="{{isAiPlan}}" class="ai-origin-notice" aria-label="AI 生成内容">
+      <text class="ai-origin-badge">AI 生成</text>
+      <text class="ai-origin-copy">本采购清单根据 AI 生成的已确认餐单汇总，请按实际人数和家中库存核对。</text>
+    </view>
+
+    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retrySync" hover-class="offline-hover" aria-role="button" aria-label="当前显示已保存内容，点此重试同步">
+      <text>{{saving ? '勾选已保存，尚未同步，点此重试' : '当前显示已保存内容，点此重试同步'}}</text>
+    </view>
+    <view wx:elif="{{saving}}" class="saving-strip" aria-live="polite">
+      <text>正在保存采购进度</text>
+    </view>
+
+    <view wx:if="{{viewState === 'empty'}}" class="surface status-panel">
+      <block wx:if="{{emptyKind === 'no-plan'}}">
+        <text class="status-title">还没有已确认餐单</text>
+        <text class="status-detail">完成餐次、目标和运动计划选择并确认餐单后，采购清单会在这里汇总。</text>
+        <button class="primary-button status-action" bindtap="openPlanner" hover-class="button-hover">去定制餐单</button>
+      </block>
+      <block wx:else>
+        <text class="status-title">当前餐单暂无采购项</text>
+        <text class="status-detail">餐单仍然保留。可以查看当前餐单，或下拉重新加载。</text>
+        <button class="secondary-button status-action" bindtap="openPlan">查看当前餐单</button>
+      </block>
+    </view>
+
+    <block wx:elif="{{viewState === 'ready'}}">
+      <view class="progress-summary">
+        <view><text class="summary-value">{{remaining}}</text><text class="summary-label">待采购</text></view>
+        <view><text class="summary-value">{{checked}}</text><text class="summary-label">已完成</text></view>
+        <view><text class="summary-value">{{groups.length}}</text><text class="summary-label">分类</text></view>
+      </view>
+
+      <view wx:for="{{groups}}" wx:key="key" class="group surface">
+        <view class="group-heading">
+          <text class="group-title">{{item.name}}</text>
+          <text class="group-count">{{item.checkedCount}} / {{item.totalCount}}</text>
+        </view>
+        <view wx:for="{{item.items}}" wx:for-item="food" wx:key="key" class="shopping-row touch-target {{food.checked ? 'checked' : ''}}" data-id="{{food.itemId}}" bindtap="toggleItem" hover-class="row-hover" aria-role="checkbox" aria-checked="{{food.checked}}" aria-label="{{food.checked ? '取消勾选' : '勾选'}} {{food.name}}，{{food.amountText}}">
+          <view class="checkbox"><view wx:if="{{food.checked}}" class="check-mark"></view></view>
+          <view class="food-copy">
+            <text class="food-name">{{food.name}}</text>
+            <text class="food-amount">{{food.amountText}}</text>
+          </view>
+        </view>
+      </view>
+      <button class="secondary-button reset-button" disabled="{{!checked}}" bindtap="resetChecked">重置采购勾选</button>
+    </block>
   </block>
 </view>

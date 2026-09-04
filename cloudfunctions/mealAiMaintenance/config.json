@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "openapi": []
+  },
+  "timeout": 60,
+  "memorySize": 256,
+  "triggers": [
+    {
+      "name": "mealAiRetentionSweep",
+      "type": "timer",
+      "config": "0 */30 * * * * *"
+    }
+  ]
+}

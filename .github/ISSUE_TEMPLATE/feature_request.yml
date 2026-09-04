@@ -1,0 +1,33 @@
+name: 功能建议
+description: 提议新的用户场景或改进
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 用户场景
+      description: 说明用户先做什么、遇到什么问题，以及期望结果。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已调研的现有实现
+      description: 列出公开项目或方案、许可证、适配差距；没有找到时说明搜索范围。
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: 隐私与数据影响
+      description: 是否新增位置、健康、图片、第三方 API 或其他数据处理。
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: 安全确认
+      options:
+        - label: 我不会在公开讨论中提供 Key、Secret、Token 或真实用户数据。
+          required: true

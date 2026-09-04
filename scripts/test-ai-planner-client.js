@@ -1,0 +1,330 @@
+'use strict'
+
+const assert = require('assert')
+const {
+  AiPlannerService,
+  normalizeTaskProgress,
+  normalizeTaskResponse,
+  normalizeServiceStatus,
+  normalizeRecentFailure,
+  failurePolicy,
+  safeTaskCache,
+  isActiveTask,
+  isTerminalTask,
+  shouldReplaceCachedTask,
+  taskPresentation,
+  createClientRequestId,
+  AI_DATA_CONSENT_VERSION,
+  PROVIDER_CONTRACT_REVISION,
+  CONTRACT_VERSION,
+  PLANNER_VERSION,
+} = require('../miniprogram/services/ai-planner')
+
+const taskId = 'task_12345678'
+const providerRevision = 7
+const normalized = normalizeTaskProgress({
+  task: {
+    taskId,
+    contractVersion: CONTRACT_VERSION,
+    plannerVersion: PLANNER_VERSION,
+    status: 'processing',
+    phase: 'shards',
+    taskRevision: 2,
+    completedSteps: 2,
+    totalSteps: 5,
+    errorCode: 'PRIVATE_TEXT_MUST_NOT_BE_CACHED',
+    nextPollAfterMs: 99999,
+  },
+})
+assert.deepStrictEqual(normalized, {
+  taskId,
+  contractVersion: CONTRACT_VERSION,
+  plannerVersion: PLANNER_VERSION,
+  status: 'running',
+  phase: 'details',
+  taskRevision: 2,
+  completedSteps: 2,
+  totalSteps: 5,
+  progressPercent: 40,
+  errorCode: 'PRIVATE_TEXT_MUST_NOT_BE_CACHED',
+  expiresAt: '',
+  resultStateRevision: null,
+  nextPollAfterMs: 5000,
+})
+assert.strictEqual(isActiveTask(normalized), true)
+assert.strictEqual(isTerminalTask(normalized), false)
+
+const completed = normalizeTaskResponse({
+  progress: { taskId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION, status: 'completed', phase: 'completed', progressPercent: 100 },
+  result: { draftPlan: { id: 'draft' }, generationPreferences: { healthNotes: 'private' }, stateRevision: 9 },
+})
+assert.strictEqual(completed.task.status, 'succeeded')
+assert.strictEqual(completed.draftPlan.id, 'draft')
+assert.strictEqual(completed.stateRevision, 9)
+assert.strictEqual(isTerminalTask(completed.task), true)
+assert.strictEqual(shouldReplaceCachedTask(
+  { ...normalized, taskRevision: 4, completedSteps: 3, progressPercent: 60 },
+  { ...normalized, taskRevision: 3, completedSteps: 4, progressPercent: 80 },
+), false, '较早响应不能覆盖较新的任务版本')
+assert.strictEqual(shouldReplaceCachedTask(
+  { ...completed.task, taskRevision: 5 },
+  { ...normalized, taskRevision: 6 },
+), false, '终态不能被迟到的运行态覆盖')
+assert.strictEqual(shouldReplaceCachedTask(
+  { ...normalized, taskId: 'task_newer_1234' },
+  { ...normalized, taskId: 'task_older_1234' },
+  false,
+), false, '旧任务响应不能切换当前缓存任务')
+assert.throws(() => normalizeTaskProgress({ taskId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION, status: 'unknown-status' }), /状态无效/)
+const coreEnvelope = normalizeTaskProgress({
+  taskId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION,
+  status: 'failed', phase: 'terminal', taskRevision: 3,
+  completedSteps: 1, totalSteps: 4, failureCode: 'AI_TIMEOUT',
+  expiresAt: Date.UTC(2026, 7, 26), resultStateRevision: null,
+})
+assert.strictEqual(coreEnvelope.phase, 'done')
+assert.strictEqual(coreEnvelope.errorCode, 'AI_TIMEOUT')
+assert.strictEqual(coreEnvelope.expiresAt, '2026-08-26T00:00:00.000Z')
+assert.strictEqual(coreEnvelope.resultStateRevision, null)
+assert.deepStrictEqual(taskPresentation(coreEnvelope).stages.map((stage) => stage.state), ['done', 'error', 'pending'])
+const cloudDateEnvelope = normalizeTaskProgress({
+  taskId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION,
+  status: 'running', phase: 'details', expiresAt: { $date: Date.UTC(2026, 7, 27) },
+})
+assert.strictEqual(cloudDateEnvelope.expiresAt, '2026-08-27T00:00:00.000Z')
+const timestampEnvelope = normalizeTaskProgress({
+  taskId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION,
+  status: 'running', phase: 'details', expiresAt: { seconds: 1787788800, nanoseconds: 500000000 },
+})
+assert.strictEqual(timestampEnvelope.expiresAt, '2026-08-27T00:00:00.500Z')
+
+assert.deepStrictEqual(normalizeServiceStatus({
+  configured: true,
+  storageReady: true,
+  providerDisplayName: '测试 AI 服务',
+  providerContractRevision: PROVIDER_CONTRACT_REVISION,
+  providerRevision,
+  providerConfigVersion: 'a'.repeat(64),
+  contractVersion: CONTRACT_VERSION,
+  plannerVersion: PLANNER_VERSION,
+  aiDataConsentVersion: 2,
+  apiStyle: 'responses',
+  privateDetail: 'must not cross client protocol',
+}), {
+  configured: true,
+  storageReady: true,
+  providerDisplayName: '测试 AI 服务',
+  providerContractRevision: PROVIDER_CONTRACT_REVISION,
+  providerRevision,
+  providerConfigVersion: 'a'.repeat(64),
+  contractVersion: CONTRACT_VERSION,
+  plannerVersion: PLANNER_VERSION,
+  aiDataConsentVersion: 2,
+  apiStyle: 'responses',
+})
+assert.strictEqual(normalizeServiceStatus({ configured: true }).storageReady, false,
+  '旧协议缺少 storageReady 时必须按未就绪处理')
+assert.strictEqual(normalizeServiceStatus({ providerContractRevision: '2' }).providerContractRevision, 2,
+  'provider 契约版本必须规范化为受控整数')
+assert.strictEqual(normalizeServiceStatus({ providerContractRevision: '2.5' }).providerContractRevision, 0,
+  'provider 契约版本必须拒绝非整数')
+assert.strictEqual(normalizeServiceStatus({ storageReady: 1 }).storageReady, false,
+  'storageReady 只能接受严格布尔 true')
+assert.strictEqual(normalizeServiceStatus({ plannerVersion: 7 }).plannerVersion, '',
+  '规划器版本必须由云函数以受控字符串返回，不能隐式转换')
+assert.strictEqual(normalizeServiceStatus({ plannerVersion: ' 7' }).plannerVersion, '',
+  '规划器版本不能包含空白或其他非版本字符')
+assert.strictEqual(normalizeServiceStatus({ plannerVersion: '6' }).plannerVersion, '6',
+  '合法旧版本应保留给页面执行精确兼容性判断')
+assert.deepStrictEqual(normalizeRecentFailure({
+  failure: {
+    status: 'failed', phase: 'outline', errorCode: 'AI_TIMEOUT', progressPercent: 0,
+    retryable: true, category: 'transient', taskId: 'PRIVATE_TASK_ID', owner: 'PRIVATE_OWNER',
+    preferences: { healthNotes: 'PRIVATE_HEALTH' },
+  },
+}), {
+  status: 'failed', phase: 'outline', errorCode: 'AI_TIMEOUT', progressPercent: 0,
+  retryable: true, category: 'transient',
+})
+assert.strictEqual(normalizeRecentFailure({ failure: null }), null)
+assert.deepStrictEqual(failurePolicy('AI_UPSTREAM_AUTH_REJECTED', 'failed'), {
+  category: 'provider_configuration', retryable: false,
+  detail: '生成服务需要管理员检查配置，暂时不建议重复尝试。当前餐单没有改变。',
+})
+assert.deepStrictEqual(failurePolicy('AI_UPSTREAM_FORBIDDEN', 'failed'), {
+  category: 'provider_configuration', retryable: false,
+  detail: '生成服务需要管理员检查配置，暂时不建议重复尝试。当前餐单没有改变。',
+})
+assert.deepStrictEqual(failurePolicy('AI_REQUEST_TOO_LARGE', 'failed'), {
+  category: 'response_review', retryable: false,
+  detail: '本次生成条件内容较多。请精简补充说明或缩短周期后再生成，当前餐单没有改变。',
+})
+
+const cached = safeTaskCache({
+  ...normalized,
+  preferences: { healthNotes: '不能缓存' },
+  healthNotes: '不能缓存',
+  draftPlan: { title: '不能缓存' },
+  output: '不能缓存',
+}, Date.UTC(2026, 7, 26))
+assert.strictEqual(cached.taskId, taskId)
+assert.strictEqual(cached.savedAt, '2026-08-26T00:00:00.000Z')
+assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'preferences'), false)
+assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'healthNotes'), false)
+assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'draftPlan'), false)
+assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'output'), false)
+
+const presentation = taskPresentation(normalized)
+assert.strictEqual(presentation.title, '正在搭配每餐食物')
+assert.strictEqual(presentation.percentText, '40%')
+assert.deepStrictEqual(presentation.stages.map((stage) => stage.state), ['done', 'current', 'pending'])
+assert.strictEqual(taskPresentation(normalized, true).canRetry, true)
+
+const randomValues = ({ length, success }) => success({ randomValues: Uint8Array.from({ length }, (_, index) => index).buffer })
+
+const namespace = 'a'.repeat(32)
+const otherNamespace = 'b'.repeat(32)
+const listeners = new Set()
+const memberStore = {
+  cacheNamespace: namespace,
+  onCacheNamespaceChange(listener) { listeners.add(listener); return () => listeners.delete(listener) },
+}
+const storageData = new Map()
+const storage = {
+  getStorageSync(key) { return storageData.get(key) },
+  setStorageSync(key, value) { storageData.set(key, value) },
+  removeStorageSync(key) { storageData.delete(key) },
+}
+const calls = []
+const caller = async (name, action, payload) => {
+  calls.push({ name, action, payload })
+  if (action === 'status' && !(payload && payload.taskId)) {
+    return {
+      configured: true,
+      storageReady: true,
+      providerDisplayName: '测试 AI 服务',
+      providerContractRevision: PROVIDER_CONTRACT_REVISION,
+      providerRevision,
+      contractVersion: CONTRACT_VERSION,
+      plannerVersion: PLANNER_VERSION,
+      aiDataConsentVersion: AI_DATA_CONSENT_VERSION,
+      apiStyle: 'responses',
+    }
+  }
+  if (action === 'recentFailure') {
+    return {
+      failure: {
+        status: 'failed', phase: 'outline', errorCode: 'AI_TIMEOUT', progressPercent: 0,
+        retryable: true, category: 'transient', taskId: 'PRIVATE_TASK_ID', owner: 'PRIVATE_OWNER',
+      },
+    }
+  }
+  return { task: {
+    taskId, contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION,
+    status: action === 'cancel' ? 'cancelled' : 'running', phase: 'details', completedSteps: 1, totalSteps: 4,
+  } }
+}
+const service = new AiPlannerService(memberStore, caller, storage)
+
+;(async () => {
+  const requestId = await createClientRequestId(123456789, randomValues)
+  assert.match(requestId, /^req_[a-z0-9]+_[a-f0-9]{32}$/)
+  assert.strictEqual(requestId.endsWith('000102030405060708090a0b0c0d0e0f'), true)
+  await assert.rejects(() => createClientRequestId(123456789, null), /微信版本|安全请求标识/)
+
+  await assert.rejects(() => service.start({ healthNotes: 'private' }, 7, requestId), /重新确认/)
+  await assert.rejects(() => service.start({ healthNotes: 'private' }, 7, requestId, 2), /重新确认/)
+  assert.strictEqual(calls.length, 0, '缺少或错误同意版本不能调用云函数')
+
+  for (const durationDays of [0, -1, 1.5, 15, '7']) {
+    await assert.rejects(
+      () => service.start({ durationDays }, 7, requestId, AI_DATA_CONSENT_VERSION, providerRevision),
+      /1–14 天的整数/,
+    )
+  }
+  assert.strictEqual(calls.length, 0, '非法计划周期不能调用云函数')
+
+  const serviceStatus = await service.status()
+  assert.strictEqual(serviceStatus.storageReady, true)
+  assert.strictEqual(serviceStatus.plannerVersion, PLANNER_VERSION,
+    '服务层必须把规划器版本传给页面兼容性检查')
+  assert.strictEqual(serviceStatus.providerContractRevision, PROVIDER_CONTRACT_REVISION,
+    '服务层必须把 provider 契约版本传给页面兼容性检查')
+  assert.strictEqual(
+    serviceStatus.configured === true
+      && serviceStatus.storageReady === true
+      && serviceStatus.contractVersion === CONTRACT_VERSION
+      && serviceStatus.plannerVersion === PLANNER_VERSION
+      && serviceStatus.aiDataConsentVersion === AI_DATA_CONSENT_VERSION
+      && serviceStatus.providerContractRevision === PROVIDER_CONTRACT_REVISION,
+    true,
+    '服务层规范化后的状态必须满足规划页面的完整就绪契约',
+  )
+  assert.deepStrictEqual(calls[0], {
+    name: 'aiPlanner', action: 'status', payload: { expectedCacheNamespace: namespace },
+  })
+  calls.length = 0
+
+  const recentFailure = await service.recentFailure()
+  assert.deepStrictEqual(recentFailure, {
+    status: 'failed', phase: 'outline', errorCode: 'AI_TIMEOUT', progressPercent: 0,
+    retryable: true, category: 'transient',
+  })
+  assert.deepStrictEqual(calls[0], {
+    name: 'aiPlanner', action: 'recentFailure', payload: { expectedCacheNamespace: namespace },
+  })
+  assert.strictEqual(JSON.stringify(recentFailure).includes('PRIVATE_'), false)
+  calls.length = 0
+
+  await service.start({
+    durationDays: 7,
+    healthNotes: 'sent only to cloud, never cached',
+  }, 7, requestId, AI_DATA_CONSENT_VERSION, providerRevision)
+  assert.deepStrictEqual(calls[0], {
+    name: 'aiPlanner', action: 'start',
+    payload: {
+      preferences: { durationDays: 7, healthNotes: 'sent only to cloud, never cached' },
+      expectedStateRevision: 7,
+      clientRequestId: requestId,
+      aiDataConsent: { accepted: true, version: AI_DATA_CONSENT_VERSION, providerRevision },
+      expectedCacheNamespace: namespace,
+    },
+  })
+  const storedKey = `meal_ai_task_v2_${namespace}`
+  assert.strictEqual(storageData.get(storedKey).taskId, taskId)
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(storageData.get(storedKey), 'preferences'), false)
+
+  await service.statusTask(taskId)
+  await service.advance(taskId)
+  await service.cancel(taskId, 0)
+  assert.deepStrictEqual(calls.slice(1).map((call) => call.action), ['status', 'advance', 'cancel'])
+  assert.deepStrictEqual(calls[1].payload, { taskId, expectedCacheNamespace: namespace })
+  assert.deepStrictEqual(calls[2].payload, { taskId, expectedCacheNamespace: namespace })
+  assert.deepStrictEqual(calls[3].payload, {
+    taskId,
+    expectedTaskRevision: 0,
+    expectedCacheNamespace: namespace,
+  })
+  assert.strictEqual(service.loadCachedTask().status, 'cancelled')
+
+  await assert.rejects(() => service.cancel(taskId), /任务版本无效/)
+  const current = await service.currentTask()
+  assert.strictEqual(current.task.taskId, taskId)
+  assert.strictEqual(calls[4].action, 'current')
+  assert.deepStrictEqual(calls[4].payload, { expectedCacheNamespace: namespace })
+
+  const emptyService = new AiPlannerService(memberStore, async () => null, storage)
+  assert.strictEqual(await emptyService.currentTask(), null)
+  assert.strictEqual(storageData.has(storedKey), true, '云端无活动任务时由页面决定是否保留成功态缓存')
+
+  memberStore.cacheNamespace = otherNamespace
+  listeners.forEach((listener) => listener(otherNamespace, namespace))
+  assert.strictEqual(service.loadCachedTask(), null)
+  assert.strictEqual(service.clearCachedTask(taskId), true)
+  assert.strictEqual(storageData.has(storedKey), true, '身份变化后不能清理前一身份的缓存')
+
+  console.log('ai planner client tests passed')
+})().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})
