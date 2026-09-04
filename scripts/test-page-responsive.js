@@ -169,6 +169,17 @@ for (const viewport of portraitViewports) {
   assert.strictEqual(segment['min-height'], '48px', `${viewport.width}px 提醒日期选项必须保留 48px 触控区`)
   assert.strictEqual(picker['min-height'], '48px', `${viewport.width}px 时间与间隔选择器必须保留 48px 触控区`)
 }
+
+for (const [name, selector] of [['preview', '.state-panel'], ['history', '.state-panel']]) {
+  assert.strictEqual(computedStyle(pageRules[name], selector, portraitViewports[0])['min-height'], '300rpx',
+    `${name} 空态必须收紧到 300rpx，避免窄屏首屏大块留白`)
+  assert.strictEqual(computedStyle(pageRules[name], '.loading-block', portraitViewports[0]).height, '180rpx',
+    `${name} 加载骨架不得使用过高占位块`)
+}
+assert.strictEqual(computedStyle(parseWxss(read('miniprogram/pages/guide/guide.wxss')), '.guide-state', portraitViewports[0])['min-height'], '300rpx',
+  'guide 空态必须收紧到 300rpx，避免窄屏首屏大块留白')
+assert.strictEqual(computedStyle(parseWxss(read('miniprogram/pages/guide/guide.wxss')), '.guide-card-skeleton', portraitViewports[0]).height, '180rpx',
+  'guide 加载骨架不得使用过高占位块')
 assert.strictEqual(computedStyle(pageRules.water, '.field-row', portraitViewports[0])['flex-direction'], 'column',
   '320px 喝水提醒字段必须折叠为单列')
 assert.strictEqual(computedStyle(pageRules.water, '.picker-value', portraitViewports[0]).width, '100%',

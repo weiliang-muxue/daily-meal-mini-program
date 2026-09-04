@@ -31,7 +31,7 @@
 }
 @media (max-width: 340px) {
   .legal-header-inner, .legal-document { padding-left: calc(24rpx + constant(safe-area-inset-left)); padding-right: calc(24rpx + constant(safe-area-inset-right)); padding-left: calc(24rpx + env(safe-area-inset-left)); padding-right: calc(24rpx + env(safe-area-inset-right)); }
-  .legal-title { font-size: 22px; }
+  .legal-title { font-size: 24px; }
 }
 @media (max-width: 400px) {
   .legal-action, .legal-link { min-height: 48px; }

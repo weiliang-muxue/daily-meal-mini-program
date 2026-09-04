@@ -44,14 +44,14 @@ button { letter-spacing: 0; }
 .meal-row { display: grid; grid-template-columns: minmax(120rpx, 170rpx) minmax(0, 1fr); gap: 14rpx; align-items: start; }
 .meal-label { color: var(--primary); font-size: 12px; line-height: 1.5; font-weight: 700; overflow-wrap: anywhere; }
 .meal-title { min-width: 0; color: var(--muted-strong); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.state-panel { box-sizing: border-box; min-height: 360rpx; padding: 56rpx 30rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.state-panel { box-sizing: border-box; min-height: 300rpx; padding: 40rpx 24rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .state-title { display: block; font-size: 17px; line-height: 1.4; font-weight: 750; }
 .state-copy { display: block; max-width: 600rpx; margin-top: 16rpx; color: var(--muted); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .state-action { width: 100%; margin-top: 30rpx; }
 .loading-line, .loading-block { overflow: hidden; background: var(--skeleton); }
 .loading-line { width: 55%; height: 30rpx; margin-top: 18rpx; border-radius: 6rpx; }
 .loading-line.wide { width: 82%; height: 48rpx; margin-top: 0; }
-.loading-block { width: 100%; max-width: 620rpx; height: 230rpx; margin-top: 30rpx; border-radius: 8rpx; }
+.loading-block { width: 100%; max-width: 620rpx; height: 180rpx; margin-top: 24rpx; border-radius: 8rpx; }
 @media (min-width: 700px) {
   .history-page {
     padding-left: calc(48rpx + constant(safe-area-inset-left));
