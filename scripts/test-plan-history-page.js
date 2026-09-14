@@ -114,6 +114,21 @@ async function main() {
   assert.deepStrictEqual(refreshOptions, { force: true })
   assert.strictEqual(conflictModal.title, '餐单历史已变化')
   assert(conflictModal.content.includes('当前餐单没有被替换'))
+  assert(conflictModal.content.includes('已重新载入最新餐单历史'))
+
+  const before = JSON.stringify(userStore.data)
+  for (const state of ['offline', 'error', 'loading', 'saving']) {
+    userStore.init = async () => {
+      userStore.state = state
+      return userStore.data
+    }
+    await page.refreshAfterConflict()
+    assert(modals[modals.length - 1].content.includes('暂时无法刷新餐单历史'),
+      `${state} cannot be reported as a successful cloud refresh`)
+    assert.strictEqual(page.data.offline, true)
+    assert.strictEqual(JSON.stringify(userStore.data), before,
+      'failed refresh must preserve all historical meals')
+  }
 
   console.log('plan history page tests passed')
 }

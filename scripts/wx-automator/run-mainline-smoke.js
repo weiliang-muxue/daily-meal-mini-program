@@ -31,4 +31,4 @@ process.env.MINIPROGRAM_SMOKE_STEPS = [
   'ACCESS_SAFE',
 ].join(',')
 
-require('./interactive-smoke')
+require('./interactive-smoke').run()

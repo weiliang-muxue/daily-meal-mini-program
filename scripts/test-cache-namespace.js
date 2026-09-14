@@ -1238,6 +1238,228 @@ async function testLateBootstrapCannotRollBackSuccessfulSave() {
   assert.strictEqual(storage.get(key).stateRevision, 6)
 }
 
+async function testLateSaveCannotRollBackNewerBootstrapOrRetainConfirmedOverlay() {
+  for (const addNewerPending of [false, true]) {
+    const key = `meal_user_state_v3_${namespaceA}`
+    const pendingKey = `meal_user_pending_v1_${namespaceA}`
+    const oldPlan = userPlan('late-save-old', 'late-save-old-item')
+    const activePlan = userPlan('late-save-current', 'late-save-current-item')
+    const draftPlan = userPlan('late-save-draft', 'late-save-draft-item')
+    const oldMealId = oldPlan.days[0].meals[0].id
+    const newMealId = activePlan.days[0].meals[0].id
+    storage.set(key, { ...stateWithPlan(oldPlan), stateRevision: 10 })
+    storage.delete(pendingKey)
+    const store = new UserStore(new FakeMembershipStore(namespaceA))
+    store.bindNamespace()
+    await store.patch({
+      generationPreferences: { ...store.data.generationPreferences, customGoal: 'Previously saved local goal' },
+      mealOverrides: { [oldMealId]: mealOverride('Previously saved meal edit') },
+      checkedShoppingIds: ['late-save-old-item'],
+    }, { localOnly: true })
+    const sentState = JSON.parse(JSON.stringify(store.data))
+    const latestState = {
+      ...stateWithPlan(activePlan, [oldPlan]),
+      draftPlan,
+      stateRevision: 12,
+      generationPreferences: { ...defaults().generationPreferences, customGoal: 'Newer remote goal' },
+      mealOverrides: { [newMealId]: mealOverride('Newer remote meal edit') },
+      checkedShoppingIds: ['late-save-current-item'],
+      planUiStateByPlan: {
+        [oldPlan.id]: { checkedShoppingIds: [] },
+        [activePlan.id]: { checkedShoppingIds: ['late-save-current-item'] },
+      },
+    }
+    const expectedCloud = require(userModulePath).normalize(latestState)
+    let releaseSave
+    let saveCalls = 0
+    cloudHandler = async (_name, action) => {
+      if (action === 'bootstrap') return latestState
+      assert.strictEqual(action, 'saveState')
+      saveCalls += 1
+      return new Promise((resolve) => { releaseSave = resolve })
+    }
+    const saving = store.flush()
+    const loading = store.init({ force: true })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.strictEqual(store.data.stateRevision, 12)
+    assert.strictEqual(store.data.generationPreferences.customGoal, 'Previously saved local goal',
+      'unacknowledged local intent still overlays the newer cloud state')
+    if (addNewerPending) {
+      await store.patch({
+        generationPreferences: { ...store.data.generationPreferences, customGoal: 'Newest unsaved local goal' },
+        settings: { ...store.data.settings, calciumAnchorReminder: true },
+      }, { localOnly: true })
+    }
+    releaseSave({ ...sentState, stateRevision: 11 })
+    await Promise.all([saving, loading])
+    clearTimeout(store.saveTimer)
+    store.saveTimer = null
+
+    assert.strictEqual(store.data.stateRevision, 12, 'a late save must not roll back a newer cloud revision')
+    for (const field of ['activePlan', 'draftPlan', 'planHistory', 'mealOverrides', 'checkedShoppingIds', 'planUiStateByPlan']) {
+      assert.deepStrictEqual(store.data[field], expectedCloud[field], `late save must retain newer ${field}`)
+      assert.deepStrictEqual(storage.get(key)[field], expectedCloud[field], `persisted cache must retain newer ${field}`)
+    }
+    const expectedPreferences = addNewerPending
+      ? { ...expectedCloud.generationPreferences, customGoal: 'Newest unsaved local goal' }
+      : expectedCloud.generationPreferences
+    assert.deepStrictEqual(store.data.generationPreferences, expectedPreferences,
+      'acknowledgment must remove only confirmed overlays and retain newer local edits')
+    assert.deepStrictEqual(store.pending.mealOverrideOperations, {})
+    assert.deepStrictEqual(store.pending.planUiByPlan, {})
+    assert.strictEqual(store.confirmedLocalRevision, 1)
+    assert.strictEqual(saveCalls, 1, 'the acknowledged save must not be repeated')
+    if (addNewerPending) {
+      assert.strictEqual(store.pending.fieldRevisions.settings, 2)
+      assert.strictEqual(store.pending.fieldRevisions.generationPreferences, 2)
+      assert.deepStrictEqual(Object.keys(store.pending.fields).sort(), ['generationPreferences', 'settings'])
+      assert.strictEqual(store.data.settings.calciumAnchorReminder, true)
+      assert.strictEqual(store.state, 'saving')
+    } else {
+      assert.strictEqual(store.pending.revision, 0)
+      assert.deepStrictEqual(store.pending.fields, {})
+      assert.strictEqual(store.state, 'ready')
+    }
+    assert.deepStrictEqual(storage.get(pendingKey), store.pending)
+
+    cloudHandler = async (_name, action, payload) => {
+      assert.strictEqual(action, 'saveState')
+      assert.strictEqual(payload.expectedStateRevision, 12)
+      assert.deepStrictEqual(payload.state.generationPreferences, expectedPreferences,
+        'the next unrelated save must not resend the old acknowledged goal')
+      for (const field of ['mealOverrides', 'checkedShoppingIds', 'planUiStateByPlan']) {
+        assert.deepStrictEqual(payload.state[field], expectedCloud[field], `the next save must not resend old ${field}`)
+      }
+      return { ...latestState, ...payload.state, stateRevision: 13 }
+    }
+    await store.patch({ customReminders: [{ id: 'after-late-save', text: 'New reminder', done: false }] }, { immediate: true })
+    assert.strictEqual(store.pending.revision, 0)
+    assert.strictEqual(store.data.stateRevision, 13)
+    assert.strictEqual(store.saveTimer, null)
+  }
+}
+
+async function testCloudBaseRejectsStaleReplacementAndResetsWithNamespace() {
+  const key = `meal_user_state_v3_${namespaceA}`
+  storage.set(key, { ...defaults(), stateRevision: 2 })
+  storage.delete(`meal_user_pending_v1_${namespaceA}`)
+  const members = new FakeMembershipStore(namespaceA)
+  const store = new UserStore(members)
+  store.bindNamespace()
+  assert.strictEqual(store.cloudState, null, 'cached projections must not be treated as verified cloud state')
+  store.replaceFromCloud({ ...defaults(), stateRevision: 1 })
+  assert.strictEqual(store.cloudState, null, 'an older cloud response cannot certify a newer cached projection')
+  assert.strictEqual(store.data.stateRevision, 2)
+  const latest = { ...stateWithPlan(userPlan('base-current', 'base-current-item')), stateRevision: 8 }
+  store.replaceFromCloud(latest)
+  const baseline = JSON.parse(JSON.stringify(store.cloudState))
+  await store.patch({ generationPreferences: { ...store.data.generationPreferences, customGoal: 'Pending goal' } }, { localOnly: true })
+  store.replaceFromCloud({ ...defaults(), stateRevision: 7 })
+  assert.deepStrictEqual(store.cloudState, baseline)
+  assert.strictEqual(store.data.activePlan.id, latest.activePlan.id)
+  assert.strictEqual(store.data.generationPreferences.customGoal, 'Pending goal')
+  assert.strictEqual(store.pending.revision, 1)
+  members.switchTo(namespaceB)
+  assert.strictEqual(store.cloudState, null)
+  assert.strictEqual(store.data.activePlan, null)
+  assert.strictEqual(store.pending.revision, 0)
+}
+
+async function testInvalidSaveResponseCannotAcknowledgePendingEdits() {
+  const key = `meal_user_state_v3_${namespaceA}`
+  const pendingKey = `meal_user_pending_v1_${namespaceA}`
+  storage.set(key, { ...stateWithPlan(userPlan('invalid-save-current', 'invalid-save-item')), stateRevision: 3 })
+  storage.delete(pendingKey)
+  const store = new UserStore(new FakeMembershipStore(namespaceA))
+  store.bindNamespace()
+  await store.patch({ generationPreferences: { ...store.data.generationPreferences, customGoal: 'Keep this pending edit' } }, { localOnly: true })
+  const before = JSON.parse(JSON.stringify(store.pending))
+  cloudHandler = async (_name, action) => {
+    assert.strictEqual(action, 'saveState')
+    return { ...defaults(), stateRevision: 4, generationPreferences: { durationDays: 15 } }
+  }
+  await assert.rejects(store.flush(), /generationPreferences\.durationDays/)
+  assert.strictEqual(store.confirmedLocalRevision, 0)
+  assert.deepStrictEqual(store.pending, before)
+  assert.deepStrictEqual(storage.get(pendingKey), before)
+  assert.strictEqual(store.data.activePlan.id, 'invalid-save-current')
+  assert.strictEqual(store.data.generationPreferences.customGoal, 'Keep this pending edit')
+  assert.strictEqual(store.state, 'offline')
+  assert.strictEqual(store.saveTimer, null)
+}
+
+async function testStaleConflictBootstrapCannotReplaceNewerCloudBase() {
+  const key = `meal_user_state_v3_${namespaceA}`
+  const oldPlan = userPlan('conflict-old-base', 'conflict-old-item')
+  const newPlan = userPlan('conflict-new-base', 'conflict-new-item')
+  storage.set(key, { ...stateWithPlan(oldPlan), stateRevision: 2 })
+  storage.delete(`meal_user_pending_v1_${namespaceA}`)
+  const store = new UserStore(new FakeMembershipStore(namespaceA))
+  store.bindNamespace()
+  await store.patch({ generationPreferences: { ...store.data.generationPreferences, customGoal: 'Pending across conflict' } }, { localOnly: true })
+  const latest = { ...stateWithPlan(newPlan, [oldPlan]), stateRevision: 5 }
+  let releaseBootstrap
+  let saveCalls = 0
+  cloudHandler = async (_name, action, payload) => {
+    if (action === 'bootstrap') return new Promise((resolve) => { releaseBootstrap = resolve })
+    saveCalls += 1
+    if (saveCalls === 1) {
+      const error = new Error('synthetic conflict')
+      error.code = 'STATE_REVISION_CONFLICT'
+      throw error
+    }
+    assert.strictEqual(payload.expectedStateRevision, 5)
+    assert.strictEqual(payload.state.generationPreferences.customGoal, 'Pending across conflict')
+    return { ...latest, ...payload.state, stateRevision: 6 }
+  }
+  const saving = store.flush()
+  await new Promise((resolve) => setImmediate(resolve))
+  store.replaceFromCloud(latest)
+  releaseBootstrap({ ...stateWithPlan(oldPlan), stateRevision: 4 })
+  await saving
+  assert.strictEqual(store.data.activePlan.id, newPlan.id)
+  assert.strictEqual(store.pending.revision, 0)
+  assert.strictEqual(store.saveTimer, null)
+}
+
+async function testStaleLegacyBootstrapUsesLatestCloudBase() {
+  const key = `meal_user_state_v3_${namespaceA}`
+  const pendingKey = `meal_user_pending_v1_${namespaceA}`
+  const oldPlan = userPlan('legacy-old-base', 'legacy-old-item')
+  const newPlan = userPlan('legacy-new-base', 'legacy-new-item')
+  const oldMealId = oldPlan.days[0].meals[0].id
+  const newMealId = newPlan.days[0].meals[0].id
+  storage.set(key, { ...stateWithPlan(oldPlan), stateRevision: 2 })
+  storage.set(pendingKey, legacyMealOverridesPending({}))
+  const store = new UserStore(new FakeMembershipStore(namespaceA))
+  store.bindNamespace()
+  const latest = {
+    ...stateWithPlan(newPlan, [oldPlan]), stateRevision: 5,
+    mealOverrides: { [newMealId]: mealOverride('Latest remote edit') },
+  }
+  let releaseBootstrap
+  cloudHandler = async (_name, action, payload) => {
+    if (action === 'bootstrap') return new Promise((resolve) => { releaseBootstrap = resolve })
+    assert.strictEqual(payload.expectedStateRevision, 5)
+    assert.deepStrictEqual(Object.keys(store.pending.mealOverrideOperations), [newMealId],
+      'obsolete cloud meals must not create legacy operations against the latest base')
+    assert.deepStrictEqual(payload.state.mealOverrides, {})
+    return { ...latest, ...payload.state, stateRevision: 6 }
+  }
+  const saving = store.flush()
+  await new Promise((resolve) => setImmediate(resolve))
+  store.replaceFromCloud(latest)
+  releaseBootstrap({
+    ...stateWithPlan(oldPlan), stateRevision: 4,
+    mealOverrides: { [oldMealId]: mealOverride('Obsolete remote edit') },
+  })
+  await saving
+  assert.strictEqual(store.data.activePlan.id, newPlan.id)
+  assert.strictEqual(store.pending.legacyMealOverridesReplacement, null)
+  assert.strictEqual(store.pending.revision, 0)
+  assert.strictEqual(store.saveTimer, null)
+}
+
 function cachedStateWithInvalidDuration(durationDays) {
   const activePlan = userPlan('cached-duration-active', 'cached-duration-item')
   const draftPlan = userPlan('cached-duration-draft', 'cached-duration-draft-item')
@@ -1372,6 +1594,11 @@ async function main() {
   await testLegacyMealReplacementCannotCrossNamespace()
   testMealEditUsesSingleMealOperationApi()
   await testLateBootstrapCannotRollBackSuccessfulSave()
+  await testLateSaveCannotRollBackNewerBootstrapOrRetainConfirmedOverlay()
+  await testCloudBaseRejectsStaleReplacementAndResetsWithNamespace()
+  await testInvalidSaveResponseCannotAcknowledgePendingEdits()
+  await testStaleConflictBootstrapCannotReplaceNewerCloudBase()
+  await testStaleLegacyBootstrapUsesLatestCloudBase()
   testInvalidCachedDurationRepairsOnlyDurationField()
   await testCloudDurationValidationRemainsStrict()
   await testWaterReminderPendingRetriesWithoutVersionInflation()

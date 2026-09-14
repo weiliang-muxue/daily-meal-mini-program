@@ -165,9 +165,17 @@ for (const viewport of portraitViewports) {
   const segment = computedStyle(pageRules.water, '.segment', viewport)
   const picker = computedStyle(pageRules.water, '.picker-value', viewport)
   assert.strictEqual(navigation.width, '48px', `${viewport.width}px 喝水提醒页返回按钮宽度必须为 48px`)
+  assert.strictEqual(navigation['max-width'], '48px', `${viewport.width}px 喝水提醒页返回按钮必须限制微信默认宽度`)
+  assert.strictEqual(navigation.flex, '0 0 48px', `${viewport.width}px 喝水提醒页返回按钮必须保持固定 48px 布局占位`)
   assert.strictEqual(navigation.height, '48px', `${viewport.width}px 喝水提醒页返回按钮高度必须为 48px`)
   assert.strictEqual(segment['min-height'], '48px', `${viewport.width}px 提醒日期选项必须保留 48px 触控区`)
   assert.strictEqual(picker['min-height'], '48px', `${viewport.width}px 时间与间隔选择器必须保留 48px 触控区`)
+}
+for (const viewport of [...portraitViewports, landscapeViewport]) {
+  const segment = computedStyle(pageRules.water, ['.segment', '.segmented .segment'], viewport)
+  assert.strictEqual(segment.width, '100%', `${viewport.width}px 提醒日期按钮必须填满各自网格单元`)
+  assert.strictEqual(segment['min-width'], '0', `${viewport.width}px 提醒日期按钮必须允许在网格内收缩`)
+  assert.strictEqual(segment['max-width'], '100%', `${viewport.width}px 提醒日期按钮不得以微信默认宽度撑出网格`)
 }
 
 for (const [name, selector] of [['preview', '.state-panel'], ['history', '.state-panel']]) {

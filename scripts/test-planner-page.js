@@ -46,6 +46,8 @@ const activeTask = {
 
 let pageDefinition
 let flushImplementation = async () => userStore.data
+let userStateInitImplementation = async () => userStore.data
+let statusTaskImplementation = async () => ({ task: activeTask })
 let currentTaskResponse = null
 let currentTaskImplementation = async () => currentTaskResponse
 let recentFailureResponse = null
@@ -60,6 +62,7 @@ let modalPromise = Promise.resolve()
 const scrollCalls = []
 const switchTabCalls = []
 const navigateBackCalls = []
+const navigateToCalls = []
 const calls = {
   patches: [],
   flush: 0,
@@ -70,6 +73,7 @@ const calls = {
   advance: 0,
   cancel: 0,
   startArgs: [],
+  clearedTasks: [],
 }
 
 const membershipStore = {
@@ -82,7 +86,7 @@ const userStore = {
     stateRevision: 7,
     generationPreferences: null,
   },
-  init: async () => userStore.data,
+  init: (...args) => userStateInitImplementation(...args),
   patch(partial, options) {
     calls.patches.push({ partial, options })
     userStore.data = { ...userStore.data, ...partial }
@@ -108,7 +112,7 @@ function taskPresentation(task, interrupted = false) {
 const aiPlanner = {
   status: async () => statusImplementation(),
   loadCachedTask: () => cachedTaskResponse,
-  clearCachedTask: () => true,
+  clearCachedTask(taskId) { calls.clearedTasks.push(taskId); return true },
   async currentTask() {
     calls.currentTask += 1
     return currentTaskImplementation()
@@ -124,7 +128,7 @@ const aiPlanner = {
   },
   async statusTask() {
     calls.statusTask += 1
-    return { task: activeTask }
+    return statusTaskImplementation()
   },
   async advance() {
     calls.advance += 1
@@ -165,7 +169,7 @@ global.Page = (definition) => { pageDefinition = definition }
 global.wx = {
   reLaunch() {},
   pageScrollTo(options) { scrollCalls.push(options) },
-  navigateTo() {},
+  navigateTo(options) { navigateToCalls.push(options) },
   switchTab(options) { switchTabCalls.push(options) },
   navigateBack(options) { navigateBackCalls.push(options) },
   showModal(options) {
@@ -206,10 +210,14 @@ function resetMocks() {
   calls.advance = 0
   calls.cancel = 0
   calls.startArgs.length = 0
+  calls.clearedTasks.length = 0
   scrollCalls.length = 0
   switchTabCalls.length = 0
   navigateBackCalls.length = 0
+  navigateToCalls.length = 0
   flushImplementation = async () => userStore.data
+  userStateInitImplementation = async () => userStore.data
+  statusTaskImplementation = async () => ({ task: activeTask })
   currentTaskResponse = null
   currentTaskImplementation = async () => currentTaskResponse
   recentFailureResponse = null
@@ -344,6 +352,153 @@ async function testConnectRecoversTaskWhenAiIsUnconfigured() {
   assert.strictEqual(page.data.taskCanCancel, true, '服务未配置时已有任务仍须允许取消')
   assert.strictEqual(calls.advance, 0, '服务未配置时不能推进 AI 任务')
   assert.strictEqual(page.taskLoopTimer, null)
+}
+
+async function testSucceededSyncCannotNavigateAfterLeavingPlanner() {
+  for (const lifecycle of ['onHide', 'onUnload']) {
+    for (const outcome of ['resolve', 'reject']) {
+      resetMocks()
+      const sync = deferred()
+      userStateInitImplementation = () => sync.promise
+      userStore.data = {
+        ...userStore.data,
+        activePlan: { id: 'current-plan', days: [{ id: 'current-day', meals: [{ id: 'current-meal' }] }] },
+        mealOverrides: { 'current-meal': { title: 'Personal meal' } },
+        draftPlan: { id: 'new-draft' },
+      }
+      const originalState = JSON.parse(JSON.stringify(userStore.data))
+      const page = makePage()
+      page.setData({ generating: true })
+      const task = { ...activeTask, status: 'succeeded', progressPercent: 100 }
+      const pending = page.applyTaskResponse({ task, draftPlan: { id: 'new-draft' } })
+      await tick()
+      page[lifecycle]()
+      if (outcome === 'resolve') sync.resolve(userStore.data)
+      else sync.reject(new Error('synthetic sync failure'))
+      await pending
+
+      assert.deepStrictEqual(navigateToCalls, [], `${lifecycle}: a late ${outcome} must not reopen preview`)
+      assert.deepStrictEqual(calls.clearedTasks, [], 'a hidden task must remain recoverable')
+      assert.deepStrictEqual(userStore.data, originalState, 'leaving generation must retain the current plan and overrides')
+      if (lifecycle === 'onHide') {
+        assert.strictEqual(page.data.generating, false, 'returning to the page must allow task recovery')
+        assert.strictEqual(page.data.taskCanRetry, true)
+      }
+    }
+  }
+}
+
+async function testTerminalGenerationOutcomesRetainCurrentMealsAndPersonalEdits() {
+  for (const [status, errorCode] of [
+    ['failed', 'AI_TIMEOUT'], ['expired', 'TASK_EXPIRED'], ['conflict', 'STATE_REVISION_CONFLICT'], ['cancelled', ''],
+  ]) {
+    resetMocks()
+    userStore.data = {
+      ...userStore.data,
+      activePlan: { id: 'current-plan', days: [{ id: 'current-day', meals: [{ id: 'current-meal', title: 'Original meal' }] }] },
+      draftPlan: { id: 'previous-draft' },
+      mealOverrides: { 'current-meal': { title: 'Personal meal', ingredients: 'Personal ingredients' } },
+      checkedShoppingIds: ['current-ingredient'],
+      selectedDayId: 'current-day',
+      dinnerModeByDay: { 'current-day': 'rest' },
+    }
+    const originalState = JSON.parse(JSON.stringify(userStore.data))
+    const page = makePage()
+    page.setData({ generating: true })
+    await page.applyTaskResponse({ task: { ...activeTask, status, errorCode } })
+    assert.deepStrictEqual(userStore.data, originalState, `${status}: the active plan and personal edits must remain unchanged`)
+    assert.deepStrictEqual(calls.patches, [], 'a terminal task response must not patch meal state')
+    assert.strictEqual(page.data.generating, false)
+    assert.strictEqual(page.data.taskVisible, true)
+    assert.deepStrictEqual(navigateToCalls, [])
+
+    await page.retryTask()
+    assert.strictEqual(calls.start, 0, 'a terminal retry must wait for renewed confirmation')
+    assert.deepStrictEqual(userStore.data, originalState)
+    page.returnToCurrentPlan()
+    assert.deepStrictEqual(switchTabCalls, [{ url: '/pages/plan/plan' }])
+    assert.deepStrictEqual(userStore.data, originalState)
+  }
+}
+
+async function testSucceededTaskRejectsMatchingOfflineDraftCache() {
+  resetMocks()
+  userStore.state = 'offline'
+  userStore.data = {
+    ...userStore.data,
+    activePlan: { id: 'current-plan', days: [{ id: 'current-day', meals: [{ id: 'current-meal' }] }] },
+    mealOverrides: { 'current-meal': { title: 'Personal meal' } },
+    checkedShoppingIds: ['current-ingredient'],
+    draftPlan: { id: 'new-draft' },
+  }
+  const originalState = JSON.parse(JSON.stringify(userStore.data))
+  const page = makePage()
+  page.setData({ generating: true })
+  await page.applyTaskResponse({
+    task: { ...activeTask, status: 'succeeded', progressPercent: 100 },
+    draftPlan: { id: 'new-draft' },
+  })
+  assert.deepStrictEqual(navigateToCalls, [], 'matching offline cache cannot prove successful cloud synchronization')
+  assert.deepStrictEqual(calls.clearedTasks, [])
+  assert.strictEqual(page.currentTask.status, 'succeeded')
+  assert.strictEqual(page.data.generating, false)
+  assert.strictEqual(page.data.taskCanRetry, true)
+  assert.deepStrictEqual(userStore.data, originalState)
+}
+
+async function testSucceededSyncResumesWhenPlannerIsShownAgain() {
+  resetMocks()
+  const sync = deferred()
+  userStateInitImplementation = () => sync.promise
+  userStore.data = { ...userStore.data, draftPlan: { id: 'new-draft' } }
+  const page = makePage()
+  page.connected = true
+  page.setData({ generating: true, recoverySettled: true })
+  const response = {
+    task: { ...activeTask, status: 'succeeded', progressPercent: 100 },
+    draftPlan: { id: 'new-draft' },
+  }
+  const pending = page.applyTaskResponse(response)
+  await tick()
+  page.onHide()
+  sync.resolve(userStore.data)
+  await pending
+  assert.deepStrictEqual(navigateToCalls, [])
+
+  userStateInitImplementation = async () => userStore.data
+  statusTaskImplementation = async () => response
+  page.onShow()
+  await page.taskRecoveryPromise
+  assert.strictEqual(calls.statusTask, 1, 'showing the page must resume the retained completed task')
+  assert.deepStrictEqual(navigateToCalls, [{ url: '/pages/plan-preview/plan-preview' }])
+  assert.deepStrictEqual(calls.clearedTasks, [activeTask.taskId])
+}
+
+async function testOldSucceededSyncCannotReplaceTheCurrentTask() {
+  for (const outcome of ['resolve', 'reject']) {
+    resetMocks()
+    const sync = deferred()
+    userStateInitImplementation = () => sync.promise
+    userStore.data = { ...userStore.data, draftPlan: { id: 'old-draft' } }
+    const page = makePage()
+    page.setData({ generating: true })
+    const pending = page.applyTaskResponse({
+      task: { ...activeTask, status: 'succeeded', progressPercent: 100 },
+      draftPlan: { id: 'old-draft' },
+    })
+    await tick()
+    const newerTask = { ...activeTask, taskId: 'task_newer', status: 'failed', errorCode: 'AI_TIMEOUT' }
+    await page.applyTaskResponse({ task: newerTask })
+    const currentPanel = JSON.parse(JSON.stringify(page.data))
+    if (outcome === 'resolve') sync.resolve(userStore.data)
+    else sync.reject(new Error('synthetic late failure'))
+    await pending
+
+    assert.strictEqual(page.currentTask.taskId, newerTask.taskId)
+    assert.deepStrictEqual(page.data, currentPanel, `a late ${outcome} must not replace the newer task panel`)
+    assert.deepStrictEqual(navigateToCalls, [])
+    assert.deepStrictEqual(calls.clearedTasks, [])
+  }
 }
 
 async function testConnectKeepsPageLoadingUntilSharedRecoverySettles() {
@@ -1525,6 +1680,11 @@ async function main() {
   testSecondaryPageNavigation()
   await testPreferenceDraftDebounce()
   await testLifecycleFlushConsumesFailure()
+  await testSucceededSyncCannotNavigateAfterLeavingPlanner()
+  await testTerminalGenerationOutcomesRetainCurrentMealsAndPersonalEdits()
+  await testSucceededTaskRejectsMatchingOfflineDraftCache()
+  await testSucceededSyncResumesWhenPlannerIsShownAgain()
+  await testOldSucceededSyncCannotReplaceTheCurrentTask()
   await testConnectRecoversTaskWhenAiIsUnconfigured()
   await testConnectKeepsPageLoadingUntilSharedRecoverySettles()
   await testConnectRestoresPreferenceOnlyOfflineCacheWithoutEnablingAi()

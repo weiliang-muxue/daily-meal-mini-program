@@ -394,7 +394,9 @@ function claimNext(rawTask, token, now) {
   if (exhausted) return { task: markFailed(task, exhausted.lastFailureCode, instant), claim: null }
   if (task.outline.status !== 'completed') {
     task.phase = 'outline'; task.status = 'running'
-    if (task.outline.status === 'pending') return { task, claim: claimStep(task, task.outline, 'outline', -1, token, instant) }
+    if (task.outline.status === 'pending' && Number(task.outline.nextAttemptAt || 0) <= instant) {
+      return { task, claim: claimStep(task, task.outline, 'outline', -1, token, instant) }
+    }
     if (leaseExpired) touch(task, instant)
     return { task, claim: null }
   }

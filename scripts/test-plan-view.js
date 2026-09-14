@@ -410,7 +410,7 @@ async function testPreviewDiscardDraftCas() {
   const userStore = {
     state: 'ready',
     error: '',
-    data: { draftPlan: draftA },
+    data: { activePlan: makePlan([{ id: 'current-day' }]), draftPlan: draftA },
     async discardDraft(expectedDraftPlanId) {
       discardCalls.push(expectedDraftPlanId)
       const error = new Error('candidate changed on another device')
@@ -433,10 +433,12 @@ async function testPreviewDiscardDraftCas() {
   let definition
   let page
   const modalTitles = []
+  const modalContents = []
   global.Page = (value) => { definition = value }
   global.wx = {
     showModal(options) {
       modalTitles.push(options.title)
+      modalContents.push(options.content)
       if (options.title === '丢弃这份候选餐单？') {
         userStore.data.draftPlan = draftB
         page.render()
@@ -469,6 +471,21 @@ async function testPreviewDiscardDraftCas() {
   assert.deepStrictEqual(modalTitles, [
     '丢弃这份候选餐单？', '再次确认丢弃', '候选餐单已变化',
   ])
+  assert(modalContents.at(-1).includes('已重新载入最新餐单'))
+
+  const before = JSON.stringify(userStore.data)
+  for (const state of ['offline', 'error', 'loading', 'saving']) {
+    userStore.init = async () => {
+      userStore.state = state
+      return userStore.data
+    }
+    await page.refreshAfterConflict()
+    assert(modalContents.at(-1).includes('暂时无法刷新最新餐单'),
+      `${state} cannot be reported as a successful cloud refresh`)
+    assert.strictEqual(page.data.offline, true)
+    assert.strictEqual(JSON.stringify(userStore.data), before,
+      'failed refresh must preserve both current and candidate meals')
+  }
 }
 
 testPlanPageRecovery().then(testPreviewDiscardDraftCas).then(() => {

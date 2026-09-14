@@ -183,8 +183,8 @@ Page({
     let refreshed = false
     try {
       await userStore.init({ force: true })
-      refreshed = true
-      this.render()
+      refreshed = userStore.state === 'ready'
+      this.render(!refreshed)
     } catch (_) {
       this.render(true)
     }

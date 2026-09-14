@@ -23,7 +23,6 @@ const OUTPUT_BASE = path.join(LOCAL_AUTOMATOR_DIR, 'artifacts', 'interactive')
 const RECOVERY_PATH = path.join(OUTPUT_BASE, 'recovery.json')
 const WAIT_MS = 700
 const NATIVE_TIMEOUT_MS = 2500
-const RESTORE_TIMEOUT_MS = 30000
 const CLOUD_WRITE_SETTLE_TIMEOUT_MS = 30000
 const STEP_FILTER = new Set(String(process.env.MINIPROGRAM_SMOKE_STEPS || '')
   .split(',').map((item) => item.trim()).filter(Boolean))
@@ -165,11 +164,15 @@ async function main() {
       entry.restoreAttempted = true
       recovery.update(entry.id, 'RESTORING')
       try {
-        await withTimeout(restore(), RESTORE_TIMEOUT_MS)
+        // A deadline race cannot cancel cloud writes; wait for restoration to settle.
+        await restore()
         mutationRestored(entry)
       } catch (error) {
         recovery.update(entry.id, 'RESTORE_FAILED')
         writeStepsBlocked = true
+        report.cleanupFailureCount += 1
+        report.cleanupErrorCodes.push(`CLEANUP_${entry.id}_FAILED`)
+        if (error && typeof error === 'object' && !error.stage) error.stage = diagnosticStage
         throw error
       }
     }
@@ -195,7 +198,7 @@ async function main() {
       entry.restoreAttempted = true
       recovery.update(entry.id, 'RESTORING')
       try {
-        await withTimeout(entry.restore(), RESTORE_TIMEOUT_MS)
+        await entry.restore()
         mutationRestored(entry)
       } catch (error) {
         recovery.update(entry.id, 'RESTORE_FAILED')
@@ -244,7 +247,7 @@ async function main() {
       })
       process.stdout.write(`FAILED ${name} [STEP_${id}_FAILED:${diagnosticStage}]\n`)
       process.stderr.write(`DIAGNOSTIC ${id} ${sanitizeText(error && error.message || 'unknown failure', 240)}\n`)
-      if (isFatalSessionError(error)) throw error
+      if (isFatalSessionError(error) || writeStepsBlocked) throw error
       return false
     } finally {
       diagnosticStage = 'IDLE'
@@ -383,9 +386,7 @@ async function main() {
     if (!day || originalIndex < 0) throw new Error('original plan day missing')
     await page.callMethod('savePlanSelection', { ...day, originalIndex })
     await waitForData(page, (next) => next.selectedDay && next.selectedDay.id === dayId && next.syncState !== 'saving')
-    const reload = page.callMethod('loadData', true)
-    await sleep(50)
-    await reload
+    await page.callMethod('loadData', true)
     page = await current('pages/plan/plan')
     await waitForData(page, (next) => next.loading === false && !next.error && next.offline !== true
       && next.syncState === 'ready' && next.selectedDay && next.selectedDay.id === dayId)
@@ -399,9 +400,7 @@ async function main() {
     await page.callMethod('selectDinnerMode', { currentTarget: { dataset: { mode } } })
     await waitForData(page, (next) => next.selectedDay && next.selectedDay.id === dayId
       && next.selectedDay.dinnerMode === mode && next.syncState !== 'saving')
-    const reload = page.callMethod('loadData', true)
-    await sleep(50)
-    await reload
+    await page.callMethod('loadData', true)
     page = await current('pages/plan/plan')
     await waitForData(page, (next) => next.loading === false && !next.error && next.offline !== true
       && next.syncState === 'ready' && next.selectedDay && next.selectedDay.id === dayId
@@ -409,27 +408,27 @@ async function main() {
   }
 
   async function restorePlannerPreferences(preferences) {
-    let page = await openPage('/pages/planner/planner')
+    stage('PLANNER_RESTORE_OPEN')
+    let page = await current()
+    if (page.path !== 'pages/planner/planner') page = await openPage('/pages/planner/planner')
     await waitForData(page, (next) => next.loadingPage === false)
+    stage('PLANNER_RESTORE_SAVE')
     await page.callMethod('updatePreferences', preferences)
     await sleep(100)
     await page.callMethod('flushPreferenceDraft')
-    const reload = page.callMethod('connect', true)
-    await sleep(50)
-    await reload
-    page = await current('pages/planner/planner')
-    await waitForData(page, (next) => next.loadingPage === false && !next.pageError
-      && JSON.stringify(next.preferences) === JSON.stringify(preferences))
-    const cloudProbe = await openPage('/pages/guide/guide')
-    await cloudProbe.callMethod('connect', true)
-    await waitForData(cloudProbe, (next) => next.loading === false && !next.error && next.offline !== true)
-    page = await openPage('/pages/planner/planner')
-    const finalReload = page.callMethod('connect', true)
-    await sleep(50)
-    await finalReload
-    page = await current('pages/planner/planner')
-    await waitForData(page, (next) => next.loadingPage === false && !next.pageError
-      && JSON.stringify(next.preferences) === JSON.stringify(preferences))
+    // connect(true) flushes pending state; the second call independently rereads the cloud.
+    for (const restoreStage of ['PLANNER_RESTORE_RELOAD', 'PLANNER_RESTORE_VERIFY']) {
+      stage(restoreStage)
+      await page.callMethod('connect', true)
+      page = await current('pages/planner/planner')
+      const data = await waitForData(page, (next) => next.loadingPage === false)
+      if (data.pageError || data.preferencesOffline === true) {
+        throw new Error('planner preference cloud restoration could not be confirmed')
+      }
+      if (JSON.stringify(data.preferences) !== JSON.stringify(preferences)) {
+        throw new Error('planner preferences differ after cloud reload')
+      }
+    }
   }
 
   async function restoreShoppingItem(itemId, checked) {
@@ -445,9 +444,7 @@ async function main() {
         return next.saving !== true && current && current.checked === checked
       })
     }
-    const reload = page.callMethod('loadData', true)
-    await sleep(50)
-    await reload
+    await page.callMethod('loadData', true)
     page = await current('pages/shopping/shopping')
     await waitForData(page, (next) => {
       const current = findShoppingItem(next, itemId)
@@ -1312,7 +1309,13 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`INTERACTIVE_SMOKE_FAILED [${sanitizeCode(error && error.code, 'MAIN_FAILED')}] ${sanitizeText(error && error.message || 'unknown failure', 240)}\n`)
-  process.exitCode = 1
-})
+function run() {
+  return main().catch((error) => {
+    process.stderr.write(`INTERACTIVE_SMOKE_FAILED [${sanitizeCode(error && error.code, 'MAIN_FAILED')}] ${sanitizeText(error && error.message || 'unknown failure', 240)}\n`)
+    process.exitCode = 1
+  })
+}
+
+if (require.main === module) run()
+
+module.exports = { main, run }

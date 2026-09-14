@@ -326,6 +326,7 @@ class UserStore {
   constructor(memberStore = membershipStore) {
     this.membershipStore = memberStore
     this.data = normalize()
+    this.cloudState = null
     this.state = 'idle'
     this.error = ''
     this.initPromise = null
@@ -356,6 +357,7 @@ class UserStore {
     this.confirmedLocalRevision = 0
     this.pending = emptyPending()
     this.data = normalize()
+    this.cloudState = null
     this.state = 'idle'
     this.error = ''
     return nextNamespace
@@ -396,15 +398,7 @@ class UserStore {
       .then(async (data) => {
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         if (initEpoch !== this.initEpoch) return this.data
-        const cloudState = normalizeCloud(data)
-        materializeLegacyMealOverrides(this.pending, cloudState)
-        if (cloudState.stateRevision >= this.data.stateRevision) {
-          this.data = applyPending(cloudState, this.pending)
-        }
-        this.state = hasPending(this.pending) ? 'saving' : 'ready'
-        this.error = ''
-        this.persistCache()
-        this.persistPending()
+        this.replaceFromCloud(data, namespace)
         if (hasPending(this.pending)) await this.flush()
         return this.data
       })
@@ -441,9 +435,19 @@ class UserStore {
     this.saveTimer = setTimeout(() => this.flush().catch(() => {}), delay)
   }
 
-  replaceFromCloud(value, namespace = this.requireNamespace({ loadCache: false })) {
+  replaceFromCloud(value, namespace = this.requireNamespace({ loadCache: false }), options = {}) {
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-    this.data = applyPending(normalizeCloud(value), this.pending)
+    const cloudState = normalizeCloud(value)
+    if (cloudState.stateRevision >= this.data.stateRevision) this.cloudState = cloudState
+    if (Number.isSafeInteger(options.confirmedLocalRevision)) {
+      this.confirmedLocalRevision = Math.max(this.confirmedLocalRevision, options.confirmedLocalRevision)
+      this.clearPendingThrough(options.confirmedLocalRevision)
+    }
+    // Keep the cloud base separate so acknowledged edits do not survive as stale overlays.
+    // A cached projection is only a fallback until a current cloud response is available.
+    const base = this.cloudState || this.data
+    materializeLegacyMealOverrides(this.pending, base)
+    this.data = applyPending(base, this.pending)
     this.state = hasPending(this.pending) ? 'saving' : 'ready'
     this.error = ''
     this.persistCache()
@@ -554,12 +558,9 @@ class UserStore {
     this.state = 'saving'
     const resolveLegacyReplacement = async () => {
       if (!this.pending.legacyMealOverridesReplacement) return
-      const latest = normalizeCloud(await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace }))
+      const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
       if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-      materializeLegacyMealOverrides(this.pending, latest)
-      this.data = applyPending(latest, this.pending)
-      this.persistPending(namespace)
-      this.persistCache(namespace)
+      this.replaceFromCloud(latest, namespace)
     }
     const write = async (conflictRetries) => {
       const snapshot = normalizeStrict(this.data)
@@ -571,23 +572,13 @@ class UserStore {
           expectedCacheNamespace: namespace,
         })
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-        this.confirmedLocalRevision = Math.max(this.confirmedLocalRevision, savedLocalRevision)
-        this.clearPendingThrough(savedLocalRevision)
-        this.data = applyPending(normalizeCloud(data), this.pending)
-        this.state = hasPending(this.pending) ? 'saving' : 'ready'
-        this.error = ''
-        this.persistPending(namespace)
-        this.persistCache(namespace)
-        return this.data
+        return this.replaceFromCloud(data, namespace, { confirmedLocalRevision: savedLocalRevision })
       } catch (error) {
         if (!this.isCurrentNamespace(namespace)) throw error
         if (!isRevisionConflict(error) || conflictRetries < 1) throw error
         const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-        const latestState = normalizeCloud(latest)
-        materializeLegacyMealOverrides(this.pending, latestState)
-        this.data = applyPending(latestState, this.pending)
-        this.persistCache(namespace)
+        this.replaceFromCloud(latest, namespace)
         return write(conflictRetries - 1)
       }
     }

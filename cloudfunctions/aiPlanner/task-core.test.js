@@ -252,6 +252,30 @@ test('详情分片严格顺序领取，前一分片完成前不能领取下一�
   assert.strictEqual(second.claim.index, 1)
 })
 
+test('提纲遇到限流或网络失败时等待退避边界再领取第二次尝试', () => {
+  ;['AI_UPSTREAM_RATE_LIMITED', 'AI_NETWORK_ERROR'].forEach((code) => {
+    const firstToken = lease(60)
+    const first = claimNext(task(), firstToken, 2600)
+    const retryAt = 32650
+    const failed = failClaim(first.task, first.claim, firstToken, code, 2650, {
+      retryable: true, retryAt,
+    })
+    assert.strictEqual(failed.accepted, true)
+    assert.strictEqual(failed.task.outline.status, 'pending')
+    assert.strictEqual(failed.task.outline.nextAttemptAt, retryAt)
+    ;[2650, 3250, retryAt - 1].forEach((now) => {
+      const waiting = claimNext(failed.task, lease(61), now)
+      assert.strictEqual(waiting.claim, null, code)
+      assert.deepStrictEqual(waiting.task, failed.task, '退避期间不能消耗尝试次数或修改租约')
+    })
+    const retried = claimNext(failed.task, lease(62), retryAt)
+    assert.strictEqual(retried.claim.kind, 'outline')
+    assert.strictEqual(retried.claim.attempt, 2)
+    assert.strictEqual(retried.task.outline.nextAttemptAt, 0)
+    assert.strictEqual(verifyLease(retried.task, retried.claim, lease(62), retryAt), true)
+  })
+})
+
 test('详情失败等待重试时不能越过当前分片，恢复后仍领取同一索引', () => {
   let current = completeOutline(task()).task
   const firstToken = lease(12)

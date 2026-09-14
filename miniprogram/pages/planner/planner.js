@@ -459,7 +459,7 @@ Page({
     if (this.data.formControlFocused) this.setData({ formControlFocused: false })
     this.stopTaskLoop()
     this.flushPreferenceDraft()
-    if (this.currentTask && isActiveTask(this.currentTask)) {
+    if (this.currentTask && (isActiveTask(this.currentTask) || this.currentTask.status === 'succeeded')) {
       this.setData({ generating: false })
       this.renderTask(this.currentTask, { interrupted: true })
     }
@@ -1151,10 +1151,16 @@ Page({
 
   async finishSucceededTask(response) {
     this.stopTaskLoop()
+    const token = this.taskLoopToken
+    const isCurrentCompletion = () => this.pageActive && token === this.taskLoopToken
+      && this.currentTask && this.currentTask.taskId === response.task.taskId
+      && this.currentTask.taskRevision === response.task.taskRevision
+      && this.currentTask.status === 'succeeded'
     try {
       const expectedDraftPlanId = response.draftPlan && response.draftPlan.id
       await userStore.init({ force: true })
-      if (!userStore.data || !userStore.data.draftPlan
+      if (!isCurrentCompletion()) return
+      if (userStore.state !== 'ready' || !userStore.data || !userStore.data.draftPlan
         || (expectedDraftPlanId && userStore.data.draftPlan.id !== expectedDraftPlanId)) {
         throw new Error('候选餐单正在同步，请点击继续')
       }
@@ -1162,6 +1168,7 @@ Page({
       this.resetTaskPanel()
       wx.navigateTo({ url: PREVIEW_URL })
     } catch (error) {
+      if (!isCurrentCompletion()) return
       this.setData({ generating: false })
       this.renderTask(response.task, { interrupted: true })
       this.setData({ taskTitle: '候选餐单已生成，等待同步', taskDetail: errorMessage(error, '请点击继续同步候选餐单。') })

@@ -6,7 +6,7 @@ const { CONTRACT_VERSION, PLANNER_VERSION, expectedMealKeys, normalizeRequest, n
 const { defaults, sanitizeState, sanitizePlan, confirmDraft, restoreHistory } = require('./user-state')
 const {
   createTask, generateTaskId, generateLeaseToken, claimNext, completeClaim, AI_DATA_CONSENT_VERSION,
-  RETENTION_SCHEMA_VERSION,
+  RETENTION_SCHEMA_VERSION, MAX_ATTEMPTS,
 } = require('./task-core')
 const {
   PROFILE_FULL, PROFILE_NO_MAX_TOKENS, PROFILE_NO_MAX_TOKENS_OR_REASONING,
@@ -256,6 +256,71 @@ function stateWithPlans(overrides = {}) {
     generationPreferences: input,
     ...overrides,
   }, { preserveUnknownFrom: overrides })
+}
+
+function assertStoredMealStateUnchanged(snapshot) {
+  assert.strictEqual(JSON.stringify(get('meal_user_states', owner)), snapshot,
+    'generation failure must preserve every byte of the serialized user state')
+  assert.strictEqual(databaseCalls.some((call) => (
+    call.name === 'meal_user_states' && call.operation !== 'get'
+  )), false, 'generation failure must not issue any user-state write')
+}
+
+async function startWithExistingMealState(seed) {
+  reset()
+  const previousInput = { ...input, mealTypes: ['breakfast', 'lunch', 'dinner'], doubleDinner: true }
+  const activePlan = validPlan(storedTask(owner, 1, seed, previousInput))
+  const draftPlan = validPlan(storedTask(owner, 1, seed + 1, previousInput))
+  const historyPlan = validPlan(storedTask(owner, 1, seed + 2, previousInput))
+  const selectedDayId = activePlan.days[2].id
+  const mealId = activePlan.days[2].meals[0].id
+  const state = stateWithPlans({
+    stateRevision: 7,
+    activePlan,
+    draftPlan,
+    planHistory: [historyPlan],
+    selectedDay: 2,
+    selectedDayId,
+    defaultDinnerMode: 'workout',
+    dinnerModeByDay: { [selectedDayId]: 'rest' },
+    checkedShoppingIds: [activePlan.shoppingGroups[0].items[0].id],
+    mealOverrides: {
+      [mealId]: {
+        title: 'Synthetic personal meal', ingredients: 'Synthetic ingredients',
+        method: 'Synthetic preparation', tag: 'Synthetic fixture',
+        updatedAt: '2026-08-26T07:00:00.000Z',
+      },
+    },
+    customReminders: [{ id: 'synthetic-reminder', text: 'Synthetic reminder', done: true }],
+    settings: { calciumAnchorReminder: true, vitaminDReminder: true },
+    waterReminder: {
+      ...defaults().waterReminder, enabled: true, cadence: 'weekdays',
+      startTime: '08:00', endTime: '19:00', intervalMinutes: 90, scheduleVersion: 4,
+      updatedAt: '2026-08-26T07:00:00.000Z',
+    },
+    generationPreferences: { ...input, futureServerPreference: { preserved: true } },
+    futureServerField: { preserved: true },
+    updatedAt: '2026-08-26T07:00:00.000Z',
+  })
+  assert.strictEqual(state.activePlanId, activePlan.id)
+  assert.strictEqual(state.activePlan.days[2].meals.length, 4)
+  assert.strictEqual(Object.keys(state.mealOverrides).length, 1)
+  assert.strictEqual(state.checkedShoppingIds.length, 1)
+  assert.strictEqual(Object.keys(state.planUiStateByPlan).length > 0, true)
+  put('meal_user_states', owner, state)
+  const snapshot = JSON.stringify(get('meal_user_states', owner))
+  const started = await planner._test.startTask(
+    owner, input, state.stateRevision, seed.toString(16).padStart(32, '0'), consent,
+  )
+  const taskId = started.task.taskId
+  const task = get('meal_ai_tasks', taskId)
+  assert.strictEqual(task.taskSchemaVersion, 3)
+  assert.strictEqual(task.cacheNamespace, cacheNamespace)
+  assert.strictEqual(task.providerConfigVersion, providerConfig.providerConfigVersion)
+  assert.strictEqual(started.task.status, 'queued')
+  assert.strictEqual(started.result, null)
+  assertStoredMealStateUnchanged(snapshot)
+  return { taskId, snapshot }
 }
 
 async function assertFinalizeConflict(seed, epoch, baselineState, latestState) {
@@ -1976,6 +2041,113 @@ test('invalid cancel revision remains a public client error', () => {
     planner._test.publicError({ code: 'INVALID_TASK_REVISION', message: '请刷新生成进度后再取消' }),
     { code: 'INVALID_TASK_REVISION', message: '请刷新生成进度后再取消' },
   )
+})
+
+test('terminal outline rejection preserves the complete existing daily meal state', async () => {
+  const { taskId, snapshot } = await startWithExistingMealState(120)
+  const work = await planner._test.claimWork(owner, taskId)
+  assert.strictEqual(work.claim.kind, 'outline')
+  const outcome = await planner._test.settleFailure(owner, taskId, work.claim, work.claim.leaseToken, {
+    code: 'AI_UPSTREAM_REQUEST_REJECTED', retryable: false, retryAfterMs: 0,
+  })
+  assert.strictEqual(outcome.task.status, 'failed')
+  assert.strictEqual(outcome.task.errorCode, 'AI_UPSTREAM_REQUEST_REJECTED')
+  assert.strictEqual(outcome.result, null)
+  assertShardCleanupPending(taskId, 'failed')
+  assert.strictEqual(get('meal_ai_controls', owner).activeTaskId, '')
+  assertStoredMealStateUnchanged(snapshot)
+  const recovered = await planner._test.readTaskStatus(owner, taskId)
+  assert.strictEqual(recovered.task.status, 'failed')
+  assert.strictEqual(recovered.result, null)
+  assertStoredMealStateUnchanged(snapshot)
+})
+
+test('transient outline retries and exhaustion preserve all existing meal state', async () => {
+  const { taskId, snapshot } = await startWithExistingMealState(124)
+  const previousNow = Date.now
+  let now = Date.now()
+  Date.now = () => now
+  try {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      const work = await planner._test.claimWork(owner, taskId)
+      assert.strictEqual(work.claim.kind, 'outline')
+      assert.strictEqual(work.claim.attempt, attempt)
+      const outcome = await planner._test.settleFailure(owner, taskId, work.claim, work.claim.leaseToken, {
+        code: 'AI_TIMEOUT', retryable: true, retryAfterMs: 600,
+      })
+      assert.strictEqual(outcome.result, null)
+      assert.strictEqual(outcome.task.status, attempt === MAX_ATTEMPTS ? 'failed' : 'running')
+      assertStoredMealStateUnchanged(snapshot)
+      if (attempt < MAX_ATTEMPTS) {
+        assert.strictEqual(get('meal_ai_controls', owner).activeTaskId, taskId)
+        const recovered = await planner._test.readCurrentTask(owner)
+        assert.strictEqual(recovered.task.taskId, taskId)
+        assert.strictEqual(recovered.result, null)
+        assertStoredMealStateUnchanged(snapshot)
+        now = get('meal_ai_tasks', taskId).outline.nextAttemptAt
+      }
+    }
+    assert.strictEqual(get('meal_ai_tasks', taskId).errorCode, 'AI_TIMEOUT')
+    assertShardCleanupPending(taskId, 'failed')
+    assert.strictEqual(get('meal_ai_controls', owner).activeTaskId, '')
+    assert.strictEqual((await planner._test.claimWork(owner, taskId)).claim, null)
+    assertStoredMealStateUnchanged(snapshot)
+  } finally {
+    Date.now = previousNow
+  }
+})
+
+test('detail rejection after completed work preserves the current plan and prior draft', async () => {
+  const { taskId, snapshot } = await startWithExistingMealState(128)
+  const outline = await planner._test.claimWork(owner, taskId)
+  const outlined = await planner._test.settleSuccess(
+    owner, taskId, outline.claim, outline.claim.leaseToken,
+    { title: 'Synthetic outline', rationale: ['Synthetic fixture'] },
+  )
+  assert.strictEqual(outlined.result, null)
+  const firstDetail = await planner._test.claimWork(owner, taskId)
+  assert.strictEqual(firstDetail.claim.kind, 'detail')
+  assert.strictEqual(firstDetail.claim.index, 0)
+  const completed = await planner._test.settleSuccess(
+    owner, taskId, firstDetail.claim, firstDetail.claim.leaseToken,
+    { days: [validPlan(firstDetail.task).days[0]] },
+  )
+  assert.strictEqual(completed.result, null)
+  assertStoredMealStateUnchanged(snapshot)
+  const secondDetail = await planner._test.claimWork(owner, taskId)
+  assert.strictEqual(secondDetail.claim.kind, 'detail')
+  assert.strictEqual(secondDetail.claim.index, 1)
+  const outcome = await planner._test.settleFailure(
+    owner, taskId, secondDetail.claim, secondDetail.claim.leaseToken,
+    { code: 'AI_RESPONSE_REFUSED', retryable: false, retryAfterMs: 0 },
+  )
+  assert.strictEqual(outcome.task.status, 'failed')
+  assert.strictEqual(outcome.task.errorCode, 'AI_RESPONSE_REFUSED')
+  assert.strictEqual(outcome.result, null)
+  assertShardCleanupPending(taskId, 'failed')
+  assert.strictEqual(get('meal_ai_controls', owner).activeTaskId, '')
+  assertStoredMealStateUnchanged(snapshot)
+})
+
+test('cancellation and expiry preserve existing meals, personal edits, and shopping state', async () => {
+  for (const endState of ['cancelled', 'expired']) {
+    const { taskId, snapshot } = await startWithExistingMealState(132)
+    const work = await planner._test.claimWork(owner, taskId)
+    const previousNow = Date.now
+    try {
+      if (endState === 'expired') Date.now = () => work.task.expiresAt
+      const outcome = endState === 'cancelled'
+        ? await planner._test.cancelGeneration(owner, taskId, work.task.taskRevision)
+        : await planner._test.readTaskStatus(owner, taskId)
+      assert.strictEqual(outcome.task.status, endState)
+      assert.strictEqual(outcome.result, null)
+      assertShardCleanupPending(taskId, endState)
+      assert.strictEqual(get('meal_ai_controls', owner).activeTaskId, '')
+      assertStoredMealStateUnchanged(snapshot)
+    } finally {
+      Date.now = previousNow
+    }
+  }
 })
 
 test('upstream failure policy separates terminal rejection from bounded retries', () => {
