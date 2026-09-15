@@ -125,6 +125,16 @@ function configurationForApiKey(rawApiKey, tuningEnv = {}, runtimeEnv = {}) {
   return buildConfiguration(rawApiKey, tuningEnv, runtimeEnv)
 }
 
+// Fixed booleans only: diagnostics must never read credentials or return config values.
+function nonSecretConfigurationChecks(env = {}) {
+  const source = env || {}
+  return {
+    baseUrlValid: Boolean(resolveResponsesEndpoint(source.AI_API_BASE_URL)),
+    displayNameValid: Boolean(normalizeProviderDisplayName(source.AI_PROVIDER_DISPLAY_NAME)),
+    revisionValid: normalizeProviderRevision(source.AI_PROVIDER_REVISION) > 0,
+  }
+}
+
 function configuration(env = process.env) {
   const source = env || {}
   return buildConfiguration(source.AI_API_KEY, {
@@ -161,5 +171,6 @@ module.exports = {
   normalizeProviderRevision,
   deriveProviderConfigVersion,
   configurationForApiKey,
+  nonSecretConfigurationChecks,
   configuration,
 }

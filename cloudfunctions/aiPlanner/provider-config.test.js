@@ -7,6 +7,7 @@ const {
   DEFAULT_TIMEOUT_MS, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS,
   DEFAULT_MAX_TOKENS, MIN_MAX_TOKENS, MAX_MAX_TOKENS,
   MAX_PROVIDER_DISPLAY_NAME_LENGTH, configurationForApiKey, configuration,
+  nonSecretConfigurationChecks,
 } = require('./provider-config')
 
 const KEY_A = 'TEST_PLACEHOLDER_KEY_A'
@@ -15,6 +16,98 @@ const TEST_BASE_URL = 'https://example.invalid'
 const TEST_ENDPOINT = 'https://example.invalid/responses'
 const RUNTIME = Object.freeze({ baseUrl: TEST_BASE_URL, displayName: 'Runtime AI', revision: '12' })
 const VERSION_PATTERN = /^[a-f0-9]{64}$/
+
+const diagnosticEnvironment = Object.freeze({
+  AI_API_BASE_URL: TEST_BASE_URL,
+  AI_PROVIDER_DISPLAY_NAME: 'Synthetic diagnostic AI',
+  AI_PROVIDER_REVISION: '1',
+})
+const validDiagnosticChecks = Object.freeze({
+  baseUrlValid: true, displayNameValid: true, revisionValid: true,
+})
+
+assert.deepStrictEqual(nonSecretConfigurationChecks({}), {
+  baseUrlValid: false, displayNameValid: false, revisionValid: false,
+})
+assert.deepStrictEqual(nonSecretConfigurationChecks(diagnosticEnvironment), validDiagnosticChecks)
+
+for (const [environmentName, resultName] of [
+  ['AI_API_BASE_URL', 'baseUrlValid'],
+  ['AI_PROVIDER_DISPLAY_NAME', 'displayNameValid'],
+  ['AI_PROVIDER_REVISION', 'revisionValid'],
+]) {
+  const missing = { ...diagnosticEnvironment }
+  delete missing[environmentName]
+  assert.deepStrictEqual(nonSecretConfigurationChecks(missing), {
+    ...validDiagnosticChecks, [resultName]: false,
+  }, `${environmentName} absence must affect only its own validity check`)
+}
+
+for (const invalidBaseUrl of [
+  '', '   ', 'http://example.invalid', 'not a URL',
+  'https://user:password@example.invalid', 'https://example.invalid?tenant=test',
+  'https://example.invalid#fragment', 'https://example.invalid:99999',
+  'https://example.invalid/path with spaces', 123, null,
+]) {
+  assert.deepStrictEqual(nonSecretConfigurationChecks({
+    ...diagnosticEnvironment, AI_API_BASE_URL: invalidBaseUrl,
+  }), { ...validDiagnosticChecks, baseUrlValid: false })
+}
+for (const validBaseUrl of [
+  'https://example.invalid', 'https://example.invalid/v1/',
+  'https://example.invalid/v1/responses', ' HTTPS://example.invalid/custom/ ',
+]) {
+  assert.deepStrictEqual(nonSecretConfigurationChecks({
+    ...diagnosticEnvironment, AI_API_BASE_URL: validBaseUrl,
+  }), validDiagnosticChecks)
+}
+
+for (const invalidDisplayName of [
+  '', '   ', 'Synthetic\nAI', 'Synthetic\u007fAI',
+  'x'.repeat(41), '\u{1f34e}'.repeat(41), 123, null,
+]) {
+  assert.deepStrictEqual(nonSecretConfigurationChecks({
+    ...diagnosticEnvironment, AI_PROVIDER_DISPLAY_NAME: invalidDisplayName,
+  }), { ...validDiagnosticChecks, displayNameValid: false })
+}
+for (const validDisplayName of ['x'.repeat(40), '\u{1f34e}'.repeat(40), '  Synthetic AI  ']) {
+  assert.deepStrictEqual(nonSecretConfigurationChecks({
+    ...diagnosticEnvironment, AI_PROVIDER_DISPLAY_NAME: validDisplayName,
+  }), validDiagnosticChecks)
+}
+
+for (const invalidRevision of [
+  '', '0', '01', '-1', '+1', '1.0', '1e2', ' 1 ', '9007199254740992',
+  0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, null,
+]) {
+  assert.deepStrictEqual(nonSecretConfigurationChecks({
+    ...diagnosticEnvironment, AI_PROVIDER_REVISION: invalidRevision,
+  }), { ...validDiagnosticChecks, revisionValid: false })
+}
+for (const validRevision of ['1', 1, '9007199254740991', Number.MAX_SAFE_INTEGER]) {
+  assert.deepStrictEqual(nonSecretConfigurationChecks({
+    ...diagnosticEnvironment, AI_PROVIDER_REVISION: validRevision,
+  }), validDiagnosticChecks)
+}
+
+const keyGuardedEnvironment = { ...diagnosticEnvironment }
+Object.defineProperty(keyGuardedEnvironment, 'AI_API_KEY', {
+  enumerable: true,
+  get() { throw new Error('Non-secret checks must never access an API key') },
+})
+assert.deepStrictEqual(nonSecretConfigurationChecks(keyGuardedEnvironment), validDiagnosticChecks)
+const diagnosticReads = []
+const diagnosticAllowedReads = new Set(Object.keys(diagnosticEnvironment))
+const guardedDiagnosticEnvironment = new Proxy(keyGuardedEnvironment, {
+  get(target, property) {
+    diagnosticReads.push(property)
+    assert(diagnosticAllowedReads.has(property), 'Only the three non-secret fields may be read')
+    return target[property]
+  },
+  ownKeys() { throw new Error('Non-secret checks must not enumerate the environment') },
+})
+assert.deepStrictEqual(nonSecretConfigurationChecks(guardedDiagnosticEnvironment), validDiagnosticChecks)
+assert.deepStrictEqual(new Set(diagnosticReads), diagnosticAllowedReads)
 
 assert.strictEqual(PROVIDER_CONTRACT_REVISION, 9)
 assert.strictEqual(DEFAULT_ENDPOINT, '')

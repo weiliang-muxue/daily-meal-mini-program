@@ -70,6 +70,8 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 
 部署后使用小程序的无任务 AI 状态检查确认 `providerContractRevision` 与 `release-manifest.json` 中的 `aiProviderContractRevision` 完全一致，并确认返回的 `providerRevision` 是本次配置的正整数、展示名正确。`providerContractRevision` 只标识代码请求契约；`providerRevision` 标识可变的数据接收方配置。公开状态不返回服务地址、请求头、Key、配置指纹或用户数据；任一版本缺失或不匹配时，客户端与发布探针必须保持维护状态，不能把旧云函数误判为可用。
 
+当 `configured=false` 时，数据库已验证的管理员可从同一无任务状态响应中的 `configurationChecks` 定位非密钥缺项：`baseUrlValid`、`displayNameValid`、`revisionValid` 分别对应上述地址、展示名和正整数版本校验。只有布尔值，没有实际配置内容；普通成员或身份命名空间不匹配者不能取得该诊断。该辅助校验不读取 Key，也不证明 Key 有效或上游可用；仍需真实生成验收。不要为排查而导出整份环境变量。
+
 随后部署不需要任何环境变量或密钥的 `mealAiMaintenance`，选择云端安装依赖。其 `config.json` 配置 `mealAiRetentionSweep` 每 30 分钟运行一次；微信云开发七段 cron 使用 UTC+8。部署后确认 `aiPlanner` 与 `mealAiMaintenance` 的线上超时均为 60 秒、内存均为 256 MB，再在云函数触发器页面确认名称为 `mealAiRetentionSweep`、类型为 `timer`、每 30 分钟运行一次的触发器已经创建并启用，并确认函数只接受 `getWXContext().SOURCE === 'wx_trigger'`。这里的 `SOURCE` 只用于验证平台定时触发类型，不代表操作者权限。微信可能重复投递同一次定时消息，函数已按幂等方式设计。首次验证只查看返回/日志中的计数和错误代码，不要加入打印任务文档的临时日志；若有失败，保留函数等待下次重试并按错误代码排查索引或数据库状态。
 
 八个云函数的 `wx-server-sdk` 均固定为 `4.0.2`，并提交各自的 lockfile v3。部署时使用仓库中的 `package.json` 和 `package-lock.json` 云端安装依赖；不要删除锁文件、改回 `latest`，也不要提交 `node_modules`。升级 SDK 时应单独修改明确版本、重新生成全部八个锁文件并跑完整验证，不能让正式部署随 npm 标签漂移。

@@ -405,6 +405,23 @@ planner._test.cancelGeneration = (openid, taskId, revision) => (
 const tests = []
 function test(name, run) { tests.push({ name, run }) }
 
+async function withNonSecretDiagnosticEnvironment(values, run) {
+  const names = ['AI_API_BASE_URL', 'AI_PROVIDER_DISPLAY_NAME', 'AI_PROVIDER_REVISION']
+  const previous = names.map((name) => [name, process.env[name]])
+  try {
+    for (const name of names) {
+      if (values[name] === undefined) delete process.env[name]
+      else process.env[name] = values[name]
+    }
+    return await run()
+  } finally {
+    for (const [name, value] of previous) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+}
+
 test('aiPlanner transactions do not issue parallel database reads', () => {
   const source = require('fs').readFileSync(require.resolve('./index'), 'utf8')
   assert.strictEqual(/Promise\.all\s*\(/.test(source), false)
@@ -459,6 +476,155 @@ test('readiness status probes only reserved documents and performs no business w
   } finally {
     wxContext = {}
   }
+})
+
+test('owner readiness status exposes only three non-secret validity booleans without writes', async () => {
+  const validEnvironment = {
+    AI_API_BASE_URL: 'https://example.invalid/synthetic-status',
+    AI_PROVIDER_DISPLAY_NAME: 'Synthetic readiness AI',
+    AI_PROVIDER_REVISION: '1',
+  }
+  const validChecks = { baseUrlValid: true, displayNameValid: true, revisionValid: true }
+  const cases = [
+    [{}, { baseUrlValid: false, displayNameValid: false, revisionValid: false }],
+    [{ ...validEnvironment, AI_API_BASE_URL: 'http://example.invalid' }, { ...validChecks, baseUrlValid: false }],
+    [{ ...validEnvironment, AI_PROVIDER_DISPLAY_NAME: 'x'.repeat(41) }, { ...validChecks, displayNameValid: false }],
+    [{ ...validEnvironment, AI_PROVIDER_REVISION: '0' }, { ...validChecks, revisionValid: false }],
+    [{ ...validEnvironment, AI_PROVIDER_REVISION: '01' }, { ...validChecks, revisionValid: false }],
+    [{ ...validEnvironment, AI_PROVIDER_DISPLAY_NAME: 'x'.repeat(40) }, validChecks],
+    [validEnvironment, validChecks],
+  ]
+  for (const [environment, expectedChecks] of cases) {
+    await withNonSecretDiagnosticEnvironment(environment, async () => {
+      reset()
+      collectionStore('meal_ai_tasks')
+      collectionStore('meal_ai_controls')
+      wxContext = { OPENID: owner }
+      const before = storesSnapshot()
+      try {
+        const response = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+        assert.strictEqual(response.success, true)
+        assert.deepStrictEqual(response.data.configurationChecks, expectedChecks)
+        assertNoForbiddenKeys(response, new Set([
+          'apiKey', 'AI_API_KEY', 'AI_API_BASE_URL', 'AI_PROVIDER_DISPLAY_NAME',
+          'AI_PROVIDER_REVISION', 'url', 'endpoint',
+        ]))
+        assert.strictEqual(JSON.stringify(response).includes('example.invalid'), false)
+        assert.deepStrictEqual(databaseCalls, [
+          { operation: 'get', name: 'meal_members', id: owner },
+          { operation: 'get', name: 'meal_ai_tasks', id: planner._test.STORAGE_PROBE_DOCUMENT_ID },
+          { operation: 'get', name: 'meal_ai_controls', id: planner._test.STORAGE_PROBE_DOCUMENT_ID },
+        ])
+        assertZeroBusinessWrites(before, 'owner non-secret readiness checks')
+      } finally {
+        wxContext = {}
+      }
+    })
+  }
+})
+
+test('readiness checks require the stored exact owner role and ignore caller role claims', async () => {
+  await withNonSecretDiagnosticEnvironment({}, async () => {
+    for (const storedRole of ['member', 'Owner', 'admin', undefined]) {
+      reset()
+      put('meal_members', otherOwner, { status: 'active', role: storedRole, cacheNamespace: otherCacheNamespace })
+      collectionStore('meal_ai_tasks')
+      collectionStore('meal_ai_controls')
+      wxContext = { OPENID: otherOwner, role: 'owner' }
+      const before = storesSnapshot()
+      try {
+        const response = await planner.main({
+          action: 'status', expectedCacheNamespace: otherCacheNamespace,
+          role: 'owner', member: { role: 'owner' }, OPENID: owner,
+          configurationChecks: true,
+        })
+        assert.strictEqual(response.success, true)
+        assertNoForbiddenKeys(response, new Set([
+          'configurationChecks', 'baseUrlValid', 'displayNameValid', 'revisionValid',
+        ]))
+        assert.strictEqual(databaseCalls[0].id, otherOwner)
+        assertZeroBusinessWrites(before, 'non-owner readiness status')
+      } finally {
+        wxContext = {}
+      }
+    }
+  })
+})
+
+test('readiness checks do not leak for stale namespaces or absent verified membership', async () => {
+  await withNonSecretDiagnosticEnvironment({}, async () => {
+    for (const scenario of [
+      { namespace: otherCacheNamespace, status: 'active', code: 'STALE_DATA_GENERATION' },
+      { namespace: undefined, status: 'active', code: 'STALE_DATA_GENERATION' },
+      { namespace: cacheNamespace, status: 'inactive', code: 'MEMBERSHIP_REQUIRED' },
+      { namespace: cacheNamespace, status: 'deleting', code: 'ACCOUNT_DELETION_IN_PROGRESS' },
+      { namespace: cacheNamespace, status: null, code: 'MEMBERSHIP_REQUIRED' },
+    ]) {
+      reset()
+      if (scenario.status === null) collectionStore('meal_members').delete(owner)
+      else put('meal_members', owner, { status: scenario.status, role: 'owner', cacheNamespace })
+      wxContext = { OPENID: owner }
+      const before = storesSnapshot()
+      const logs = []
+      const originalError = console.error
+      console.error = (...values) => logs.push(values)
+      try {
+        const response = await planner.main({
+          action: 'status', expectedCacheNamespace: scenario.namespace,
+          role: 'owner', configurationChecks: true,
+        })
+        assert.strictEqual(response.success, false)
+        assert.strictEqual(response.code, scenario.code)
+        assertNoForbiddenKeys({ response, logs }, new Set([
+          'configurationChecks', 'baseUrlValid', 'displayNameValid', 'revisionValid',
+        ]))
+        assert.deepStrictEqual(databaseCalls, [{ operation: 'get', name: 'meal_members', id: owner }])
+        assertZeroBusinessWrites(before, 'unverified owner readiness status')
+      } finally {
+        console.error = originalError
+        wxContext = {}
+      }
+    }
+  })
+})
+
+test('readiness checks require WX identity even when event claims an owner', async () => {
+  reset()
+  wxContext = {}
+  const before = storesSnapshot()
+  const response = await planner.main({
+    action: 'status', expectedCacheNamespace: cacheNamespace,
+    OPENID: owner, role: 'owner', member: { role: 'owner' }, configurationChecks: true,
+  })
+  assert.deepStrictEqual(response, {
+    success: false, code: 'IDENTITY_REQUIRED', message: '无法识别微信身份', stage: 'PREFLIGHT',
+  })
+  assert.deepStrictEqual(databaseCalls, [])
+  assertZeroBusinessWrites(before, 'readiness status without WX identity')
+})
+
+test('owner task status does not expose readiness configuration checks or write terminal tasks', async () => {
+  await withNonSecretDiagnosticEnvironment({}, async () => {
+    reset()
+    const task = taskWithStatus(storedTask(owner, 1, 170), 'failed', 'AI_TIMEOUT')
+    put('meal_ai_tasks', task._id, planner._test.taskData(task))
+    put('meal_ai_controls', owner, { owner, activeTaskId: '', generationEpoch: 1 })
+    wxContext = { OPENID: owner }
+    const before = storesSnapshot()
+    try {
+      const response = await planner.main({
+        action: 'status', taskId: task._id, expectedCacheNamespace: cacheNamespace,
+      })
+      assert.strictEqual(response.success, true)
+      assert.strictEqual(response.data.task.status, 'failed')
+      assertNoForbiddenKeys(response, new Set([
+        'configurationChecks', 'baseUrlValid', 'displayNameValid', 'revisionValid',
+      ]))
+      assertZeroBusinessWrites(before, 'owner terminal task status')
+    } finally {
+      wxContext = {}
+    }
+  })
 })
 
 test('retired provider diagnostic actions remain unsupported and cannot write business data', async () => {

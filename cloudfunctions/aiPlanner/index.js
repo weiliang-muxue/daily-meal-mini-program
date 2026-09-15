@@ -7,7 +7,7 @@ const {
   extractModelText, parseModelJson, normalizeOutline, normalizeDetailChunk,
   assembleRawPlan, normalizePlan, preferencesHash,
 } = require('./lib')
-const { configuration, PROVIDER_CONTRACT_REVISION } = require('./provider-config')
+const { configuration, nonSecretConfigurationChecks, PROVIDER_CONTRACT_REVISION } = require('./provider-config')
 const {
   MIN_RETRY_DELAY_MS, MAX_RETRY_AFTER_MS,
   privateAddress, resolvePublicEndpoint,
@@ -1172,7 +1172,8 @@ exports.main = async (event = {}) => {
   if (!OPENID) return { success: false, code: 'IDENTITY_REQUIRED', message: '无法识别微信身份', stage: 'PREFLIGHT' }
   try {
     const expectedCacheNamespace = event.expectedCacheNamespace
-    assertExpectedCacheNamespace(await requireMember(OPENID), expectedCacheNamespace)
+    const member = await requireMember(OPENID)
+    assertExpectedCacheNamespace(member, expectedCacheNamespace)
     const config = configuration(process.env)
     if (event.action === 'status' && !event.taskId) {
       await assertStorageReady()
@@ -1189,6 +1190,7 @@ exports.main = async (event = {}) => {
           plannerVersion: PLANNER_VERSION,
           aiDataConsentVersion: AI_DATA_CONSENT_VERSION,
           apiStyle: config.apiStyle,
+          ...(member.role === 'owner' ? { configurationChecks: nonSecretConfigurationChecks(process.env) } : {}),
         },
       }
     }
