@@ -44,13 +44,13 @@ const TEST_CONFIG = Object.freeze({
   timeoutMs: 45000,
 })
 const BASE_BODY = Object.freeze({
-  model: 'model-placeholder',
+  model: 'gpt-5.6-sol',
   instructions: 'fixed-system-instructions',
   store: false,
   stream: false,
   input: [{ role: 'user', content: [{ type: 'input_text', text: 'synthetic-input' }] }],
   max_output_tokens: 1000,
-  reasoning: { effort: 'xhigh' },
+  reasoning: { effort: 'max' },
   text: { format: { type: 'json_object' } },
 })
 
@@ -117,6 +117,7 @@ async function run() {
   assert.strictEqual(Object.prototype.hasOwnProperty.call(compatibilityBodies[1], 'max_output_tokens'), false)
   assert(compatibilityBodies.every((body) => (
     body.instructions === BASE_BODY.instructions && body.store === false && body.stream === false
+    && body.model === 'gpt-5.6-sol' && body.reasoning.effort === 'max'
   )))
 
   const reused = await requestProvider(BASE_BODY)
@@ -244,7 +245,8 @@ async function run() {
   assert.strictEqual(Object.prototype.hasOwnProperty.call(smokeBodies[1], 'max_output_tokens'), false)
   assert(smokeBodies.every((body) => (
     typeof body.instructions === 'string' && body.instructions.length > 0 &&
-    body.store === false && body.stream === false
+    body.store === false && body.stream === false &&
+    body.model === 'gpt-5.6-sol' && body.reasoning.effort === 'max'
   )))
   assert(/^stage=configuration elapsedMs=\d+ attempts=0 status=passed$/.test(smokeLines[0]))
   assert(/^stage=smoke elapsedMs=\d+ attempts=2 status=passed profile=no_max_output_tokens$/.test(smokeLines[1]))

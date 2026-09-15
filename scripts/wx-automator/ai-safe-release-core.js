@@ -16,7 +16,7 @@ const RELEASE_COMPATIBILITY = Object.freeze({
   contractVersion: 2,
   plannerVersion: '7',
   aiDataConsentVersion: 2,
-  providerContractRevision: 9,
+  providerContractRevision: 10,
   taskSchemaVersion: 3,
 })
 const PUBLIC_TASK_ERROR_CATEGORIES = Object.freeze({

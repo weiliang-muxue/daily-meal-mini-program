@@ -39,8 +39,10 @@
 - [ ] 每次新生成均默认不勾选 AI 数据同意；修改发送内容会撤销旧同意，客户端、云函数、任务和维护路径共同拒绝缺少当前同意协议的调用。
 - [ ] `AI_API_KEY`、`AI_API_BASE_URL`、`AI_PROVIDER_DISPLAY_NAME`、`AI_PROVIDER_REVISION` 已由部署者本人配置在 `aiPlanner` 云函数环境变量；客户端、日志和仓库不包含真实 Key，URL 为合法 HTTPS Responses 基础地址，展示名准确描述数据接收方，revision 为正整数。
 - [ ] 只轮换同一数据接收方的 Key 时保持 provider revision 不变；URL、实际数据接收方或展示名任一变化时提高 revision。旧活动任务以 `AI_DATA_CONSENT_REQUIRED` 关闭，用户必须重新确认发送；不存在更换接收方却沿用旧授权的路径。
-- [ ] provider 请求契约 v9 固定使用根域 `/responses`、`gpt-5.6`、Responses 和 `store:false`，不主动附加未声明的推理强度；云函数只发送标准 Bearer 鉴权和 JSON 内容头，不发送 provider 专用鉴权或兼容头。
-- [ ] `aiPlanner` 无任务状态返回的 `providerContractRevision` 与发布清单一致，`providerRevision` 为本次配置的正整数且展示名正确；旧 v8、缺失或其他版本不匹配的云函数使页面和发布探针保持维护状态。公开状态不包含服务端点、请求头值、Key、配置指纹或用户数据。
+- [ ] provider 请求契约 v10 固定使用 `gpt-5.6-sol`、`reasoning: { effort: "max" }`、Responses 和 `store:false`，服务根地址规范化为 `/responses`；云函数只发送标准 Bearer 鉴权和 JSON 内容头，不发送 provider 专用鉴权或兼容头。
+- [ ] 每个兼容回退档位均保留 `model`、`instructions`、`input`、`store:false` 与 `reasoning.effort: "max"`；上游拒绝模型或强度时明确失败，不删除或降低 `max`，也不把本地契约测试或官方模型文档当作第三方服务验收证据。
+- [ ] provider v9 升至 v10 后，仅配置指纹不匹配的旧活动任务按现有逻辑关闭并要求重新确认；应用 `0.2.0`、schema v8、计划 contract v2、planner v7、task schema v3 和同意协议 v2 不变。已成功生成的候选、已确认和历史餐单及其他用户数据未被重置或改写。
+- [ ] `aiPlanner` 无任务状态返回的 `providerContractRevision` 与发布清单一致且为 v10，`providerRevision` 为本次配置的正整数且展示名正确；旧 v9 及更早、缺失或其他版本不匹配的云函数使页面和发布探针保持维护状态。公开状态不包含服务端点、请求头值、Key、配置指纹或用户数据。
 
 ## 4. 隐私与安全
 

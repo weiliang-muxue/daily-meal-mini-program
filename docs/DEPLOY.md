@@ -6,7 +6,7 @@
 
 - `project.config.json`：在本机填写真实 AppID。
 - `miniprogram/config.js`：在本机填写真实云开发环境 ID。
-- `cloudfunctions/aiPlanner/.env.example`：仅列出 AI Key 占位符和可选迁移参数，不是可部署配置。
+- `cloudfunctions/aiPlanner/.env.example`：仅列出 AI Key、服务地址、展示名和 revision 的占位配置及可选资源参数，不是可部署配置。
 - AppSecret 不进入小程序、云函数代码或仓库。微信云开发通过可信调用上下文提供用户身份。
 
 提交或推送前运行：
@@ -48,7 +48,9 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 
 ## AI 云函数配置
 
-模型、Responses 协议和请求头锁定在 `provider-config.js`；provider 请求契约 v9 使用服务根域 `/responses`、`gpt-5.6`、`store:false`，不主动附加服务配置未声明的推理强度。云函数只发送标准 Bearer 鉴权与 JSON 内容头，不发送 provider 专用鉴权或兼容头；兼容回退继续保留 `model`、`instructions`、`input` 和 `store:false`。端点、用户可见服务名和数据接收方 revision 由云函数运行时配置，因此更换服务地址无需改代码，但仍必须执行下述 revision 与重新授权流程。先部署其他业务闭环，再由部署者本人在 `aiPlanner` 云函数的环境变量界面填写：
+模型、推理强度、Responses 协议和请求头锁定在 `provider-config.js`；provider 请求契约 v10 将服务根地址规范化为 `/responses`，固定发送 `model: "gpt-5.6-sol"`、`reasoning: { effort: "max" }` 和 `store:false`。云函数只发送标准 Bearer 鉴权与 JSON 内容头，不发送 provider 专用鉴权或兼容头；每个兼容回退档位均保留 `model`、`instructions`、`input`、`store:false` 和 `reasoning.effort: "max"`。上游不支持该模型或强度时明确失败，不得通过删除或降低 `max` 继续生成。端点、用户可见服务名和数据接收方 revision 由云函数运行时配置，因此更换服务地址无需改代码，但仍必须执行下述 revision 与重新授权流程。
+
+[官方 GPT-5.6 Sol 模型文档](https://developers.openai.com/api/docs/models/gpt-5.6-sol) 列出精确模型名 `gpt-5.6-sol` 及 `max` 推理强度。该文档不证明部署所选第三方服务已提供相同模型映射、权限或参数支持；必须从目标云函数完成真实生成验收后才能记录为通过。先部署其他业务闭环，再由部署者本人在 `aiPlanner` 云函数的环境变量界面填写：
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
@@ -57,7 +59,9 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 | `AI_PROVIDER_DISPLAY_NAME` | 是 | 非秘密、面向用户展示的数据接收方名称，1–40 个字符 |
 | `AI_PROVIDER_REVISION` | 是 | 正整数；标识本次数据接收方配置，不能使用占位值 |
 
-只轮换同一数据接收方的 Key 时，保持 `AI_PROVIDER_REVISION` 不变，用户无需因密钥轮换重新授权。只要 `AI_API_BASE_URL`、实际数据接收方或 `AI_PROVIDER_DISPLAY_NAME` 任一变化，就必须先将 `AI_PROVIDER_REVISION` 增加到新的正整数，再一起保存并重新部署；旧活动任务会以 `AI_DATA_CONSENT_REQUIRED` 关闭，用户下一次生成时必须重新勾选发送同意。禁止改变 URL 或接收方却沿用旧 revision。模型名、协议、推理强度、请求头和 temperature 仍不能由环境变量覆盖；contract v9 只允许标准 Bearer 鉴权和 JSON 内容头。
+只轮换同一数据接收方的 Key 时，保持 `AI_PROVIDER_REVISION` 不变，用户无需因密钥轮换重新授权。只要 `AI_API_BASE_URL`、实际数据接收方或 `AI_PROVIDER_DISPLAY_NAME` 任一变化，就必须先将 `AI_PROVIDER_REVISION` 增加到新的正整数，再一起保存并重新部署；旧活动任务会以 `AI_DATA_CONSENT_REQUIRED` 关闭，用户下一次生成时必须重新勾选发送同意。禁止改变 URL 或接收方却沿用旧 revision。模型名、协议、推理强度、请求头和 temperature 仍不能由环境变量覆盖；contract v10 只允许标准 Bearer 鉴权和 JSON 内容头。
+
+本次模型、强度及 provider 请求契约升级会改变 provider 配置指纹。仍绑定旧指纹的活动任务按现有校验逻辑以 `AI_DATA_CONSENT_REQUIRED` 关闭，用户重新勾选后发起新任务；无需清空任务库或迁移全部任务。应用版本 `0.2.0`、用户 schema v8、计划 contract v2、planner v7、task schema v3 和同意协议 v2 均不变，已成功生成的候选、已确认及历史餐单和其他用户数据保持原样。
 
 以下只有两个非秘密资源参数可选；通常保持默认值：
 
@@ -76,11 +80,11 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 
 八个云函数的 `wx-server-sdk` 均固定为 `4.0.2`，并提交各自的 lockfile v3。部署时使用仓库中的 `package.json` 和 `package-lock.json` 云端安装依赖；不要删除锁文件、改回 `latest`，也不要提交 `node_modules`。升级 SDK 时应单独修改明确版本、重新生成全部八个锁文件并跑完整验证，不能让正式部署随 npm 标签漂移。
 
-部署者可在本机进程环境临时只设置项目专用的 `MEAL_AI_LIVE_TEST_KEY` 后，显式运行 `node scripts/test-ai-provider-live.js --smoke` 做最低成本连通测试，或运行 `node scripts/test-ai-provider-live.js --contract` 做当前固定 10 天合成输入的完整契约测试。脚本无参数时拒绝联网，即使环境中已存在测试 Key 也不会发出请求。本地联调入口会明确忽略通用 `AI_API_KEY`、`OPENAI_API_KEY` 以及运行时 URL、展示名、revision 和模型覆盖，只测试仓库默认 provider 配置，避免误用其他开发工具或项目的凭据。该变量仅用于本机联调；正式 `aiPlanner` 云函数读取上述四项正式配置。脚本只发送仓库内固定的虚构选择，输出仅包含脱敏错误分类、兼容配置和数量摘要，不读取用户数据库，不保存模型原文，也不会打印 URL、Key、请求头、上游响应体或模型名；不要在命令参数中直接拼接 Key。真实验收仍必须从目标微信云函数发起，不能用经过本机代理的结果代替。1、10、14 天的边界覆盖由本地契约和页面测试分别验证，不把单次真实上游联调误写成全部周期实测。
+部署者可在本机进程环境临时设置项目专用的 `MEAL_AI_LIVE_TEST_KEY`、`MEAL_AI_LIVE_TEST_BASE_URL`、`MEAL_AI_LIVE_TEST_PROVIDER_NAME` 和 `MEAL_AI_LIVE_TEST_PROVIDER_REVISION` 后，显式运行 `node scripts/test-ai-provider-live.js --smoke` 做最小连通测试，或运行 `node scripts/test-ai-provider-live.js --contract` 做当前固定 10 天合成输入的完整契约测试。脚本无参数时拒绝联网，即使环境中已存在测试配置也不会发出请求。本地联调入口会明确忽略通用 `AI_API_KEY`、`OPENAI_API_KEY` 以及正式运行时 URL、展示名、revision 和模型覆盖，只读取这四项项目专用测试配置，并保留代码固定的 `gpt-5.6-sol` 和 `max`，避免误用其他开发工具或项目的凭据。这四项变量仅用于本机联调；正式 `aiPlanner` 云函数读取上述四项正式配置。脚本只发送仓库内固定的虚构选择，输出仅包含脱敏错误分类、兼容配置和数量摘要，不读取用户数据库，不保存模型原文，也不会打印 URL、Key、请求头、上游响应体或模型名；不要在命令参数中直接拼接 Key，也不要把真实测试配置写入文档或仓库。真实验收仍必须从目标微信云函数发起，不能用经过本机代理的结果代替。1、10、14 天的边界覆盖由本地契约和页面测试分别验证，不把单次真实上游联调误写成全部周期实测。
 
 AI 请求只从云函数发出。前端仅提交用户主动选择的餐次、任意 1–14 天周期（默认 1 天）、至少一项饮食目标/风格/补充目标、忌口、健康约束，以及用户明确确认的“不安排运动”或逐日运动安排；旧偏好不会自动视为已确认。云函数在创建任务前重复校验上述意图，AI 返回内容必须通过契约、结构化食材、长度、数量和健康安全校验后，才能保存为 `draftPlan`。
 
-生成器 v7 会按分片索引顺序生成详情，每次只生成 1 个餐位，并把已完成分片的餐名作为后续分片禁用清单。新请求和新计划使用 AI contract v2；固定 provider 配置仍为 `gpt-5.6`、Responses、`store:false` 和 16000 输出 token 上限，不通过缩减输出预算降低契约完整性。上游返回与前序餐名语义相同或出现可重试故障时，当前分片最多尝试 2 次；任务最长保留 2 小时，最终合并仍执行全计划严格去重。升级部署会把生成器或契约版本不匹配的活动任务明确关闭，用户需重新发起；已经确认、候选和历史中的 contract v1 餐单以及 legacy contract v0 餐单仍可使用，采购勾选、健康记录和私人资料不会被改写。
+生成器 v7 会按分片索引顺序生成详情，每次只生成 1 个餐位，并把已完成分片的餐名作为后续分片禁用清单。新请求和新计划使用 AI contract v2；固定 provider 配置为 `gpt-5.6-sol`、`reasoning.effort: "max"`、Responses、`store:false` 和 16000 输出 token 上限，不通过缩减输出预算降低契约完整性。上游返回与前序餐名语义相同或出现可重试故障时，当前分片最多尝试 2 次；任务最长保留 2 小时，最终合并仍执行全计划严格去重。升级部署会把生成器或契约版本不匹配的活动任务明确关闭，用户需重新发起；已经确认、候选和历史中的 contract v1 餐单以及 legacy contract v0 餐单仍可使用，采购勾选、健康记录和私人资料不会被改写。
 
 AI task schema v3 会在任务启动时保存本次同意协议版本和规范化 `activePlan` / `draftPlan` 的摘要，并在 finalize 事务中与最新计划摘要比较。部署时先更新 `aiPlanner`，再更新并启用 `mealAiMaintenance`；不要只部署其中一个。升级前已存在且没有同意版本的活动任务会失败关闭为 `AI_DATA_CONSENT_REQUIRED`；具有同意版本但没有摘要的旧任务关闭为 `conflict`。两者都不会写入候选计划，用户需回到确认页重新勾选并生成。维护函数会压缩这些旧任务、清除仍匹配的活动指针并清理遗留分片，但不会读取或修改 `meal_user_states`。
 

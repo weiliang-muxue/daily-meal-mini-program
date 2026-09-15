@@ -24,13 +24,13 @@ const {
 } = require('./provider-compat')
 
 const baseBody = {
-  model: 'model-placeholder',
+  model: 'gpt-5.6-sol',
   instructions: 'fixed-system-instructions',
   store: false,
   stream: false,
   input: [{ role: 'user', content: [{ type: 'input_text', text: 'synthetic-user-input' }] }],
   max_output_tokens: 16000,
-  reasoning: { effort: 'xhigh' },
+  reasoning: { effort: 'max' },
   text: { format: { type: 'json_object' } },
   temperature: 0.2,
 }
@@ -50,17 +50,27 @@ assert.strictEqual(normalizeProfile('unknown'), PROFILE_FULL)
 assert(profilePath(PROFILE_NO_MAX_TOKENS).includes(PROFILE_NO_MAX_TOKENS_OR_REASONING))
 assert(profilePath(PROFILE_NO_MAX_TOKENS).includes(PROFILE_NO_MAX_TOKENS_OR_TEXT))
 assert.strictEqual(profilePath(PROFILE_NO_MAX_TOKENS).includes(PROFILE_NO_REASONING), false)
-assert.strictEqual(allowedProfileTransition(PROFILE_NO_MAX_TOKENS_OR_REASONING, PROFILE_NO_MAX_TOKENS), false)
+assert.strictEqual(allowedProfileTransition(PROFILE_NO_MAX_TOKENS_OR_REASONING, PROFILE_NO_MAX_TOKENS), true)
 assert.strictEqual(allowedProfileTransition(PROFILE_NO_MAX_TOKENS, PROFILE_MINIMAL), true)
 assert.strictEqual(allowedProfileTransition(PROFILE_MINIMAL, PROFILE_MINIMAL_NO_STREAM), true)
 assert.strictEqual(allowedProfileTransition(PROFILE_FULL, PROFILE_MINIMAL_NO_STREAM), true)
 
+function assertLockedBody(body) {
+  assert.strictEqual(body.model, 'gpt-5.6-sol')
+  assert.deepStrictEqual(body.reasoning, { effort: 'max' })
+  assert.strictEqual(body.instructions, baseBody.instructions)
+  assert.strictEqual(body.input, baseBody.input)
+  assert.strictEqual(body.store, false)
+  if (Object.prototype.hasOwnProperty.call(body, 'stream')) assert.strictEqual(body.stream, false)
+  // Inspect the serialized payload too, since this is what reaches the provider.
+  const serializedBody = JSON.parse(JSON.stringify(body))
+  assert.strictEqual(serializedBody.model, 'gpt-5.6-sol')
+  assert.deepStrictEqual(serializedBody.reasoning, { effort: 'max' })
+}
+
 for (const profile of PROFILES) {
   const value = bodyForProfile(baseBody, profile)
-  assert.strictEqual(value.model, baseBody.model)
-  assert.strictEqual(value.instructions, baseBody.instructions)
-  assert.strictEqual(value.input, baseBody.input)
-  assert.strictEqual(value.store, false)
+  assertLockedBody(value)
   if (profile === PROFILE_MINIMAL_NO_STREAM) {
     assert.strictEqual(Object.prototype.hasOwnProperty.call(value, 'stream'), false)
   } else {
@@ -71,18 +81,24 @@ for (const profile of PROFILES) {
   assert(!serialized.includes('api_key'))
 }
 assert.strictEqual(Object.prototype.hasOwnProperty.call(bodyForProfile(baseBody, PROFILE_NO_MAX_TOKENS), 'max_output_tokens'), false)
-assert.strictEqual(Object.prototype.hasOwnProperty.call(bodyForProfile(baseBody, PROFILE_NO_REASONING), 'reasoning'), false)
+assert.deepStrictEqual(bodyForProfile(baseBody, PROFILE_NO_REASONING).reasoning, { effort: 'max' })
 assert.strictEqual(Object.prototype.hasOwnProperty.call(bodyForProfile(baseBody, PROFILE_NO_TEXT), 'text'), false)
 assert.deepStrictEqual(Object.keys(bodyForProfile(baseBody, PROFILE_MINIMAL)).sort(), [
-  'input', 'instructions', 'model', 'store', 'stream',
+  'input', 'instructions', 'model', 'reasoning', 'store', 'stream',
 ])
 assert.deepStrictEqual(Object.keys(bodyForProfile(baseBody, PROFILE_MINIMAL_NO_STREAM)).sort(), [
-  'input', 'instructions', 'model', 'store',
+  'input', 'instructions', 'model', 'reasoning', 'store',
 ])
 assert.throws(() => bodyForProfile({ ...baseBody, store: true }, PROFILE_FULL), (error) => (
   error.code === 'AI_REQUEST_INVALID' && error.retryable === false
 ))
 for (const invalidBody of [
+  { ...baseBody, model: 'gpt-5.6' },
+  { ...baseBody, model: undefined },
+  { ...baseBody, reasoning: undefined },
+  { ...baseBody, reasoning: {} },
+  { ...baseBody, reasoning: [] },
+  { ...baseBody, reasoning: { effort: 'xhigh' } },
   { ...baseBody, instructions: '' },
   { ...baseBody, instructions: undefined },
   { ...baseBody, stream: true },
@@ -102,11 +118,11 @@ for (const protectedParam of ['store', 'instructions', 'input', 'model']) {
   assert.strictEqual(nextCompatibilityProfile(PROFILE_FULL, { compatibilityParam: protectedParam }), '')
   assert.strictEqual(nextCompatibilityProfile(PROFILE_MINIMAL, { compatibilityParam: protectedParam }), '')
 }
-assert.strictEqual(nextCompatibilityProfile(PROFILE_FULL, { compatibilityParam: 'reasoning.effort' }), PROFILE_NO_REASONING)
+assert.strictEqual(nextCompatibilityProfile(PROFILE_FULL, { compatibilityParam: 'reasoning.effort' }), '')
 assert.strictEqual(nextCompatibilityProfile(PROFILE_FULL, { compatibilityParam: 'text.format.type' }), PROFILE_NO_TEXT)
-assert.strictEqual(nextCompatibilityProfile(PROFILE_NO_MAX_TOKENS, { compatibilityParam: 'reasoning' }), PROFILE_NO_MAX_TOKENS_OR_REASONING)
-assert.strictEqual(nextCompatibilityProfile(PROFILE_NO_REASONING, { compatibilityParam: 'text' }), PROFILE_NO_REASONING_OR_TEXT)
-assert.strictEqual(nextCompatibilityProfile(PROFILE_NO_MAX_TOKENS_OR_TEXT, { compatibilityParam: 'reasoning' }), PROFILE_MINIMAL)
+assert.strictEqual(nextCompatibilityProfile(PROFILE_NO_MAX_TOKENS, { compatibilityParam: 'reasoning' }), '')
+assert.strictEqual(nextCompatibilityProfile(PROFILE_NO_REASONING, { compatibilityParam: 'text' }), PROFILE_NO_TEXT)
+assert.strictEqual(nextCompatibilityProfile(PROFILE_NO_MAX_TOKENS_OR_TEXT, { compatibilityParam: 'reasoning' }), '')
 assert.strictEqual(nextCompatibilityProfile(PROFILE_FULL, {}), PROFILE_MINIMAL)
 assert.strictEqual(nextCompatibilityProfile(PROFILE_FULL, { compatibilityParam: 'stream' }), '')
 assert.strictEqual(nextCompatibilityProfile(PROFILE_MINIMAL, { compatibilityParam: 'stream' }), '')
@@ -136,9 +152,21 @@ function rejected(param, statusCode = 400) {
   return error
 }
 
+function requestWithContractChecks(options) {
+  const request = options.request
+  return requestResponsesCompatible({}, baseBody, {}, {
+    ...options,
+    async request(config, body, endpoint, requestOptions) {
+      assertLockedBody(body)
+      assert.strictEqual(requestOptions.deadlineAt, options.deadlineAt)
+      return request(config, body, endpoint, requestOptions)
+    },
+  })
+}
+
 async function targetedCase(param, expectedProfile, removedField) {
   const calls = []
-  const result = await requestResponsesCompatible({}, baseBody, {}, {
+  const result = await requestWithContractChecks({
     deadlineAt: 50000,
     now: () => 0,
     async request(_config, body) {
@@ -156,25 +184,67 @@ async function targetedCase(param, expectedProfile, removedField) {
 
 ;(async () => {
   await targetedCase('max_output_tokens', PROFILE_NO_MAX_TOKENS, 'max_output_tokens')
-  await targetedCase('reasoning.effort', PROFILE_NO_REASONING, 'reasoning')
   await targetedCase('text.format.type', PROFILE_NO_TEXT, 'text')
 
+  for (const initialProfile of PROFILES) {
+    let initialCalls = 0
+    const reused = await requestWithContractChecks({
+      deadlineAt: 50000,
+      initialProfile,
+      now: () => 0,
+      async request() { initialCalls += 1; return { status: 'completed' } },
+    })
+    assert.strictEqual(initialCalls, 1)
+    assert.strictEqual(reused.profile, initialProfile)
+
+    for (const param of ['reasoning', 'reasoning.effort']) {
+      for (const statusCode of [400, 422]) {
+        let rejectedCalls = 0
+        const failure = rejected(param, statusCode)
+        await assert.rejects(requestWithContractChecks({
+          deadlineAt: 50000,
+          initialProfile,
+          now: () => 0,
+          async request() { rejectedCalls += 1; throw failure },
+        }), (error) => error === failure)
+        assert.strictEqual(rejectedCalls, 1, 'Explicit reasoning rejection must never downgrade or retry')
+      }
+    }
+  }
+
+  const combinedBodies = []
+  const combined = await requestWithContractChecks({
+    deadlineAt: 50000,
+    now: () => 0,
+    async request(_config, body) {
+      combinedBodies.push(body)
+      if (combinedBodies.length === 1) throw rejected('max_output_tokens')
+      if (combinedBodies.length === 2) throw rejected('text.format.type')
+      return { status: 'completed' }
+    },
+  })
+  assert.strictEqual(combined.profile, PROFILE_NO_MAX_TOKENS_OR_TEXT)
+  assert.strictEqual(combinedBodies.length, 3)
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(combinedBodies[1], 'max_output_tokens'), false)
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(combinedBodies[2], 'max_output_tokens'), false)
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(combinedBodies[2], 'text'), false)
+
   const genericBodies = []
-  await assert.rejects(requestResponsesCompatible({}, baseBody, {}, {
+  await assert.rejects(requestWithContractChecks({
     deadlineAt: 50000,
     now: () => 0,
     async request(_config, body) { genericBodies.push(body); throw rejected('') },
   }), (error) => error.code === 'AI_UPSTREAM_REQUEST_REJECTED')
   assert.strictEqual(genericBodies.length, 3)
-  assert.deepStrictEqual(Object.keys(genericBodies[1]).sort(), ['input', 'instructions', 'model', 'store', 'stream'])
-  assert.deepStrictEqual(Object.keys(genericBodies[2]).sort(), ['input', 'instructions', 'model', 'store'])
+  assert.deepStrictEqual(Object.keys(genericBodies[1]).sort(), ['input', 'instructions', 'model', 'reasoning', 'store', 'stream'])
+  assert.deepStrictEqual(Object.keys(genericBodies[2]).sort(), ['input', 'instructions', 'model', 'reasoning', 'store'])
   assert(genericBodies.every((body) => (
     body.instructions === baseBody.instructions && body.input === baseBody.input && body.store === false
   )))
 
   for (const protectedParam of ['store', 'instructions', 'input']) {
     let calls = 0
-    await assert.rejects(requestResponsesCompatible({}, baseBody, {}, {
+    await assert.rejects(requestWithContractChecks({
       deadlineAt: 50000,
       now: () => 0,
       async request() { calls += 1; throw rejected(protectedParam) },
@@ -183,7 +253,7 @@ async function targetedCase(param, expectedProfile, removedField) {
   }
 
   const noStreamBodies = []
-  const noStream = await requestResponsesCompatible({}, baseBody, {}, {
+  const noStream = await requestWithContractChecks({
     deadlineAt: 50000,
     initialProfile: PROFILE_MINIMAL,
     now: () => 0,
@@ -204,7 +274,7 @@ async function targetedCase(param, expectedProfile, removedField) {
 
   for (const explicitParam of ['store', 'instructions', 'input', 'model', 'stream']) {
     let explicitCalls = 0
-    await assert.rejects(requestResponsesCompatible({}, baseBody, {}, {
+    await assert.rejects(requestWithContractChecks({
       deadlineAt: 50000,
       initialProfile: PROFILE_MINIMAL,
       now: () => 0,
@@ -213,18 +283,8 @@ async function targetedCase(param, expectedProfile, removedField) {
     assert.strictEqual(explicitCalls, 1)
   }
 
-  const reusedBodies = []
-  const reused = await requestResponsesCompatible({}, baseBody, {}, {
-    deadlineAt: 50000,
-    initialProfile: PROFILE_NO_REASONING,
-    now: () => 0,
-    async request(_config, body) { reusedBodies.push(body); return { status: 'completed' } },
-  })
-  assert.strictEqual(reused.profile, PROFILE_NO_REASONING)
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(reusedBodies[0], 'reasoning'), false)
-
   let deadlineCalls = 0
-  await assert.rejects(requestResponsesCompatible({}, baseBody, {}, {
+  await assert.rejects(requestWithContractChecks({
     deadlineAt: MIN_FALLBACK_REMAINING_MS,
     now: () => deadlineCalls,
     async request() { deadlineCalls += 1; throw rejected('text') },
@@ -232,7 +292,7 @@ async function targetedCase(param, expectedProfile, removedField) {
   assert.strictEqual(deadlineCalls, 1)
 
   let finalDeadlineCalls = 0
-  await assert.rejects(requestResponsesCompatible({}, baseBody, {}, {
+  await assert.rejects(requestWithContractChecks({
     deadlineAt: MIN_FALLBACK_REMAINING_MS,
     initialProfile: PROFILE_MINIMAL,
     now: () => finalDeadlineCalls,

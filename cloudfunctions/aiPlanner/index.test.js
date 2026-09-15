@@ -427,6 +427,50 @@ test('aiPlanner transactions do not issue parallel database reads', () => {
   assert.strictEqual(/Promise\.all\s*\(/.test(source), false)
 })
 
+test('production outline and detail bodies use the requested Sol max model settings', () => {
+  const { buildOutlineRequestBody, buildDetailRequestBody, buildChunkLayout } = require('./lib')
+  const options = planner._test.providerOptions(providerConfig)
+  const request = normalizeRequest({ ...input, durationDays: 1, exerciseByDay: [] })
+  const outline = { title: '合成计划', rationale: ['合成测试依据'] }
+  const chunk = buildChunkLayout(request)[0]
+  const bodies = [
+    buildOutlineRequestBody(request, options),
+    buildDetailRequestBody(request, outline, chunk, options),
+  ]
+  for (const body of bodies) {
+    assert.strictEqual(body.model, 'gpt-5.6-sol')
+    assert.deepStrictEqual(body.reasoning, { effort: 'max' })
+    assert.strictEqual(body.store, false)
+    assert.strictEqual(body.max_output_tokens, 16000)
+  }
+})
+
+test('v9 active tasks close before Sol max execution without changing saved meal state', async () => {
+  reset()
+  const task = storedTask(owner, 54, 175)
+  const oldIdentity = {
+    providerContractRevision: 9,
+    providerRevision: providerConfig.providerRevision,
+    endpoint: 'https://example.invalid/responses',
+    providerDisplayName: 'Synthetic AI',
+    model: 'gpt-5.6',
+    apiStyle: 'responses',
+    reasoningEffort: '',
+  }
+  task.providerConfigVersion = require('crypto').createHash('sha256')
+    .update('meal-ai-provider-config-v1\0', 'utf8').update(JSON.stringify(oldIdentity), 'utf8').digest('hex')
+  assert.notStrictEqual(task.providerConfigVersion, providerConfig.providerConfigVersion)
+  put('meal_ai_tasks', task._id, planner._test.taskData(task))
+  put('meal_ai_controls', owner, { owner, activeTaskId: task._id, generationEpoch: 54 })
+  const beforeState = get('meal_user_states', owner)
+  const claimed = await planner._test.claimWork(owner, task._id)
+  assert.strictEqual(claimed.claim, null)
+  assert.strictEqual(claimed.task.status, 'failed')
+  assert.strictEqual(claimed.task.errorCode, 'AI_DATA_CONSENT_REQUIRED')
+  assert.deepStrictEqual(get('meal_user_states', owner), beforeState)
+  assert.strictEqual(databaseCalls.some((call) => call.name === 'meal_user_states' && call.operation !== 'get'), false)
+})
+
 test('planner reads schema v7 in memory while older and future schemas fail closed', () => {
   const legacy = {
     ...defaults(),

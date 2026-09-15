@@ -24,7 +24,7 @@ const cacheNamespace = 'b'.repeat(32)
 assert.strictEqual(AI_DATA_CONSENT_VERSION, 2)
 assert.strictEqual(AI_CONTRACT_VERSION, 2)
 assert.strictEqual(AI_PLANNER_VERSION, '7')
-assert.strictEqual(AI_PROVIDER_CONTRACT_REVISION, 9)
+assert.strictEqual(AI_PROVIDER_CONTRACT_REVISION, 10)
 assert.strictEqual(TASK_SCHEMA_VERSION, 3)
 assert.deepStrictEqual(QUERY_STATUSES, [
   'queued', 'running', 'finalizing', 'pending', 'processing', 'generating', 'validating', 'active',

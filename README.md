@@ -4,7 +4,7 @@
 
 当前候选版本为 `0.2.0`，状态为 `release-candidate`。运行时对应提交 `45d4d0e` 已于 `2026-09-04` 以同一代码树完成预览、编译和微信开发版本上传；尚未设为体验版、提交微信审核或正式发布。当前候选只位于 Branch `v0.2.0`，上一源码基线由 Tag `v0.1.0` 保留，`main` 不代表本候选树；候选能力与正式发布状态必须以 [CHANGELOG.md](CHANGELOG.md) 和 `release-manifest.json` 为准。上传、审核及正式发布完成前不创建 `v0.2.0` Tag；审核通过、仓库所有者最终确认并完成微信正式发布后，才在审核通过的完全相同 commit 上创建 annotated Tag。
 
-当前兼容矩阵为用户状态 schema v8、新生成请求与计划 contract v2、AI 生成器 v7、AI task schema v3、AI 数据同意协议 v2、AI provider 请求契约 v9。服务商切换会使旧活动任务失败关闭并要求用户重新勾选，不会自动沿用旧同意；升级不改写已确认、候选或历史餐单。历史 contract v1 餐单与 legacy contract v0 静态迁移餐单仍可查看、确认和恢复。
+当前兼容矩阵为用户状态 schema v8、新生成请求与计划 contract v2、AI 生成器 v7、AI task schema v3、AI 数据同意协议 v2、AI provider 请求契约 v10。模型与推理强度固定为 `gpt-5.6-sol` 和 `reasoning.effort: "max"`。服务商切换或版本化 provider 配置变化时，配置指纹不匹配的旧活动任务会按现有逻辑失败关闭并要求用户重新勾选，不会自动沿用旧同意；升级不改写已确认、候选或历史餐单。历史 contract v1 餐单与 legacy contract v0 静态迁移餐单仍可查看、确认和恢复。
 
 ## 已实现
 
@@ -40,4 +40,4 @@
 - 用户饮食记录、采购勾选、运动、体重、头像、照片和数据库导出只存云端或本机私有目录，不进入 Git。
 - `.githooks/pre-commit` 检查暂存索引，`.githooks/pre-push` 检查即将推送的完整提交范围，拦截疑似 AppID、AppSecret、令牌、私钥、微信身份标识和个人数据文件；先提交后删除也不能绕过。
 
-首次克隆后运行 `git config core.hooksPath .githooks` 启用本地提交钩子。AI 模型和 Responses 协议是版本化代码配置；provider 请求契约 v9 使用部署者在云函数运行时填写的 HTTPS Responses 地址与 `gpt-5.6`，云函数只发送标准 Bearer 鉴权和 JSON 内容头，不发送 provider 专用鉴权或兼容头，也不主动附加未在服务配置中声明的推理强度。兼容回退受 deadline 约束，每个档位始终保留 `model`、`instructions`、`input` 和 `store:false`。正式 `AI_API_KEY`、`AI_API_BASE_URL`、`AI_PROVIDER_DISPLAY_NAME` 与 `AI_PROVIDER_REVISION` 只在微信云函数环境变量中配置；只轮换同一接收方的 Key 时 revision 不变，服务地址、接收方或展示名变化时必须提高 revision，使旧活动任务关闭并要求用户重新确认发送。真实 Key 绝不进入代码、日志或 Git。云开发登录不需要 AppSecret，只有改用自建后端兼容方案时才在服务端配置 AppSecret。首位管理员通过发布前临时云函数初始化，成功后必须立即从云端删除该函数。
+首次克隆后运行 `git config core.hooksPath .githooks` 启用本地提交钩子。AI 模型、推理强度和 Responses 协议是版本化代码配置；provider 请求契约 v10 使用部署者在云函数运行时填写的 HTTPS Responses 地址，固定发送 `model: "gpt-5.6-sol"`、`reasoning: { effort: "max" }` 和 `store:false`。云函数只发送标准 Bearer 鉴权和 JSON 内容头，不发送 provider 专用鉴权或兼容头。兼容回退受 deadline 约束，每个档位始终保留 `model`、`instructions`、`input`、`store:false` 和 `reasoning.effort: "max"`；上游不支持该模型或强度时明确失败，不删除或降低 `max`。正式 `AI_API_KEY`、`AI_API_BASE_URL`、`AI_PROVIDER_DISPLAY_NAME` 与 `AI_PROVIDER_REVISION` 只在微信云函数环境变量中配置；只轮换同一接收方的 Key 时 revision 不变，服务地址、接收方或展示名变化时必须提高 revision，使旧活动任务关闭并要求用户重新确认发送。真实地址、Key 和接收方配置不进入代码、日志或 Git；第三方服务是否支持当前模型与 `max` 必须通过目标云函数的真实生成验收。云开发登录不需要 AppSecret，只有改用自建后端兼容方案时才在服务端配置 AppSecret。首位管理员通过发布前临时云函数初始化，成功后必须立即从云端删除该函数。

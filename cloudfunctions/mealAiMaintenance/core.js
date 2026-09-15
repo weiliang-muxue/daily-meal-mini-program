@@ -18,7 +18,7 @@ const CACHE_NAMESPACE_PATTERN = /^[a-f0-9]{32}$/
 const AI_DATA_CONSENT_VERSION = 2
 const AI_CONTRACT_VERSION = 2
 const AI_PLANNER_VERSION = '7'
-const AI_PROVIDER_CONTRACT_REVISION = 9
+const AI_PROVIDER_CONTRACT_REVISION = 10
 const TASK_SCHEMA_VERSION = 3
 
 function maintenanceError(code, message) {

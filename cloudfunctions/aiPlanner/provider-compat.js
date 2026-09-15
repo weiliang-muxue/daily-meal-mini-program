@@ -1,6 +1,7 @@
 'use strict'
 
 const { requestJson } = require('./transport')
+const { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } = require('./provider-config')
 
 const MIN_FALLBACK_REMAINING_MS = 5000
 const PROFILE_FULL = 'full'
@@ -26,13 +27,15 @@ const PROFILES = Object.freeze([
 const PROFILE_OMISSIONS = Object.freeze({
   [PROFILE_FULL]: Object.freeze([]),
   [PROFILE_NO_MAX_TOKENS]: Object.freeze(['max_output_tokens']),
-  [PROFILE_NO_REASONING]: Object.freeze(['reasoning']),
+  // Historical profile identifiers remain readable, but reasoning is now
+  // mandatory in every request, including profiles saved before this contract.
+  [PROFILE_NO_REASONING]: Object.freeze([]),
   [PROFILE_NO_TEXT]: Object.freeze(['text']),
-  [PROFILE_NO_MAX_TOKENS_OR_REASONING]: Object.freeze(['max_output_tokens', 'reasoning']),
+  [PROFILE_NO_MAX_TOKENS_OR_REASONING]: Object.freeze(['max_output_tokens']),
   [PROFILE_NO_MAX_TOKENS_OR_TEXT]: Object.freeze(['max_output_tokens', 'text']),
-  [PROFILE_NO_REASONING_OR_TEXT]: Object.freeze(['reasoning', 'text']),
-  [PROFILE_MINIMAL]: Object.freeze(['max_output_tokens', 'reasoning', 'temperature', 'text']),
-  [PROFILE_MINIMAL_NO_STREAM]: Object.freeze(['max_output_tokens', 'reasoning', 'temperature', 'text', 'stream']),
+  [PROFILE_NO_REASONING_OR_TEXT]: Object.freeze(['text']),
+  [PROFILE_MINIMAL]: Object.freeze(['max_output_tokens', 'temperature', 'text']),
+  [PROFILE_MINIMAL_NO_STREAM]: Object.freeze(['max_output_tokens', 'temperature', 'text', 'stream']),
 })
 
 function normalizeProfile(value, fallback = PROFILE_FULL) {
@@ -47,7 +50,9 @@ function profilePath(value) {
 function assertRequiredFields(body, allowMissingStream = false) {
   const hasStream = body && Object.prototype.hasOwnProperty.call(body, 'stream')
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
-      typeof body.model !== 'string' || !body.model.trim() ||
+      body.model !== DEFAULT_MODEL ||
+      !body.reasoning || typeof body.reasoning !== 'object' || Array.isArray(body.reasoning) ||
+      body.reasoning.effort !== DEFAULT_REASONING_EFFORT ||
       typeof body.instructions !== 'string' || !body.instructions.trim() ||
       !Object.prototype.hasOwnProperty.call(body, 'input') ||
       body.store !== false || (hasStream ? body.stream !== false : !allowMissingStream)) {
@@ -70,6 +75,7 @@ function bodyForProfile(body, rawProfile) {
   if (profile === PROFILE_MINIMAL) {
     return {
       model: body.model,
+      reasoning: body.reasoning,
       instructions: body.instructions,
       input: body.input,
       store: false,
@@ -79,6 +85,7 @@ function bodyForProfile(body, rawProfile) {
   if (profile === PROFILE_MINIMAL_NO_STREAM) {
     const value = {
       model: body.model,
+      reasoning: body.reasoning,
       instructions: body.instructions,
       input: body.input,
       store: false,
@@ -117,8 +124,7 @@ function profileWithOmission(current, field) {
   const matched = PROFILES.find((candidate) => (
     candidate !== PROFILE_MINIMAL && [...PROFILE_OMISSIONS[candidate]].sort().join(',') === requested
   ))
-  return matched || (['max_output_tokens', 'reasoning', 'text'].every((value) => omissions.has(value))
-    ? PROFILE_MINIMAL : '')
+  return matched || ''
 }
 
 function compatibilityField(error) {
@@ -137,7 +143,7 @@ function nextCompatibilityProfile(current, error) {
   if (profile === PROFILE_MINIMAL) return param ? '' : PROFILE_MINIMAL_NO_STREAM
   if (param) {
     const field = compatibilityField(error)
-    if (field === 'stream') return ''
+    if (field === 'stream' || field === 'reasoning') return ''
     return profileWithOmission(profile, field)
   }
   return PROFILE_MINIMAL

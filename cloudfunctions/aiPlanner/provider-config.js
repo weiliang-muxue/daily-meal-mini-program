@@ -5,12 +5,12 @@ const crypto = require('crypto')
 // Provider connection details are deliberately never bundled. They must be
 // supplied by the cloud-function environment at runtime.
 const DEFAULT_ENDPOINT = ''
-const PROVIDER_CONTRACT_REVISION = 9
+const PROVIDER_CONTRACT_REVISION = 10
 const DEFAULT_PROVIDER_REVISION = 0
 const DEFAULT_PROVIDER_DISPLAY_NAME = ''
-const DEFAULT_MODEL = 'gpt-5.6'
+const DEFAULT_MODEL = 'gpt-5.6-sol'
 const DEFAULT_API_STYLE = 'responses'
-const DEFAULT_REASONING_EFFORT = ''
+const DEFAULT_REASONING_EFFORT = 'max'
 const DEFAULT_TIMEOUT_MS = 45000
 const MIN_TIMEOUT_MS = 5000
 const MAX_TIMEOUT_MS = 45000

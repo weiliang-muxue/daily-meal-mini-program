@@ -109,7 +109,10 @@ const guardedDiagnosticEnvironment = new Proxy(keyGuardedEnvironment, {
 assert.deepStrictEqual(nonSecretConfigurationChecks(guardedDiagnosticEnvironment), validDiagnosticChecks)
 assert.deepStrictEqual(new Set(diagnosticReads), diagnosticAllowedReads)
 
-assert.strictEqual(PROVIDER_CONTRACT_REVISION, 9)
+assert.strictEqual(PROVIDER_CONTRACT_REVISION, 10)
+assert.strictEqual(DEFAULT_MODEL, 'gpt-5.6-sol')
+assert.strictEqual(DEFAULT_API_STYLE, 'responses')
+assert.strictEqual(DEFAULT_REASONING_EFFORT, 'max')
 assert.strictEqual(DEFAULT_ENDPOINT, '')
 assert.strictEqual(DEFAULT_PROVIDER_REVISION, 0)
 assert.strictEqual(DEFAULT_PROVIDER_DISPLAY_NAME, '')

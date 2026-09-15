@@ -207,6 +207,8 @@ assert.strictEqual(aiProviderConfig.PROVIDER_CONTRACT_REVISION, releaseManifest.
   '云函数 provider 契约版本与版本清单不一致')
 assert.strictEqual(aiPlannerClient.PROVIDER_CONTRACT_REVISION, releaseManifest.aiProviderContractRevision,
   '小程序 provider 契约版本与版本清单不一致')
+assert.strictEqual(aiMaintenanceCore.AI_PROVIDER_CONTRACT_REVISION, releaseManifest.aiProviderContractRevision,
+  'AI 维护 provider 契约版本与版本清单不一致')
 RETIRED_PROVIDER_DIAGNOSTIC_FILES.forEach((file) => {
   assert.strictEqual(fs.existsSync(path.join(root, file)), false, `正式部署树不得包含临时诊断文件 ${file}`)
 })
@@ -379,21 +381,21 @@ assert.strictEqual(aiPlaceholders.AI_PROVIDER_REVISION, '<YOUR_AI_PROVIDER_REVIS
 assert.strictEqual(aiPlaceholders.AI_TIMEOUT_MS, '45000')
 assert.strictEqual(aiPlaceholders.AI_MAX_TOKENS, '16000')
 assert.strictEqual(aiProviderConfig.DEFAULT_ENDPOINT, '')
-assert.strictEqual(aiProviderConfig.DEFAULT_MODEL, 'gpt-5.6')
+assert.strictEqual(aiProviderConfig.DEFAULT_MODEL, 'gpt-5.6-sol')
 assert.strictEqual(aiProviderConfig.DEFAULT_API_STYLE, 'responses')
-assert.strictEqual(aiProviderConfig.DEFAULT_REASONING_EFFORT, '')
+assert.strictEqual(aiProviderConfig.DEFAULT_REASONING_EFFORT, 'max')
 assert.deepStrictEqual(aiProviderConfig.configuration({ AI_API_KEY: 'TEST_PLACEHOLDER_ONLY' }), {
   configured: false,
   providerDisplayName: '',
-  providerContractRevision: 9,
+  providerContractRevision: 10,
   providerRevision: 0,
   providerConfigVersion: '',
   url: null,
   apiKey: 'TEST_PLACEHOLDER_ONLY',
-  model: 'gpt-5.6',
+  model: 'gpt-5.6-sol',
   apiStyle: 'responses',
   temperature: undefined,
-  reasoningEffort: '',
+  reasoningEffort: 'max',
   timeoutMs: 45000,
   maxTokens: 16000,
 })

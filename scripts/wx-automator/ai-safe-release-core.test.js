@@ -161,23 +161,24 @@ test('rejects missing, invalid, reordered, duplicate, and unknown arguments', ()
 test('pins the release probe contract and carries the public provider revision into consent', () => {
   assert.deepEqual(RELEASE_COMPATIBILITY, {
     contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
-    providerContractRevision: 9, taskSchemaVersion: 3,
+    providerContractRevision: 10, taskSchemaVersion: 3,
   })
   assert.equal(releaseServiceCompatible({
     configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
-    providerContractRevision: 9, providerRevision: 23,
+    providerContractRevision: 10, providerRevision: 23,
   }), true)
   for (const incompatible of [
-    { configured: true, storageReady: true, contractVersion: 1, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '6', aiDataConsentVersion: 2, providerContractRevision: 9 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 1, providerContractRevision: 9 },
+    { configured: true, storageReady: true, contractVersion: 1, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '6', aiDataConsentVersion: 2, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 1, providerContractRevision: 10 },
     { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2 },
     { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 6 },
     { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 8, providerRevision: 23 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: 0 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: 1.5 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: '23' },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: 23 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 0 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 1.5 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: '23' },
   ]) assert.equal(releaseServiceCompatible(incompatible), false)
 
   const preferences = requestedPreferences(10)
