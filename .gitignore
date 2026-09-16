@@ -2,7 +2,6 @@ project.private.config.json
 project.config.json
 miniprogram/config.js
 cloudfunctions/*/node_modules/
-cloudfunctions/*/package-lock.json
 cloudfunctions/*/.env
 .env
 .env.*
@@ -19,6 +18,10 @@ cloudfunctions/*/.env
 *credentials*.json
 .cloudbaserc.json
 miniprogram/config.local.js
+scripts/wx-automator/node_modules/
+scripts/wx-automator/artifacts/
+scripts/wx-automator/.runtime/
+scripts/wx-automator/*recovery*.json
 
 # Local/private user data and recoverable exports must never enter Git.
 .local/
@@ -37,3 +40,39 @@ avatars/
 *.dump
 .DS_Store
 Thumbs.db
+*.log
+*.har
+logs/
+
+# Reviewed repository images are allowlisted by exact path and content hash in
+# scripts/check-staged-safety.js.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.heic
+*.svg
+*.pdf
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.tgz
+*.mp4
+*.mov
+*.avi
+*.wav
+*.mp3
+!source-assets/meal-plan-gpt-image-2.png
+!miniprogram/assets/meal-plan-cover.jpg
+!miniprogram/assets/icons/tabbar/plan.png
+!miniprogram/assets/icons/tabbar/plan-selected.png
+!miniprogram/assets/icons/tabbar/record.png
+!miniprogram/assets/icons/tabbar/record-selected.png
+!miniprogram/assets/icons/tabbar/shopping.png
+!miniprogram/assets/icons/tabbar/shopping-selected.png
+!miniprogram/assets/icons/tabbar/profile.png
+!miniprogram/assets/icons/tabbar/profile-selected.png

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用与部署支持
+    url: https://github.com/weiliang-muxue/daily-meal-mini-program/blob/main/SUPPORT.md
+    about: 先查看支持范围、提交信息要求和隐私注意事项。
+  - name: 安全问题报告
+    url: https://github.com/weiliang-muxue/daily-meal-mini-program/blob/main/SECURITY.md
+    about: 不要公开提交密钥、越权细节或真实用户数据。

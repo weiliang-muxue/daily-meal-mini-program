@@ -1,0 +1,100 @@
+<view class="screen reminder-screen">
+  <view class="page-heading">
+    <button class="page-navigation" bindtap="navigateFromPage" hover-class="control-pressed" disabled="{{calendarInstalling || calendarActionLocked}}" aria-label="{{pageNavigationLabel}}">
+      <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+    </button>
+    <view class="heading-copy">
+      <text class="heading-title">喝水提醒</text>
+      <text class="heading-detail">可选功能，默认关闭。设置使用北京时间。</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="surface status-panel" aria-label="正在加载喝水提醒设置">
+    <view class="loading-line skeleton"></view>
+    <view class="loading-line short skeleton"></view>
+    <text class="status-detail">正在加载设置</text>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="surface status-panel error-panel" aria-role="alert">
+    <text class="status-title">设置暂时无法加载</text>
+    <text class="status-detail">{{loadError}}</text>
+    <button class="secondary-button status-action" bindtap="retryLoad" disabled="{{loading}}">重试</button>
+  </view>
+
+  <block wx:else>
+    <view wx:if="{{offline}}" class="offline-strip" aria-role="status">
+      <text class="offline-title">当前处于离线状态</text>
+      <text class="offline-detail">可以调整本页，但同步到云端需要联网后重试保存。</text>
+    </view>
+
+    <view class="surface setting-card">
+      <label class="master-row touch-target" for="water-reminder-switch">
+        <view class="master-copy">
+          <text class="master-title">需要喝水提醒</text>
+          <text class="master-detail">关闭时不会申请权限，也不会创建任何日历事项</text>
+        </view>
+        <view class="switch-target">
+          <switch id="water-reminder-switch" checked="{{draft.enabled}}" color="{{nativeControlColor}}" bindchange="toggleEnabled" disabled="{{saving || calendarInstalling}}" aria-label="需要喝水提醒，当前{{draft.enabled ? '已开启' : '已关闭'}}" />
+        </view>
+      </label>
+
+      <view wx:if="{{draft.enabled}}" class="schedule-fields">
+        <view class="field-block">
+          <text class="field-label">提醒日期</text>
+          <view class="segmented" aria-label="提醒日期">
+            <button class="segment {{draft.cadence === 'daily' ? 'selected' : ''}}" data-cadence="daily" bindtap="chooseCadence" disabled="{{saving || calendarInstalling}}" aria-label="每日{{draft.cadence === 'daily' ? '，已选择' : ''}}">每日</button>
+            <button class="segment {{draft.cadence === 'weekdays' ? 'selected' : ''}}" data-cadence="weekdays" bindtap="chooseCadence" disabled="{{saving || calendarInstalling}}" aria-label="周一至周五{{draft.cadence === 'weekdays' ? '，已选择' : ''}}">周一至周五</button>
+          </view>
+          <text class="field-hint">“周一至周五”不包含法定节假日和调休判断。</text>
+        </view>
+
+        <view class="field-row">
+          <text class="field-label">开始时间</text>
+          <picker mode="time" value="{{draft.startTime}}" bindchange="changeStartTime" disabled="{{saving || calendarInstalling}}" aria-label="选择开始时间，当前 {{draft.startTime}}">
+            <view class="picker-value touch-target">{{draft.startTime}}</view>
+          </picker>
+        </view>
+        <view class="field-row">
+          <text class="field-label">结束时间</text>
+          <picker mode="time" value="{{draft.endTime}}" bindchange="changeEndTime" disabled="{{saving || calendarInstalling}}" aria-label="选择结束时间，当前 {{draft.endTime}}">
+            <view class="picker-value touch-target">{{draft.endTime}}</view>
+          </picker>
+        </view>
+        <view class="field-row">
+          <text class="field-label">提醒间隔</text>
+          <picker mode="selector" range="{{intervalOptions}}" range-key="label" value="{{intervalIndex}}" bindchange="changeInterval" disabled="{{saving || calendarInstalling}}" aria-label="选择提醒间隔，当前 {{intervalOptions[intervalIndex].label}}">
+            <view class="picker-value touch-target">{{intervalOptions[intervalIndex].label}}</view>
+          </picker>
+        </view>
+
+        <view wx:if="{{previewTimes.length}}" class="preview-block" aria-label="当天提醒时间预览">
+          <view class="preview-heading"><text>当天时间预览</text><text>{{previewText}}</text></view>
+          <view class="time-list">
+            <text wx:for="{{previewTimes}}" wx:key="*this" class="time-chip">{{item}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <text wx:if="{{saveError}}" class="inline-error" aria-role="alert">{{saveError}}</text>
+    <button class="primary-button save-button" bindtap="save" loading="{{saving}}" disabled="{{saving || calendarInstalling || scheduleInvalid || (!dirty && !syncPending)}}" hover-class="button-hover">{{saving ? '正在处理' : ((syncPending && !dirty) ? '重试同步' : '保存设置')}}</button>
+
+    <view class="surface calendar-card">
+      <text class="calendar-title">系统日历提醒</text>
+      <text class="calendar-detail">保存设置不会写入日历。只有你主动点击并再次确认后，才会请求系统日历权限。</text>
+      <text class="calendar-warning">修改或关闭设置不会自动删除此前系统日历事项，需在系统日历中删除。</text>
+
+      <view wx:if="{{draft.enabled}}" class="calendar-action-area">
+        <text class="calendar-count">当前排程将创建 {{calendarEntryCount}} 条系统日历重复规则，覆盖未来 {{repeatDays}} 天。周一至周五模式会为每个时间点分别创建 5 条每周规则。</text>
+        <button class="secondary-button calendar-button" bindtap="addToCalendar" loading="{{calendarInstalling}}" disabled="{{calendarInstalling || calendarActionLocked || saving || dirty || syncPending || scheduleInvalid || !saved.enabled}}">{{calendarInstalling ? '正在添加' : ((dirty || syncPending) ? '请先完成同步' : '添加到系统日历')}}</button>
+      </view>
+      <text wx:else class="calendar-disabled">喝水提醒关闭时，不申请权限、不创建日历事项。</text>
+
+      <view wx:if="{{calendarStatus !== 'idle'}}" class="calendar-status {{calendarStatus}}" aria-role="status">
+        <text wx:if="{{calendarInstalling}}" class="calendar-progress">进度 {{calendarProgress}} / {{calendarTotal}}</text>
+        <text class="calendar-message">{{calendarMessage}}</text>
+        <button wx:if="{{calendarPermissionDenied}}" class="permission-button" bindtap="openCalendarPermission">打开授权设置</button>
+      </view>
+    </view>
+  </block>
+</view>

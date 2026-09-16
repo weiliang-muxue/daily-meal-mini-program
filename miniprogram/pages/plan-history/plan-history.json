@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "餐单历史",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "@backgroundColor",
+  "backgroundTextStyle": "@backgroundTextStyle"
+}

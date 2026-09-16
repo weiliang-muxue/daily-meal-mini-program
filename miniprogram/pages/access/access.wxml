@@ -4,19 +4,37 @@
   <view class="access-content">
     <text class="brand">每天怎么吃</text>
     <text class="title">私人健康计划</text>
-    <text class="copy">仅供受邀请的成员使用。每个人的餐食、体重照片和运动记录彼此独立。</text>
+    <text class="copy" user-select="{{true}}">仅供受邀请的成员使用。每个人的餐食、体重照片和运动记录彼此独立。</text>
 
-    <view wx:if="{{loading}}" class="access-card"><text>正在验证微信身份…</text></view>
-    <view wx:else class="access-card">
-      <view class="mode-tabs">
-        <view class="mode-tab {{mode === 'invite' ? 'active' : ''}}" data-mode="invite" bindtap="setMode">邀请码</view>
-        <view class="mode-tab {{mode === 'owner' ? 'active' : ''}}" data-mode="owner" bindtap="setMode">首次部署</view>
-      </view>
-      <text class="form-label">{{mode === 'owner' ? '管理员部署口令' : '成员邀请码'}}</text>
-      <input class="code-input" value="{{code}}" bindinput="inputCode" maxlength="32" placeholder="请输入" />
-      <text wx:if="{{error}}" class="error">{{error}}</text>
-      <button class="submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">验证并进入</button>
-      <text class="hint">首次部署只能激活 1 位管理员；之后由管理员在“我的”页面生成一次性邀请码。</text>
+    <view wx:if="{{loading}}" class="access-card access-state" aria-live="polite">
+      <text class="state-title">正在验证微信身份</text>
+      <text class="state-copy">正在确认这个微信是否已经加入。</text>
     </view>
+    <view wx:elif="{{checkError && !showInviteForm}}" class="access-card access-state error-state" aria-role="alert">
+      <text class="state-title">微信身份暂时无法验证</text>
+      <text class="state-copy">{{checkError}}</text>
+      <button class="submit" bindtap="retryCheck" hover-class="access-button-hover">重新验证微信身份</button>
+      <button class="alternate-action" bindtap="useInviteInstead" hover-class="access-button-hover">使用邀请码加入</button>
+      <text class="hint" user-select="{{true}}">已经加入过的用户无需再次获取邀请码，重新验证成功后会直接恢复数据。</text>
+    </view>
+    <view wx:elif="{{deletionRecovery}}" class="access-card access-state deletion-state" aria-live="polite">
+      <text class="state-title">继续完成私人数据清理</text>
+      <text class="state-copy">清理流程尚未完成。继续后会核对并删除剩余私人数据，完成前不能使用邀请码重新加入。</text>
+      <text wx:if="{{deletionError}}" class="error" aria-role="alert">{{deletionError}}</text>
+      <button class="submit" loading="{{continuingDeletion}}" disabled="{{continuingDeletion}}" bindtap="continueDeletion" hover-class="access-button-hover">继续清理</button>
+    </view>
+    <view wx:else class="access-card">
+      <text class="form-label">成员邀请码</text>
+      <input class="code-input" value="{{code}}" bindinput="inputCode" bindconfirm="submit" confirm-type="done" maxlength="32" placeholder="请输入" aria-label="成员邀请码" />
+      <text wx:if="{{inviteError}}" class="error" aria-role="alert">{{inviteError}}</text>
+      <button class="submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit" hover-class="access-button-hover">验证并进入</button>
+      <button wx:if="{{checkError}}" class="identity-retry" disabled="{{submitting}}" bindtap="retryCheck" hover-class="access-button-hover">重新验证已有身份</button>
+      <text class="hint" user-select="{{true}}">邀请码只能使用一次，并在创建 7 天后过期。加入后可在其他手机上使用同一微信账号恢复数据。</text>
+    </view>
+    <view class="legal-links" aria-label="协议与隐私入口">
+      <view class="legal-link touch-target" bindtap="openUserAgreement" hover-class="legal-link-hover" aria-role="button">《用户协议》</view>
+      <view class="legal-link touch-target" bindtap="openPrivacyGuide" hover-class="legal-link-hover" aria-role="button">《隐私保护指引》</view>
+    </view>
+    <text wx:if="{{privacyError}}" class="privacy-link-error" aria-role="alert">{{privacyError}}</text>
   </view>
 </view>

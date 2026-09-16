@@ -24,6 +24,47 @@
         { "fieldPath": "active", "order": "ASCENDING" }
       ],
       "purpose": "一次性邀请码验证"
+    },
+    {
+      "collectionName": "meal_members",
+      "fields": [
+        { "fieldPath": "memberRef", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ],
+      "purpose": "管理员按公开成员引用选择接任者"
+    },
+    {
+      "collectionName": "meal_ai_tasks",
+      "fields": [
+        { "fieldPath": "owner", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ],
+      "purpose": "当前用户按状态读取最近 AI 任务"
+    },
+    {
+      "collectionName": "meal_ai_tasks",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "expiresAt", "order": "ASCENDING" }
+      ],
+      "purpose": "维护函数按单个活动状态查询到期且尚未压缩的 AI 任务"
+    },
+    {
+      "collectionName": "meal_ai_shards",
+      "fields": [
+        { "fieldPath": "owner", "order": "ASCENDING" },
+        { "fieldPath": "taskId", "order": "ASCENDING" }
+      ],
+      "purpose": "按用户和任务读取或删除 AI 分片"
+    },
+    {
+      "collectionName": "meal_ai_tasks",
+      "fields": [
+        { "fieldPath": "shardCleanupPending", "order": "ASCENDING" },
+        { "fieldPath": "shardCleanupUpdatedAtMs", "order": "ASCENDING" }
+      ],
+      "purpose": "轮转清理到期任务的遗留外置分片，避免失败任务阻塞后续批次"
     }
   ]
 }

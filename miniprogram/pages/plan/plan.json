@@ -1,5 +1,7 @@
 {
-  "navigationBarTitleText": "本周计划",
+  "navigationBarTitleText": "餐单",
   "enablePullDownRefresh": true,
+  "backgroundColor": "@backgroundColor",
+  "backgroundTextStyle": "@backgroundTextStyle",
   "usingComponents": { "meal-card": "/components/meal-card/meal-card" }
 }

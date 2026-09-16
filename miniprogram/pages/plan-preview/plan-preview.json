@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "确认候选餐单",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "@backgroundColor",
+  "backgroundTextStyle": "@backgroundTextStyle"
+}

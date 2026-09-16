@@ -26,5 +26,17 @@
   "health_photo_uploads": {
     "read": false,
     "write": false
+  },
+  "meal_ai_tasks": {
+    "read": false,
+    "write": false
+  },
+  "meal_ai_shards": {
+    "read": false,
+    "write": false
+  },
+  "meal_ai_controls": {
+    "read": false,
+    "write": false
   }
 }

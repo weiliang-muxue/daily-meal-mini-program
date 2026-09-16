@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "采购清单", "enablePullDownRefresh": true }
+{
+  "navigationBarTitleText": "采购",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "@backgroundColor",
+  "backgroundTextStyle": "@backgroundTextStyle"
+}

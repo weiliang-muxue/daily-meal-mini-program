@@ -1,11 +1,75 @@
 <view class="screen">
-  <view class="intro surface"><text class="intro-title">只调整我的这一餐</text><text class="intro-copy">基础食谱以后更新时，你的个人版本仍按稳定餐食 ID 保留。其他成员看不到也不会被修改。</text></view>
-  <view class="form surface">
-    <view class="field"><text>名称</text><input maxlength="40" value="{{form.title}}" data-field="title" bindinput="input" /></view>
-    <view class="field vertical"><text>食材与份量</text><textarea maxlength="300" value="{{form.ingredients}}" data-field="ingredients" bindinput="input" auto-height /></view>
-    <view class="field vertical"><text>做法</text><textarea maxlength="300" value="{{form.method}}" data-field="method" bindinput="input" auto-height /></view>
-    <view class="field vertical"><text>个人提示</text><textarea maxlength="60" value="{{form.tag}}" data-field="tag" bindinput="input" auto-height /></view>
+  <button class="page-navigation" bindtap="navigateFromPage" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+    <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+  </button>
+  <view wx:if="{{loading}}" class="status-panel surface">
+    <text class="status-title">正在读取餐食</text>
+    <text class="status-detail">从当前已确认计划中查找这份餐食。</text>
   </view>
-  <button class="primary-button save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存我的方案</button>
-  <button wx:if="{{hasOverride}}" class="secondary-button reset" bindtap="reset">恢复基础餐食</button>
+
+  <view wx:elif="{{error}}" class="status-panel surface error-panel" aria-role="alert">
+    <text class="status-title">无法编辑</text>
+    <text class="status-detail">{{error}}</text>
+    <button wx:if="{{errorAction === 'back'}}" class="secondary-button retry" bindtap="backToPlan" hover-class="button-hover">返回餐单</button>
+    <button wx:else class="secondary-button retry" bindtap="retry" hover-class="button-hover">重新读取</button>
+  </view>
+
+  <block wx:else>
+    <view wx:if="{{isAiPlan}}" class="ai-origin-notice" aria-label="AI 生成内容">
+      <text class="ai-origin-badge">AI 生成</text>
+      <text class="ai-origin-copy">下方原计划餐食由人工智能生成；你的修改只作为个人显示内容保存。</text>
+    </view>
+
+    <view class="intro surface">
+      <view class="meal-meta">
+        <text class="meal-type">{{mealLabel}}</text>
+        <text wx:if="{{scenarioLabel}}" class="scenario">{{scenarioLabel}}</text>
+      </view>
+      <text class="day-label">{{dayLabel}}</text>
+      <text class="intro-title">调整个人显示内容</text>
+      <text class="intro-copy" aria-live="polite">{{formDirty ? '有未保存修改，请保存后再离开。' : '调整只保存在你的账户中，不会改变餐次、运动场景或其他成员的内容。'}}</text>
+    </view>
+
+    <view wx:if="{{hasStructuredIngredients}}" class="original surface">
+      <text class="block-title">餐单原有食材</text>
+      <text class="block-copy">以下食材来自当前餐单，仅供查看。</text>
+      <view class="ingredient-table">
+        <view wx:for="{{originalIngredients}}" wx:key="id" class="ingredient-row">
+          <view class="ingredient-main">
+            <text class="ingredient-name">{{item.name}}</text>
+            <text class="ingredient-category">{{item.category}}</text>
+          </view>
+          <text class="ingredient-amount">{{item.quantity}} {{item.unit}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form surface">
+      <view class="field vertical">
+        <label id="meal-title-label" class="field-label" for="meal-title-input">个人餐名</label>
+        <input id="meal-title-input" maxlength="50" value="{{form.title}}" data-field="title" bindinput="input" placeholder="填写餐食名称" aria-label="个人餐名" aria-labelledby="meal-title-label" />
+      </view>
+      <view class="field vertical">
+        <label id="meal-ingredients-label" class="field-label" for="meal-ingredients-input">个人食材说明</label>
+        <textarea id="meal-ingredients-input" maxlength="500" value="{{form.ingredients}}" data-field="ingredients" bindinput="input" placeholder="按你的实际调整填写食材与份量" aria-label="个人食材说明" aria-labelledby="meal-ingredients-label" auto-height="false" />
+        <text class="field-help">这里的修改只影响你看到的餐食说明，不会自动调整采购清单。</text>
+      </view>
+      <view class="field vertical">
+        <label id="meal-method-label" class="field-label" for="meal-method-input">个人做法</label>
+        <textarea id="meal-method-input" maxlength="500" value="{{form.method}}" data-field="method" bindinput="input" placeholder="填写这份餐食的做法" aria-label="个人做法" aria-labelledby="meal-method-label" auto-height="false" />
+      </view>
+      <view class="field vertical">
+        <label id="meal-tag-label" class="field-label" for="meal-tag-input">个人提示</label>
+        <textarea id="meal-tag-input" maxlength="80" value="{{form.tag}}" data-field="tag" bindinput="input" placeholder="可选，例如：提前一晚准备" aria-label="个人提示（可选）" aria-labelledby="meal-tag-label" auto-height="false" />
+      </view>
+    </view>
+
+    <view class="contract-note">
+      <text class="contract-title">采购清单说明</text>
+      <text class="contract-copy">采购清单仍按当前餐单原有食材计算。需要调整采购数量时，请重新定制并确认餐单。</text>
+    </view>
+
+    <button class="primary-button save" loading="{{saving}}" disabled="{{saving || resetting}}" bindtap="save" hover-class="button-hover">保存个人调整</button>
+    <button wx:if="{{hasOverride}}" class="secondary-button reset" loading="{{resetting}}" disabled="{{saving || resetting}}" bindtap="reset" hover-class="button-hover">恢复原计划内容</button>
+  </block>
 </view>
