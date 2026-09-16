@@ -1,43 +1,160 @@
 # 每天怎么吃
 
-微信原生小程序。用户先选择任意 1–14 天（默认 1 天）、所需餐次、饮食目标、逐日运动和个人约束，再由云函数调用 AI 生成候选餐单；不是 `web-view` 套壳。
+微信原生 AI 饮食计划小程序。用户先选择需要的餐次、计划天数、饮食偏好和运动安排，再生成个人候选餐单；确认后才替换当前餐单。不是网页套壳，也不会给新用户预设固定食谱。
 
-当前候选版本为 `0.2.0`，状态为 `release-candidate`。运行时对应提交 `45d4d0e` 已于 `2026-09-04` 以同一代码树完成预览、编译和微信开发版本上传；尚未设为体验版、提交微信审核或正式发布。当前候选只位于 Branch `v0.2.0`，上一源码基线由 Tag `v0.1.0` 保留，`main` 不代表本候选树；候选能力与正式发布状态必须以 [CHANGELOG.md](CHANGELOG.md) 和 `release-manifest.json` 为准。上传、审核及正式发布完成前不创建 `v0.2.0` Tag；审核通过、仓库所有者最终确认并完成微信正式发布后，才在审核通过的完全相同 commit 上创建 annotated Tag。
+适合小范围邀请使用或自行部署。项目使用微信云开发作为后端，AI 由部署者配置的服务提供，不要求购买腾讯的 AI 模型服务。
 
-当前兼容矩阵为用户状态 schema v8、新生成请求与计划 contract v2、AI 生成器 v7、AI task schema v3、AI 数据同意协议 v2、AI provider 请求契约 v10。模型与推理强度固定为 `gpt-5.6-sol` 和 `reasoning.effort: "max"`。服务商切换或版本化 provider 配置变化时，配置指纹不匹配的旧活动任务会按现有逻辑失败关闭并要求用户重新勾选，不会自动沿用旧同意；升级不改写已确认、候选或历史餐单。历史 contract v1 餐单与 legacy contract v0 静态迁移餐单仍可查看、确认和恢复。
+## 当前状态
 
-## 已实现
+- 当前应用版本：`0.2.0`。**已提交微信审核，等待审核结果；尚未确认正式上线。** 这是所有者于 2026-09-16 确认的状态，平台提交时间、审核结果及上线状态以微信后台为准；机器版本清单保持 `release-candidate`，不提前标记 `released`。
+- 2026-09-15 已完成真实云端 1 天早餐生成、解析、候选预览和测试数据恢复，生成耗时约 45.2 秒。该结果不代表所有天数、手机型号和授权路径均已实测。
+- 同日微信开发者工具已完成开发版上传：源码检查点 `d017ead`，运行时与 `b94eb1a` 一致。开发版上传不等于提交审核或正式上线。
+- 代码实现、测试证据、微信审核和正式上线分别记录。详细证据见[迭代台账](docs/ITERATION_LOG.md)，不能从“已提交审核”推断全部真机验证或审核已经通过。
 
-- 先选择早餐、午餐、晚餐、加餐的任意非空组合，再生成任意 1–14 天餐单；新用户默认 1 天，可直接输入或逐天增减。
-- 用户需要时可为晚餐同时生成运动/不运动方案，不再把“两种晚餐”固定给所有人。
-- AI 候选餐单先预览、后确认；失败、丢弃或版本冲突不会替换当前计划。
-- 清淡低油及用户主动选择的健康提醒；新用户不会默认启用或发送专业健康条件。
-- 采购清单勾选、个人提醒和计划设置。
-- `wx.login` + 云函数可信上下文识别用户；前端无 AppSecret、openid、unionid 或 session_key。
-- 用户主动选择头像、填写昵称，并可之后修改。
-- 邀请制小范围使用，默认总容量 4 人，即 1 位管理员加 3 个受邀名额；邀请码单次使用并在创建 7 天后过期。
-- 每个人可独立调整自己的餐食，不影响其他成员或基础食谱更新。
-- 体重、私有照片与运动打卡；月历日期下直接显示体重，运动日显示绿色底和圆点。
-- 体重与运动时长均支持近 7 天和本月折线，近 7 天支持跨月查询；另有运动次数和总分钟汇总。
-- 云数据库为真源，本地缓存作为加载和断网降级。
-- 稳定 `planId/dayId`、计划历史和 `schemaVersion` 向前迁移；更新程序或新增任意后续周期餐单不会重置用户数据。
-- AI 运行期正文按用户私有保存以支持断线续传；到期任务由独立定时云函数幂等压缩，中间分片失败时可在下一批继续清理。
-- 用户可二次确认后清空自己的全部私人数据和照片；普通成员同时退出成员资格，唯一且无其他成员的管理员仅保留随机化、无个人资料的最小管理员身份，避免实例失去管理入口。唯一管理员仍有活跃成员时，必须先明确选择接任者并确认转移，系统不会自动提升任何成员。
+### 已完成
 
-部署前请阅读 [docs/DEPLOY.md](docs/DEPLOY.md)、[docs/DATABASE.md](docs/DATABASE.md) 和 [docs/PRIVACY.md](docs/PRIVACY.md)。
+- [x] 微信原生页面、动态餐次和 1–14 天 AI 候选餐单流程。
+- [x] 邀请与身份隔离、个人餐食调整、采购勾选、计划历史和增量数据迁移。
+- [x] 体重与运动记录、趋势展示、私有图片及可选喝水提醒功能。
+- [x] 本地 55 组项目验证、72 项 AI 云函数测试、75 项自动化测试和 32 项发布探针测试通过。
+- [x] 真实云端 1 天早餐生成、解析、预览及测试后数据恢复通过。
+- [x] 开发版 `0.2.0` 已由微信开发者工具完成上传。
+- [x] 所有者确认已提交微信审核（2026-09-16 确认）。
 
-版本升级见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/VERSIONING.md](docs/VERSIONING.md)，每次开发、验证和发布证据记录在 [docs/ITERATION_LOG.md](docs/ITERATION_LOG.md)，每次交付按 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) 核对，微信后台隐私、类目、审核访问和发布操作按 [docs/WECHAT_REVIEW.md](docs/WECHAT_REVIEW.md) 执行；使用支持见 [SUPPORT.md](SUPPORT.md)，安全问题见 [SECURITY.md](SECURITY.md)。发布后的附近超市、路线和可靠价格数据源研究记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。
+### 尚未完成或待补充证据
 
-每次推送或 Pull Request 都会运行只读 GitHub Actions，自动检查版本同步、schema v1-v7 到 v8 数据迁移、AI 契约、动态餐次、微信开发者工具自动化运行时和公开仓库安全规则。工作流不配置也不读取任何 GitHub Secret。可复现的自动化源码位于 `scripts/wx-automator`，截图、报告、互斥锁和恢复日志只写入被 Git 忽略的 `.local/automator`。
+- [ ] 等待微信审核结果；正式上线及正式版本 Tag 尚未确认/创建。
+- [ ] 补齐 Android/iOS 真机原生头像、手机号、系统日历、键盘和安全区的完整验收记录。
+- [ ] 补齐真实多设备恢复、第二身份隔离及 10/14 天 AI 耗时的实测记录；这些功能已有代码/合成测试，但不能把它们当成全量真机已验收。
+- [ ] 完整线上函数权限、触发器、数据库和存储规则的人工复核记录，见[发布检查清单](docs/RELEASE_CHECKLIST.md)。
+- [ ] 第三方菜谱数据集、附近超市、路线导航和可靠菜价源尚未接入，属于后续范围。
 
-“我的”页提供默认关闭的喝水提醒，可选每日或周一至周五、起止时间及提醒间隔。保存设置不申请权限；只有用户主动点击并二次确认后才写入未来 30 天系统日历重复事项。修改、关闭或清空小程序数据不会删除设备日历事项，需在系统日历中自行删除。
+## 怎么使用
 
-原素材完整保存在 `source-assets/meal-plan-gpt-image-2.png`，发布版压缩图位于 `miniprogram/assets/meal-plan-cover.jpg`。
+1. 通过有效邀请进入小程序；填写头像、昵称和手机号均为可选。
+2. 选择早餐、午餐、晚餐、加餐的任意非空组合，以及 1–14 天计划周期，默认 1 天。
+3. 填写饮食目标、忌口与运动安排；需要时才开启运动日和不运动日两套晚餐。
+4. 确认本次向 AI 发送的内容，生成并查看候选餐单、食材、做法与生成依据。
+5. 确认使用后查看每日餐单、调整个人餐食、勾选采购清单；体重、运动和提醒在各自页面单独管理。
 
-## GitHub 安全规则
+生成失败、取消、丢弃候选或发生版本冲突时，当前已确认餐单不会被失败结果替换。日常饮食参考不替代专业医疗或营养建议。
 
-- 仓库只保存示例配置。真实 `project.config.json`、`miniprogram/config.js` 和所有 `.env` 只留本机。
-- 用户饮食记录、采购勾选、运动、体重、头像、照片和数据库导出只存云端或本机私有目录，不进入 Git。
-- `.githooks/pre-commit` 检查暂存索引，`.githooks/pre-push` 检查即将推送的完整提交范围，拦截疑似 AppID、AppSecret、令牌、私钥、微信身份标识和个人数据文件；先提交后删除也不能绕过。
+## 主要功能
 
-首次克隆后运行 `git config core.hooksPath .githooks` 启用本地提交钩子。AI 模型、推理强度和 Responses 协议是版本化代码配置；provider 请求契约 v10 使用部署者在云函数运行时填写的 HTTPS Responses 地址，固定发送 `model: "gpt-5.6-sol"`、`reasoning: { effort: "max" }` 和 `store:false`。云函数只发送标准 Bearer 鉴权和 JSON 内容头，不发送 provider 专用鉴权或兼容头。兼容回退受 deadline 约束，每个档位始终保留 `model`、`instructions`、`input`、`store:false` 和 `reasoning.effort: "max"`；上游不支持该模型或强度时明确失败，不删除或降低 `max`。正式 `AI_API_KEY`、`AI_API_BASE_URL`、`AI_PROVIDER_DISPLAY_NAME` 与 `AI_PROVIDER_REVISION` 只在微信云函数环境变量中配置；只轮换同一接收方的 Key 时 revision 不变，服务地址、接收方或展示名变化时必须提高 revision，使旧活动任务关闭并要求用户重新确认发送。真实地址、Key 和接收方配置不进入代码、日志或 Git；第三方服务是否支持当前模型与 `max` 必须通过目标云函数的真实生成验收。云开发登录不需要 AppSecret，只有改用自建后端兼容方案时才在服务端配置 AppSecret。首位管理员通过发布前临时云函数初始化，成功后必须立即从云端删除该函数。
+- **定制餐单**：动态餐次、任意 1–14 天周期、饮食偏好、逐日运动约束及可选双晚餐；先预览再确认。
+- **个人餐食与历史**：每餐可保存个人调整，基础程序升级不覆盖个人方案；可恢复历史餐单。历史上限为 64 份，达到上限时明确阻止继续替换，不静默删除旧记录。
+- **采购清单**：按当前确认餐单汇总食材，保存个人勾选状态；勾选和晚餐选择按计划隔离。
+- **健康记录**：记录体重、私有照片及运动打卡；月历显示日期下的体重，运动日有浅绿背景、圆点和文字提示；支持近 7 天、本月趋势以及运动次数和分钟汇总。
+- **可选提醒**：个人补充提醒、用户主动开启的健康提示；喝水提醒默认关闭，可选每日或周一至周五、起止时间和提醒间隔。
+- **系统日历**：保存喝水设置不会自动申请权限。只有用户主动点击并再次确认才写入日历；关闭设置不会自动删除已添加的设备日历事项。
+- **登录与邀请**：`wx.login` 配合云函数可信身份；默认总容量 4 人，邀请码一次使用、7 天有效。受邀成员不会继承管理员权限。
+- **用户隔离**：餐单、采购、提醒、资料、体重、照片和运动记录按用户隔离。头像、照片采用私有存储与短期预览地址。
+- **清空私人数据**：用户二次确认后清理自己的数据；存在其他活跃成员时，管理员必须先明确交接，系统不会自动提升其他人。
+
+## 技术结构
+
+小程序负责交互；七个正式云函数负责身份、权限、持久化与 AI 调用；云数据库是数据真源，本地缓存只用于加速及断网降级。首次确认用户身份仍需联网，项目不是纯离线应用。
+
+```text
+miniprogram/                  原生页面、组件、客户端状态与缓存
+cloudfunctions/
+  membership/                 成员资格、邀请和管理员边界
+  auth/                       用户资料及可选手机号能力
+  userData/                   餐单、采购、提醒、历史及迁移
+  health/                     体重、运动与私有照片
+  privacy/                    私人数据清理
+  aiPlanner/                  AI 任务、输出校验及候选餐单
+  mealAiMaintenance/          AI 临时任务的定时维护
+  ownerBootstrapOnce/         仅首次初始化使用的临时函数
+shared/                       用户数据契约与增量迁移
+scripts/                      验证、部署门禁及自动化测试
+docs/                         部署、隐私、版本、研究和审核说明
+database.rules.json           数据库访问规则
+database.indexes.json         数据库索引清单
+storage.rules.json            私有文件访问规则
+release-manifest.json         可检查的版本与兼容矩阵
+```
+
+数据库和云存储拒绝客户端直接读写；业务云函数验证可信微信身份、成员资格和数据归属。`ownerBootstrapOnce` 不属于日常部署清单，完成首次初始化后应从云端移除，具体流程见[部署文档](docs/DEPLOY.md)。
+
+## 本地开发与验证
+
+准备 Git、Node.js 22（与仓库 CI 保持一致）、微信开发者工具，以及自己的小程序和云开发环境。根目录没有 `package.json`，不要在根目录执行 `npm start`。
+
+取得源码后，在项目根目录执行：
+
+```powershell
+git switch v0.2.0
+git config core.hooksPath .githooks
+npm ci --prefix scripts/wx-automator --ignore-scripts --no-audit --no-fund
+npm test --prefix scripts/wx-automator
+node scripts/validate.js
+node scripts/check-staged-safety.js --worktree
+```
+
+首次使用时复制示例配置；下面的命令不会覆盖已有本机配置：
+
+```powershell
+if (-not (Test-Path -LiteralPath 'project.config.json')) {
+  Copy-Item -LiteralPath 'project.config.example.json' -Destination 'project.config.json'
+}
+if (-not (Test-Path -LiteralPath 'project.private.config.json')) {
+  Copy-Item -LiteralPath 'project.private.config.example.json' -Destination 'project.private.config.json'
+}
+if (-not (Test-Path -LiteralPath 'miniprogram/config.js')) {
+  Copy-Item -LiteralPath 'miniprogram/config.example.js' -Destination 'miniprogram/config.js'
+}
+```
+
+本机填写 AppID 和云环境 ID，再在微信开发者工具导入项目根目录。按照[部署说明](docs/DEPLOY.md)初始化集合、权限、索引和首位管理员，部署正式云函数。仅复制示例文件不能启用真实业务。
+
+自动化源码在 `scripts/wx-automator`；真实交互测试可能写入测试数据，必须遵守脚本的显式风险开关、独占会话和恢复检查。截图、日志、恢复标记与上传包只放在被忽略的 `.local/`，不得提交。
+
+## AI 配置与安全边界
+
+模型固定为 `gpt-5.6-sol`，推理强度为 `max`，使用 Responses 请求并设置 `store:false`。兼容重试始终保留模型和推理强度；服务端不支持时明确失败，不自动降档。
+
+以下四项只在 `aiPlanner` 云函数环境变量中配置，仓库只提供占位示例：
+
+- `AI_API_KEY`：部署者自己的服务凭据。
+- `AI_API_BASE_URL`：部署者指定的实际服务地址。
+- `AI_PROVIDER_DISPLAY_NAME`：用户可见的数据接收方名称。
+- `AI_PROVIDER_REVISION`：接收方配置版本，必须为正整数。
+
+服务地址、接收方或展示名变化时，需要提高配置版本并重新确认发送同意；仅轮换同一接收方的 Key 不改变该版本。腾讯云负责运行后端和保存数据，你配置的 AI 服务负责生成餐单。具体填写和诊断方法见[AI 云函数配置](docs/DEPLOY.md#ai-云函数配置)。
+
+**禁止提交真实 Key、Secret、Token、AI/后端服务地址、AppID 配置、云环境标识或用户数据。** `project.config.json`、`project.private.config.json`、`miniprogram/config.js`、真实 `.env`、`.local/` 和媒体/导出文件均不进入 Git。
+
+提交前检查暂存索引，推送前检查完整新增历史；中间提交出现后又删除的敏感内容也会被拦截。GitHub Actions 不配置或读取业务 Secret。禁止为了推送而跳过安全 Hook 或降低扫描规则。
+
+## 升级与数据保留
+
+当前用户 schema 为 v8，计划 contract 为 v2，planner 为 v7，AI task schema 为 v3，同意协议为 v2，provider 请求契约为 v10。
+
+- schema v1–v7 采用增量迁移，未知未来字段不会被旧客户端整份覆盖删除。
+- 程序升级、模型切换或新增后续 1–14 天周期，不会自动重生成或清空已有餐单。
+- 新餐单只有确认事务成功后才成为当前计划；被替换计划进入历史。个人资料、体重、运动和照片不随计划替换。
+- 新旧清单仅保留稳定 ID 相同的采购勾选；旧静态食谱只作为迁移输入，不给新用户默认使用。
+- 不兼容的旧客户端和活动 AI 任务会明确停止并要求升级或重新发起，不会静默降级数据。
+
+详情见[版本策略](docs/VERSIONING.md)和[数据库设计](docs/DATABASE.md)。
+
+## 分支、发布与已知限制
+
+- `v0.2.0` 是当前开发与发布候选 **Branch**；`main` 是通过检查后的源码入口，不等于小程序已上线。
+- 历史 **Tag** `v0.1.0` 是源码追溯基线，不追溯宣称当时正式发布。`v0.2.0` Tag 只在对应代码正式发布完成后创建，不提前建立或移动。
+- 发布顺序为预览、上传开发版、体验验证、提交审核、审核通过后发布；当前已由所有者确认提交审核。不能把本地测试、云函数部署或审核提交当成正式发布。
+- 当前真实 AI 验收仅覆盖一份 1 天早餐；10/14 天耗时、多设备恢复、第二身份隔离和 Android/iOS 原生授权的发布前实测仍需按清单完成。
+- 附近超市、路线指引和可靠菜价源仍在[路线图](docs/ROADMAP.md)，尚未实现。
+
+## 素材、数据来源与支持
+
+当前候选未接入 Vibe Cook/HowToCook 的食谱数据、图片或在线服务。数据集许可证评估与未来范围见[第三方数据评估](docs/THIRD_PARTY_DATA_EVALUATION.md)，评估通过不等于已导入。
+
+原始餐食视觉素材保存在 `source-assets/meal-plan-gpt-image-2.png`，发布封面是压缩版本；TabBar 图标的来源和许可证保存在 `miniprogram/assets/icons/source/`。项目整体许可证尚未指定，第三方素材许可证不能作为本项目整体许可声明。
+
+- [部署与初始化](docs/DEPLOY.md) · [隐私说明](docs/PRIVACY.md) · [微信审核说明](docs/WECHAT_REVIEW.md)
+- [变更日志](CHANGELOG.md) · [迭代证据](docs/ITERATION_LOG.md) · [发布检查清单](docs/RELEASE_CHECKLIST.md)
+- [问题反馈](SUPPORT.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
+
+反馈时提供版本、复现步骤和脱敏错误信息即可；不要上传密钥、真实服务地址、个人餐单、运动/体重记录、照片或数据库导出。
