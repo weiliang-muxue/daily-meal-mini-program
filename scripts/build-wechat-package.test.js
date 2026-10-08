@@ -7,7 +7,7 @@ const path = require('path')
 const { execFileSync } = require('child_process')
 const { buildPackage, runtimeFile, assertNoCredentials } = require('./build-wechat-package')
 
-for (const file of ['miniprogram/pages/profile/profile.js', 'cloudfunctions/membership/index.js']) assert(runtimeFile(file))
+for (const file of ['miniprogram/pages/profile/profile.js', 'cloudfunctions/membership/index.js', 'cloudfunctions/membership/package-lock.json']) assert(runtimeFile(file))
 for (const file of ['.git/config', '.local/data.json', 'cloudfunctions/ownerBootstrapOnce/index.js',
   'cloudfunctions/membership/.env', 'cloudfunctions/membership/core.test.js',
   'cloudfunctions/membership/node_modules/private.json', 'miniprogram/config.js',
@@ -25,13 +25,15 @@ put('miniprogram/config.js', 'module.exports = { cloudEnvId: "YOUR_CLOUD_ENV_ID"
 put('project.config.json', JSON.stringify({ miniprogramRoot: 'miniprogram/', cloudfunctionRoot: 'cloudfunctions/' }))
 put('project.private.config.json', '{}')
 put('cloudfunctions/membership/index.js', 'exports.main = async () => ({})\n')
+put('cloudfunctions/membership/package-lock.json', JSON.stringify({ name: 'membership-fixture', lockfileVersion: 3 }))
 put('cloudfunctions/ownerBootstrapOnce/index.js', 'throw new Error("do not deploy")\n')
 put('release-manifest.json', JSON.stringify({ workingVersion: '0.2.1' }))
 put('.gitignore', '.local/\n')
 const git = (...args) => execFileSync('git', args, { cwd: source, stdio: 'ignore' })
 git('init'); git('add', '.'); git('-c', 'user.name=Package Test', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture')
 const result = buildPackage(source, { skipSafetyForTest: true })
-assert.strictEqual(result.fileCount, 2)
+assert.strictEqual(result.fileCount, 3)
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(result.destination, 'cloudfunctions/membership/package-lock.json'), 'utf8')).lockfileVersion, 3)
 assert.strictEqual(fs.existsSync(path.join(result.destination, 'cloudfunctions/ownerBootstrapOnce')), false)
 assert.strictEqual(fs.existsSync(path.join(result.destination, '.git')), false)
 assert.strictEqual(fs.readFileSync(path.join(result.destination, 'miniprogram/app.js'), 'utf8'), 'App({})\n')
@@ -65,6 +67,6 @@ put('scripts/check-staged-safety.js', 'if (process.cwd() !== process.argv[1].rep
 const originalCwd = process.cwd()
 try {
   process.chdir(folder)
-  assert.strictEqual(buildPackage(source).fileCount, 2)
+  assert.strictEqual(buildPackage(source).fileCount, 3)
 } finally { process.chdir(originalCwd) }
 console.log('WeChat package tests passed: runtime allowlist, private config guard, contained paths, source-bound scan, recoverable replacement, no bootstrap')

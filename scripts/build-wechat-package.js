@@ -43,7 +43,7 @@ function assertPlainFile(root, file) {
 
 function runtimeFile(file) {
   if (file.split('/').some((part) => !part || part === '..' || part.startsWith('.') || part === 'node_modules')) return false
-  if (/\.(?:test|spec)\.js$|\.example\.|(?:^|\/)(?:package-lock\.json|README\.md)$/i.test(file)) return false
+  if (/\.(?:test|spec)\.js$|\.example\.|(?:^|\/)README\.md$/i.test(file)) return false
   if (CONFIG_FILES.includes(file) || file === 'miniprogram/config.local.js') return false
   if (!/\.(?:js|json|wxml|wxss|wxs|png|jpg|jpeg)$/.test(file)) return false
   return file.startsWith('miniprogram/')

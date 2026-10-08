@@ -35,7 +35,7 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 4. 把 `database.rules.json` 配置到数据库安全规则，确认十个集合的客户端 `read`、`write` 都为 `false`。
 5. 把 `storage.rules.json` 配置到云存储，并确认根规则为客户端 `read: false`、`write: false`。头像和健康照片由小程序使用微信 `wx.cloud.CDN` 临时传给已经校验有效成员身份的业务云函数；只有云函数可以校验并写入私有永久目录，客户端没有任何云存储直写或直读权限。规则修改通常需要 1–3 分钟生效，生效前不要开放测试账号。
 6. 按 `database.indexes.json` 手工创建八个复合索引：`health_daily(owner, month, date)`、`health_daily(owner, date)`、`meal_invites(codeHash, active)`、`meal_members(memberRef, status)`、`meal_ai_tasks(owner, status, createdAt desc)`、`meal_ai_tasks(status, expiresAt)`、`meal_ai_shards(owner, taskId)`、`meal_ai_tasks(shardCleanupPending, shardCleanupUpdatedAtMs)`。
-7. `membership` 的业务规则已锁定为管理员 1 人加受邀成员 3 人，一次性邀请码创建后 7 天（168 小时）过期。部署前删除旧版本可能遗留的 `INVITE_SLOTS`、`INVITE_TTL_HOURS` 环境变量，当前代码即使看到它们也会忽略，避免旧配置把总容量扩大或缩短有效期。
+7. `membership` 的业务规则已锁定为管理员 1 人加受邀成员 10 人，总容量 11 人，一次性邀请码创建后 7 天（168 小时）过期。旧版本可能遗留的 `INVITE_SLOTS`、`INVITE_TTL_HOURS` 环境变量会被当前代码忽略；本次升级不读取、导出或改写既有云函数环境变量，也不重新初始化成员。
 8. 按顺序部署 `membership`、`auth`、`userData`、`health`、`privacy`，均选择云端安装依赖。七个正式云函数的 `config.json` 都显式配置 `timeout: 60` 和 `memorySize: 256`；完整部署后必须在云函数配置页或只读函数信息中确认线上值确实为 60 秒和 256 MB，不能把文件存在或上传成功当成运行配置已经生效。`auth/config.json` 必须保留 `phonenumber.getPhoneNumber` 云调用权限；部署后在云函数权限页面核对该权限生效。手机号能力受目标小程序主体资格、认证、计费和额度限制，真机失败时不应开放数据库或加入 AppSecret 规避。先不要部署 `mealAiMaintenance`，待第 6 步索引全部显示可用并完成 AI 云函数配置后再启用其定时触发器。
 9. 在小程序尚未发布、成员库与邀请码库都为空时，临时部署 `ownerBootstrapOnce`。不要把 `SOURCE=wx_devtools` 当作管理员授权：官方只将 `SOURCE` 定义为调用链来源，它不能证明操作者是项目所有者。按以下两阶段流程初始化，不需要部署口令或其他密钥：
 
