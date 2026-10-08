@@ -27,6 +27,8 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 
 ## 首次初始化
 
+本次协议阅读与成员来源增量部署时，先更新 `membership`，再更新使用同源成员控制核心的 `privacy`（如果核心文件变动），最后上传小程序。旧记录未保存当前同意版本时不可伪造默认接受，需用户阅读并主动确认；不批量补写同意，不清空用户数据。管理员成员列表仅展示来源字段白名单；手机端授权和审核状态仍须独立验证。
+
 1. 在微信开发者工具导入 `E:\CodeXWork\饮食小程序`，使用已注册小程序的管理员或开发者微信登录。
 2. 开通一个云开发环境，并仅在本机配置环境 ID。
 3. 创建集合：`meal_users`、`meal_user_states`、`meal_avatar_uploads`、`meal_members`、`meal_invites`、`health_daily`、`health_photo_uploads`、`meal_ai_tasks`、`meal_ai_shards`、`meal_ai_controls`。

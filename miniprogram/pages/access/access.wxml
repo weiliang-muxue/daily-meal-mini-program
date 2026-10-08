@@ -24,14 +24,41 @@
       <button class="submit" loading="{{continuingDeletion}}" disabled="{{continuingDeletion}}" bindtap="continueDeletion" hover-class="access-button-hover">继续清理</button>
     </view>
     <view wx:else class="access-card">
-      <text class="form-label">成员邀请码</text>
-      <input class="code-input" value="{{code}}" bindinput="inputCode" bindconfirm="submit" confirm-type="done" maxlength="32" placeholder="请输入" aria-label="成员邀请码" />
+      <view wx:if="{{needsLegalConsent}}">
+        <text class="state-title">使用前，请阅读并同意协议</text>
+        <text class="state-copy">已确认你的成员身份，无需再次输入邀请码。请先查看两份协议，再选择是否同意并继续。</text>
+      </view>
+      <block wx:else>
+        <text class="form-label">成员邀请码</text>
+        <input class="code-input" value="{{code}}" bindinput="inputCode" bindconfirm="submit" confirm-type="done" maxlength="32" placeholder="请输入" aria-label="成员邀请码" />
+      </block>
+      <view class="consent-section">
+        <text class="consent-instruction">请分别点开阅读以下协议，之后可勾选同意。</text>
+        <view class="consent-links" aria-label="待阅读的协议">
+          <button class="consent-link" disabled="{{openingLegal || submitting}}" bindtap="openUserAgreement" hover-class="access-button-hover" aria-label="用户协议，{{agreementRead ? '已打开' : '点开阅读'}}">
+            <text>《用户协议》</text>
+            <text class="consent-read-state">{{agreementRead ? '已打开' : '点开阅读'}}</text>
+          </button>
+          <button class="consent-link" disabled="{{openingLegal || submitting}}" bindtap="openPrivacyGuide" hover-class="access-button-hover" aria-label="隐私保护指引，{{privacyRead ? '已打开' : '点开阅读'}}">
+            <text>《隐私保护指引》</text>
+            <text class="consent-read-state">{{privacyRead ? '已打开' : '点开阅读'}}</text>
+          </button>
+        </view>
+        <checkbox-group bindchange="changeLegalConsent" aria-label="协议同意选择">
+          <label class="consent-choice {{!privacyRead || !agreementRead ? 'consent-choice-disabled' : ''}}">
+            <checkbox value="legal-accepted" checked="{{legalAccepted}}" disabled="{{!privacyRead || !agreementRead || openingLegal || submitting}}" aria-label="我已阅读并同意用户协议与隐私保护指引" />
+            <text>我已阅读并同意以上协议</text>
+          </label>
+        </checkbox-group>
+        <text class="consent-hint">查看协议不会自动同意。头像、照片等操作仍会单独按微信规则请求授权。</text>
+        <text wx:if="{{legalError}}" class="error" aria-role="alert">{{legalError}}</text>
+      </view>
       <text wx:if="{{inviteError}}" class="error" aria-role="alert">{{inviteError}}</text>
-      <button class="submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit" hover-class="access-button-hover">验证并进入</button>
+      <button class="submit" loading="{{submitting}}" disabled="{{submitting || !legalAccepted}}" bindtap="submit" hover-class="access-button-hover">{{needsLegalConsent ? '同意并继续' : '验证并进入'}}</button>
       <button wx:if="{{checkError}}" class="identity-retry" disabled="{{submitting}}" bindtap="retryCheck" hover-class="access-button-hover">重新验证已有身份</button>
-      <text class="hint" user-select="{{true}}">邀请码只能使用一次，并在创建 7 天后过期。加入后可在其他手机上使用同一微信账号恢复数据。</text>
+      <text wx:if="{{!needsLegalConsent}}" class="hint" user-select="{{true}}">邀请码只能使用一次，并在创建 7 天后过期。加入后可在其他手机上使用同一微信账号恢复数据。</text>
     </view>
-    <view class="legal-links" aria-label="协议与隐私入口">
+    <view wx:if="{{loading || deletionRecovery || (checkError && !showInviteForm)}}" class="legal-links" aria-label="协议与隐私入口">
       <view class="legal-link touch-target" bindtap="openUserAgreement" hover-class="legal-link-hover" aria-role="button">《用户协议》</view>
       <view class="legal-link touch-target" bindtap="openPrivacyGuide" hover-class="legal-link-hover" aria-role="button">《隐私保护指引》</view>
     </view>

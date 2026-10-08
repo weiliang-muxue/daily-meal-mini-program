@@ -1,4 +1,4 @@
-const { navigateToUserAgreement, openPrivacyContractOrLocal } = require('../../utils/privacy-auth')
+const { navigateToUserAgreement, openPrivacyContractOrLocal, reportLegalDocumentReady } = require('../../utils/privacy-auth')
 const PLAN_URL = '/pages/plan/plan'
 
 function canNavigateBack() {
@@ -14,6 +14,7 @@ function returnFromSecondaryPage() {
 Page({
   data: { contractError: '', canNavigateBack: false, pageNavigationLabel: '返回餐单首页' },
   onLoad() { this.refreshPageNavigation() },
+  onReady() { reportLegalDocumentReady(this, 'privacy') },
   onShow() { this.refreshPageNavigation() },
   refreshPageNavigation() {
     const canGoBack = canNavigateBack()

@@ -12,11 +12,14 @@ const userPath = path.join(root, 'miniprogram/services/user-store.js')
 const privateCachePath = path.join(root, 'miniprogram/services/private-cache.js')
 const cloudPath = path.join(root, 'miniprogram/utils/cloud.js')
 const privacyPath = path.join(root, 'miniprogram/utils/privacy-auth.js')
+const consent = { version: 1, privacyRead: true, agreementRead: true, accepted: true }
+const consentedMember = { status: 'active', legalConsentVersion: 1, legalConsentAccepted: true }
 
 function installDependencies(overrides = {}) {
   const membershipStore = {
     init: async () => null,
-    acceptInvite: async () => ({}),
+    acceptInvite: async () => consentedMember,
+    acceptLegalConsent: async () => consentedMember,
     ...(overrides.membershipStore || {}),
   }
   const authStore = { init: async () => {}, ...(overrides.authStore || {}) }
@@ -31,8 +34,15 @@ function installDependencies(overrides = {}) {
   const clearPrivateCache = overrides.clearPrivateCache || (() => [])
   const callFunction = overrides.callFunction || (async () => ({}))
   const privacy = {
-    navigateToUserAgreement: async () => ({}),
-    openPrivacyContractOrLocal: async () => ({ openedPlatformContract: true, usedLocalFallback: false }),
+    async navigateToUserAgreement(_, options = {}) {
+      if (options.onRead) options.onRead({ document: 'agreement', version: 1 })
+      return { navigated: true }
+    },
+    async openPrivacyContractOrLocal(_, options = {}) {
+      if (options.onRead) options.onRead({ document: 'privacy', version: 1 })
+      return { openedPlatformContract: true, usedLocalFallback: false }
+    },
+    ...(overrides.privacy || {}),
   }
   ;[
     [membershipPath, { membershipStore, deletionRecoveryState }],
@@ -59,6 +69,14 @@ function loadPage() {
   return page
 }
 
+async function readAndAccept(page) {
+  await page.openUserAgreement()
+  await page.openPrivacyGuide()
+  assert.strictEqual(page.data.legalAccepted, false, '打开两份协议不能代替主动同意')
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  assert.strictEqual(page.data.legalAccepted, true)
+}
+
 async function testIdentityFailureCanRecoverWithoutInvite() {
   const initCalls = []
   let active = false
@@ -67,7 +85,7 @@ async function testIdentityFailureCanRecoverWithoutInvite() {
       async init(options) {
         initCalls.push(options)
         if (!active) throw new Error('云端暂时不可用')
-        return { status: 'active' }
+        return consentedMember
       },
     },
   })
@@ -83,7 +101,7 @@ async function testIdentityFailureCanRecoverWithoutInvite() {
 
   active = true
   await page.retryCheck()
-  assert.deepStrictEqual(initCalls, [{ force: false }, { force: true }])
+  assert.deepStrictEqual(initCalls, [{ force: false, allowUnconsented: true }, { force: true, allowUnconsented: true }])
   assert.deepStrictEqual(switches, ['/pages/plan/plan'])
   assert.strictEqual(page.data.checkError, '')
 }
@@ -119,6 +137,7 @@ async function testIdentityAndInviteErrorsStaySeparate() {
   page.inputCode({ detail: { value: ' ab cd ' } })
   assert.strictEqual(page.data.code, 'ABCD')
   assert.strictEqual(page.data.inviteError, '')
+  await readAndAccept(page)
   await page.submit()
   assert.strictEqual(page.data.inviteError, '邀请码已失效')
   assert.strictEqual(page.data.checkError, '身份检查失败')
@@ -195,7 +214,7 @@ async function testLostDeletionResponseUsesFreshMembershipState() {
     state: 'ready',
     async init(options) {
       statusChecks += 1
-      assert.deepStrictEqual(options, { force: true })
+      assert.deepStrictEqual(options, { force: true, allowUnconsented: true })
       this.member = { status: 'invite_required', cacheNamespace: '' }
       this.cacheNamespace = ''
       this.state = 'ready'
@@ -285,6 +304,141 @@ function testMarkupKeepsRecoveryPrimary() {
   assert(!/font-size:\s*\d+rpx/.test(styles), 'Access 正文必须使用稳定 px 字号，避免 320px 过小或 812×375 过大')
   const landscape = (/@media \(orientation: landscape\) and \(max-height: 500px\)\s*\{([\s\S]*?)\n\}/.exec(styles) || [])[1] || ''
   assert(/\.access-content/.test(landscape), '812×375 横屏必须保留 Access 内容覆盖')
+  assert(markup.includes('checked="{{legalAccepted}}"')
+    && markup.includes('disabled="{{!privacyRead || !agreementRead || openingLegal || submitting}}"'),
+  '原生复选框必须在两份协议打开前禁用，且无默认同意')
+  assert(markup.includes('disabled="{{submitting || !legalAccepted}}"'), '提交按钮必须等待主动同意')
+}
+
+async function testNewMemberRequiresReadsAndExplicitConsent() {
+  const calls = []
+  let authReads = 0
+  installDependencies({
+    membershipStore: {
+      async acceptInvite(code, legalConsent) { calls.push({ code, legalConsent }); return consentedMember },
+    },
+    authStore: { async init() { authReads += 1 } },
+  })
+  const switches = []
+  global.wx = { switchTab: ({ url }) => switches.push(url), getStorageSync: () => ({ agreed: true }) }
+  const page = loadPage()
+  await page.onLoad()
+  page.inputCode({ detail: { value: 'NEW-CODE' } })
+  assert.strictEqual(page.data.legalAccepted, false)
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  assert.strictEqual(page.data.legalAccepted, false, '不能提前勾选')
+  await page.submit()
+  assert.strictEqual(calls.length, 0)
+  await page.openUserAgreement()
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  assert.strictEqual(page.data.legalAccepted, false, '只打开一份仍不能勾选')
+  await page.openPrivacyGuide()
+  page.onShow()
+  assert.strictEqual(page.data.legalAccepted, false, '返回不自动同意')
+  await page.submit()
+  assert.strictEqual(calls.length, 0)
+  assert.strictEqual(authReads, 0, '同意之前不读取私人资料')
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  await page.submit()
+  assert.deepStrictEqual(calls, [{ code: 'NEW-CODE', legalConsent: consent }])
+  assert.strictEqual(authReads, 1)
+  assert.deepStrictEqual(switches, ['/pages/plan/plan'])
+}
+
+async function testExistingMemberWithoutCurrentProofCannotSkipGate() {
+  for (const legalProof of [{}, { legalConsentVersion: 0, legalConsentAccepted: true }, { legalConsentVersion: 1, legalConsentAccepted: false }]) {
+    const calls = []
+    installDependencies({
+      membershipStore: {
+        init: async () => ({ status: 'active', ...legalProof }),
+        async acceptLegalConsent(value) { calls.push(value); return consentedMember },
+        async acceptInvite() { throw new Error('existing member must not consume invite') },
+      },
+    })
+    const switches = []
+    global.wx = { switchTab: ({ url }) => switches.push(url) }
+    const page = loadPage()
+    await page.onLoad()
+    assert.strictEqual(page.data.needsLegalConsent, true)
+    assert.strictEqual(page.data.showInviteForm, false)
+    assert.deepStrictEqual(switches, [])
+    page.useInviteInstead()
+    assert.strictEqual(page.data.showInviteForm, false)
+    await page.submit()
+    assert.deepStrictEqual(calls, [])
+    await readAndAccept(page)
+    await page.submit()
+    assert.deepStrictEqual(calls, [consent])
+    assert.deepStrictEqual(switches, ['/pages/plan/plan'])
+  }
+}
+
+async function testFailedOpenAndSubmissionNeverAutoAgree() {
+  let allowRead = false
+  let submitCalls = 0
+  installDependencies({
+    membershipStore: { async acceptInvite() { submitCalls += 1; throw new Error('网络异常') } },
+    privacy: {
+      async navigateToUserAgreement(_, { onRead }) {
+        if (allowRead) onRead({ document: 'agreement', version: 1 })
+        return { navigated: allowRead }
+      },
+    },
+  })
+  global.wx = { switchTab() {} }
+  const page = loadPage()
+  await page.onLoad()
+  page.inputCode({ detail: { value: 'INVITE' } })
+  await page.openUserAgreement()
+  assert.strictEqual(page.data.agreementRead, false)
+  assert(page.data.legalError.includes('暂时无法打开'))
+  await page.openPrivacyGuide()
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  await page.submit()
+  assert.strictEqual(submitCalls, 0)
+  allowRead = true
+  await readAndAccept(page)
+  await page.submit()
+  assert.strictEqual(page.data.legalAccepted, false, '请求失败后必须重新主动勾选')
+  await page.submit()
+  assert.strictEqual(submitCalls, 1)
+}
+
+async function testReadScopeResetAndStaleCallbacks() {
+  let delayedRead
+  const { membershipStore } = installDependencies({
+    membershipStore: { cacheNamespace: 'a'.repeat(32), identityRequestRevision: 1 },
+    privacy: {
+      async navigateToUserAgreement(_, { onRead }) { delayedRead = onRead; return { navigated: true } },
+    },
+  })
+  global.wx = { switchTab() {} }
+  const page = loadPage()
+  await page.onLoad()
+  await page.openUserAgreement()
+  assert.strictEqual(page.data.agreementRead, false, '导航成功不等于已展示协议')
+  const oldRead = delayedRead
+  membershipStore.cacheNamespace = 'b'.repeat(32)
+  page.onShow()
+  oldRead({ document: 'agreement', version: 1 })
+  assert.strictEqual(page.data.agreementRead, false, '旧身份回调不能恢复阅读状态')
+  await page.openUserAgreement()
+  delayedRead({ document: 'agreement', version: 1 })
+  await page.openPrivacyGuide()
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  assert.strictEqual(page.data.legalAccepted, true)
+  membershipStore.identityRequestRevision += 1
+  page.onShow()
+  assert.strictEqual(page.data.agreementRead, false, '身份重置撤销阅读状态')
+  assert.strictEqual(page.data.legalAccepted, false)
+  page.setData({ legalConsentVersion: 0, privacyRead: true, agreementRead: true, legalAccepted: true })
+  page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
+  assert.strictEqual(page.data.privacyRead, false, '协议版本变化撤销旧阅读状态')
+  assert.strictEqual(page.data.legalAccepted, false)
+  await page.openUserAgreement()
+  page.onUnload()
+  delayedRead({ document: 'agreement', version: 1 })
+  assert.strictEqual(page.data.agreementRead, false, '已退出页面忽略迟到回调')
 }
 
 async function run() {
@@ -294,7 +448,12 @@ async function run() {
   await testDeletingIdentityResumesWithoutInviteBypass()
   await testLostDeletionResponseUsesFreshMembershipState()
   await testStorageFailureDoesNotBlockDeletionRetry()
+  await testNewMemberRequiresReadsAndExplicitConsent()
+  await testExistingMemberWithoutCurrentProofCannotSkipGate()
+  await testFailedOpenAndSubmissionNeverAutoAgree()
+  await testReadScopeResetAndStaleCallbacks()
   testMarkupKeepsRecoveryPrimary()
+  global.wx.reLaunch = () => {}
   console.log('access page recovery tests passed')
 }
 

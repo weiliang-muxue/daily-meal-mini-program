@@ -1,5 +1,6 @@
 const { callFunction, wxLogin } = require('../utils/cloud')
 const { reconcilePrivateCaches } = require('./private-cache')
+const { hasCurrentLegalConsent, legalConsentPayload } = require('../utils/legal-consent')
 
 function normalizeCacheNamespace(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value) ? value : ''
@@ -21,6 +22,19 @@ function staleIdentityError() {
   return error
 }
 
+function memberForAccess(member, options = {}) {
+  if (member && member.status === 'active' && !hasCurrentLegalConsent(member) && !options.allowUnconsented) {
+    return { ...member, status: 'consent_required' }
+  }
+  return member
+}
+
+function consentRequiredError() {
+  const error = new Error('请先分别打开两份协议，再主动勾选同意')
+  error.code = 'LEGAL_CONSENT_REQUIRED'
+  return error
+}
+
 class MembershipStore {
   constructor() {
     this.member = null
@@ -34,8 +48,8 @@ class MembershipStore {
   }
 
   init(options = {}) {
-    if (this.member && this.verifiedInRuntime && !options.force) return Promise.resolve(this.member)
-    if (this.initPromise && !options.force) return this.initPromise
+    if (this.member && this.verifiedInRuntime && !options.force) return Promise.resolve(memberForAccess(this.member, options))
+    if (this.initPromise && !options.force) return this.initPromise.then((member) => memberForAccess(member, options))
     this.state = 'connecting'
     const requestRevision = ++this.identityRequestRevision
     const request = wxLogin()
@@ -53,7 +67,7 @@ class MembershipStore {
       })
       .finally(() => { if (this.initPromise === request) this.initPromise = null })
     this.initPromise = request
-    return request
+    return request.then((member) => memberForAccess(member, options))
   }
 
   save(member) {
@@ -106,7 +120,20 @@ class MembershipStore {
     })
   }
 
-  acceptInvite(code) { return this.runIdentityAction('acceptInvite', { code }) }
+  acceptInvite(code, consent) {
+    const legalConsent = legalConsentPayload(consent)
+    if (!legalConsent) return Promise.reject(consentRequiredError())
+    return this.runIdentityAction('acceptInvite', { code, legalConsent })
+  }
+  acceptLegalConsent(consent) {
+    const legalConsent = legalConsentPayload(consent)
+    if (!legalConsent) return Promise.reject(consentRequiredError())
+    const cacheNamespace = normalizeCacheNamespace(this.cacheNamespace)
+    if (!this.verifiedInRuntime || !cacheNamespace || !this.member || this.member.status !== 'active') {
+      return Promise.reject(staleIdentityError())
+    }
+    return this.runIdentityAction('acceptLegalConsent', { legalConsent, cacheNamespace })
+  }
   createInvite(label) { return callFunction('membership', 'createInvite', { label }) }
   listMembers() { return callFunction('membership', 'listMembers') }
   revokeInvite(inviteRef) { return callFunction('membership', 'revokeInvite', { inviteRef }) }

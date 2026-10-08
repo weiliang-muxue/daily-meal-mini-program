@@ -51,6 +51,25 @@
 .legal-detail { display: block; margin-top: 4rpx; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .legal-action { flex: none; color: var(--primary); font-size: 14px; line-height: 1.4; font-weight: 680; }
 .legal-privacy-error { display: block; margin-top: 12rpx; padding: 18rpx 20rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.joined-members-card { min-width: 0; padding: 28rpx; }
+.joined-members-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16rpx; }
+.joined-members-summary { min-width: 0; flex: 1; }
+.joined-members-title { display: block; color: var(--ink); font-size: 16px; line-height: 1.4; font-weight: 730; overflow-wrap: anywhere; }
+.joined-members-hint { display: block; margin-top: 7rpx; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.joined-members-refresh, .joined-members-retry { min-width: 64px; min-height: 48px; margin: 0; padding: 10px 12px; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.4; font-weight: 680; }
+.joined-members-refresh { flex: 0 0 72px; width: 72px; max-width: 72px; }
+.joined-members-retry { margin-top: 18rpx; }
+.joined-members-refresh[disabled], .joined-members-retry[disabled] { opacity: .48; }
+.joined-members-list { margin-top: 22rpx; border: 1rpx solid var(--line); border-radius: 10rpx; overflow: hidden; }
+.joined-member-row { min-width: 0; padding: 24rpx; border-bottom: 1rpx solid var(--line); }
+.joined-member-row:last-child { border-bottom: 0; }
+.joined-member-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12rpx 16rpx; margin-bottom: 16rpx; }
+.joined-member-name { min-width: 0; flex: 1 1 100px; color: var(--ink); font-size: 16px; line-height: 1.5; font-weight: 700; overflow-wrap: anywhere; }
+.joined-member-role { flex: none; padding: 4rpx 12rpx; border-radius: 6rpx; background: var(--surface-muted); color: var(--muted-strong); font-size: 12px; line-height: 1.5; font-weight: 650; }
+.joined-member-role.owner { background: var(--primary-soft); color: var(--primary-soft-ink); }
+.joined-member-detail { display: flex; align-items: flex-start; gap: 16rpx; margin-top: 10rpx; font-size: 14px; line-height: 1.55; }
+.joined-member-label { width: 4em; flex: none; color: var(--muted); }
+.joined-member-value { min-width: 0; flex: 1; color: var(--ink); overflow-wrap: anywhere; }
 .invite-card { padding: 28rpx; }
 .invite-title { display: block; font-size: 16px; font-weight: 730; }.invite-copy { display: block; margin-top: 7rpx; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .invite-field { display: block; margin: 22rpx 0; }
@@ -114,6 +133,7 @@
   .active-invite-row { align-items: flex-start; flex-direction: column; }
   .invite-revoke { width: 100%; }
   .legal-row { align-items: flex-start; }
+  .joined-member-detail { flex-direction: column; gap: 4rpx; }
 }
 @media (max-width: 400px) {
   .auth-strip, .phone-button, .invite-result, .member-option, .invite-revoke, .active-invite-empty button, .avatar-error-actions button, .legal-row, .danger-button { min-height: 48px; }
@@ -128,7 +148,7 @@
   }
   .section-title { margin: 20px 0 9px; }
   .profile-form .primary-button, .invite-card .secondary-button { font-size: 14px; }
-  .profile-header, .profile-form, .invite-card, .transfer-card, .danger-card { padding: 16px; }
+  .profile-header, .profile-form, .joined-members-card, .invite-card, .transfer-card, .danger-card { padding: 16px; }
   .profile-header { gap: 12px; }
   .avatar-button { width: 76px; min-height: 78px; }
   .avatar-visual, .avatar { width: 56px; height: 56px; }
@@ -137,4 +157,6 @@
   .phone-button, .profile-save, .invite-label, .invite-revoke, .member-retry, .transfer-button, .danger-button, .legal-row, .active-invite-empty button, .avatar-error-actions button { min-height: 48px; }
   .invite-field, .transfer-button, .danger-button { margin-top: 12px; }
   .member-status { min-height: 96px; padding: 14px; }
+  .joined-member-row { padding: 16px; }
+  .joined-member-detail { gap: 12px; margin-top: 6px; }
 }

@@ -58,9 +58,49 @@
   </view>
 
   <block wx:if="{{member.role === 'owner'}}">
+    <text class="section-title">已加入成员</text>
+    <view class="joined-members-card surface">
+      <view class="joined-members-heading">
+        <view class="joined-members-summary">
+          <text class="joined-members-title">{{joinedMembersState === 'ready' ? '当前 ' + joinedMembers.length + ' 位成员' : '成员与邀请来源'}}</text>
+          <text class="joined-members-hint">仅管理员可见；含管理员本人</text>
+        </view>
+        <button class="joined-members-refresh" bindtap="retryMembers" loading="{{joinedMembersState === 'loading'}}" disabled="{{profileLoading || joinedMembersState === 'loading' || transferringOwner || creatingInvite || revokingInviteRef}}" hover-class="profile-control-hover" aria-label="刷新已加入成员和邀请状态">刷新</button>
+      </view>
+
+      <view wx:if="{{joinedMembersState === 'loading' || joinedMembersState === 'idle'}}" class="member-status" aria-label="正在加载已加入成员">
+        <view class="member-skeleton skeleton" aria-hidden="true"></view>
+        <view class="member-skeleton short skeleton" aria-hidden="true"></view>
+        <text class="member-status-copy">正在加载已加入成员</text>
+      </view>
+      <view wx:elif="{{joinedMembersState === 'error'}}" class="member-status" aria-role="alert">
+        <text class="member-status-title">暂时无法确认成员列表</text>
+        <text class="member-status-copy">{{membersError}}</text>
+        <button class="joined-members-retry" bindtap="retryMembers" disabled="{{profileLoading || transferringOwner || creatingInvite || revokingInviteRef}}" hover-class="profile-control-hover" aria-label="重新加载已加入成员">重新加载</button>
+      </view>
+      <view wx:elif="{{joinedMembersState === 'empty'}}" class="member-status">
+        <text class="member-status-title">暂无可展示的成员</text>
+        <text class="member-status-copy">可点击刷新重新获取成员信息。</text>
+      </view>
+      <view wx:else class="joined-members-list">
+        <view wx:for="{{joinedMembers}}" wx:key="memberRef" class="joined-member-row">
+          <view class="joined-member-heading">
+            <text class="joined-member-name">{{item.displayName}}</text>
+            <text class="joined-member-role {{item.role === 'owner' ? 'owner' : ''}}">{{item.roleLabel}}</text>
+          </view>
+          <view class="joined-member-detail"><text class="joined-member-label">加入时间</text><text class="joined-member-value">{{item.joinedText}}</text></view>
+          <view class="joined-member-detail"><text class="joined-member-label">邀请人</text><text class="joined-member-value">{{item.inviterLabel}}</text></view>
+          <view class="joined-member-detail"><text class="joined-member-label">邀请备注</text><text class="joined-member-value">{{item.invitationLabel}}</text></view>
+        </view>
+      </view>
+    </view>
+
     <text class="section-title">邀请成员</text>
     <view class="invite-card surface">
-      <view class="invite-heading"><view><text class="invite-title">已占用 {{occupiedCount}} / {{maxMembers}} 个名额</text><text class="invite-copy">{{memberCount}} 位已加入成员，{{activeInvites.length}} 个待使用邀请；总容量 {{maxMembers}} 人，邀请码单次使用，创建 {{inviteTtlText}}后失效</text></view></view>
+      <view class="invite-heading">
+        <view wx:if="{{inviteCapacityKnown}}"><text class="invite-title">已占用 {{occupiedCount}} / {{maxMembers}} 个名额</text><text class="invite-copy">{{memberCount}} 位已加入成员，{{activeInvites.length}} 个待使用邀请；总容量 {{maxMembers}} 人，邀请码单次使用，创建 {{inviteTtlText}}后失效</text></view>
+        <view wx:else><text class="invite-title">{{membersState === 'error' ? '名额信息暂时不可用' : '正在确认成员名额'}}</text><text class="invite-copy">获取成员和邀请状态后，即可确认剩余名额。</text></view>
+      </view>
       <label class="invite-field" for="invite-label-input">
         <text class="invite-field-label">邀请备注（可选）</text>
         <input id="invite-label-input" class="invite-label" maxlength="20" value="{{inviteLabel}}" bindinput="inputInviteLabel" disabled="{{profileLoading}}" placeholder="例如：家人" aria-label="邀请备注（可选）" />
@@ -68,7 +108,7 @@
       <button class="secondary-button" loading="{{creatingInvite}}" disabled="{{profileLoading || creatingInvite || revokingInviteRef || !inviteCapacityKnown || occupiedCount >= maxMembers}}" bindtap="createInvite">生成一次性邀请码</button>
       <view wx:if="{{inviteCode}}" class="invite-result touch-target" bindtap="copyInvite" hover-class="profile-control-hover" aria-role="button" aria-label="复制邀请码"><text class="invite-code">{{inviteCode}}</text><text class="invite-expire">有效至 {{inviteExpiresText}}（北京时间） · 点击复制</text></view>
 
-      <view class="active-invite-heading"><text class="active-invite-title">待使用邀请</text><text class="active-invite-count">{{activeInvites.length}} 个</text></view>
+      <view class="active-invite-heading"><text class="active-invite-title">待使用邀请</text><text wx:if="{{inviteCapacityKnown}}" class="active-invite-count">{{activeInvites.length}} 个</text><text wx:else class="active-invite-count">待确认</text></view>
       <view wx:if="{{membersState === 'loading' || membersState === 'idle'}}" class="active-invite-empty"><text>正在加载邀请状态</text></view>
       <view wx:elif="{{membersState === 'error'}}" class="active-invite-empty error"><text>邀请状态暂时不可用，请重试</text><button bindtap="retryMembers" disabled="{{profileLoading || revokingInviteRef || creatingInvite}}">重试</button></view>
       <view wx:elif="{{!activeInvites.length}}" class="active-invite-empty"><text>暂无待使用邀请</text><text class="active-invite-hint">新生成的邀请码会在这里显示状态，但不会再次显示明文。</text></view>

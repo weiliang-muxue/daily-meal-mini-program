@@ -7,6 +7,7 @@ const CONTROL_PHASE_BOOTSTRAP_PENDING = 'bootstrap_pending'
 const CONTROL_PHASE_BOOTSTRAP_APPROVED = 'bootstrap_approved'
 const INVITE_SLOTS = 3
 const INVITE_TTL_HOURS = 168
+const LEGAL_CONSENT_VERSION = 1
 
 function fail(message, code = 'MEMBERSHIP_INVALID') {
   const error = new Error(message)
@@ -179,6 +180,29 @@ function isInviteRef(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
 }
 
+function assertLegalConsent(value) {
+  const fields = ['version', 'privacyRead', 'agreementRead', 'accepted']
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).length !== fields.length
+    || !fields.every((field) => Object.prototype.hasOwnProperty.call(value, field))
+    || value.version !== LEGAL_CONSENT_VERSION
+    || value.privacyRead !== true || value.agreementRead !== true || value.accepted !== true) {
+    fail('请阅读隐私政策和用户协议后明确同意', 'LEGAL_CONSENT_REQUIRED')
+  }
+}
+
+function hasAcceptedLegalConsent(member) {
+  const consent = member && member.legalConsent
+  if (!consent || typeof consent !== 'object' || Array.isArray(consent)
+    || Object.keys(consent).length !== 2
+    || !Object.prototype.hasOwnProperty.call(consent, 'version')
+    || !Object.prototype.hasOwnProperty.call(consent, 'acceptedAt')
+    || consent.version !== LEGAL_CONSENT_VERSION) return false
+  const acceptedAt = consent.acceptedAt instanceof Date
+    ? consent.acceptedAt.getTime() : consent.acceptedAt
+  return typeof acceptedAt === 'number' && Number.isFinite(acceptedAt) && acceptedAt > 0
+}
+
 function publicInvite(record) {
   if (!record || !isInviteRef(record._id)) fail('邀请引用无效', 'INVITE_REFERENCE_INVALID')
   return {
@@ -188,15 +212,22 @@ function publicInvite(record) {
   }
 }
 
-function publicMember(record, index = 0) {
+function publicMember(record, index = 0, relationship = {}) {
   if (!record || !isMemberRef(record.memberRef)) fail('成员引用尚未初始化，请重试', 'MEMBER_REFERENCE_MISSING')
   const role = record.role === 'owner' ? 'owner' : 'member'
   const storedLabel = typeof record.displayLabel === 'string' ? record.displayLabel.trim().slice(0, 20) : ''
+  const label = role === 'owner' ? '管理员' : (storedLabel || `受邀成员 ${index + 1}`)
+  const text = (value) => typeof value === 'string' ? value.trim().slice(0, 20) : ''
+  const joinSource = ['invite', 'owner'].includes(relationship.joinSource) ? relationship.joinSource : 'legacy'
   return {
     memberRef: record.memberRef,
     role,
-    label: role === 'owner' ? '管理员' : (storedLabel || `受邀成员 ${index + 1}`),
+    label,
     joinedAt: record.joinedAt || null,
+    displayName: text(relationship.displayName) || storedLabel || label,
+    inviterLabel: joinSource === 'owner' ? '' : (text(relationship.inviterLabel) || '邀请人信息未记录'),
+    invitationLabel: text(relationship.invitationLabel),
+    joinSource,
   }
 }
 
@@ -208,6 +239,7 @@ module.exports = {
   CONTROL_PHASE_BOOTSTRAP_APPROVED,
   INVITE_SLOTS,
   INVITE_TTL_HOURS,
+  LEGAL_CONSENT_VERSION,
   configuration,
   normalizeControl,
   assertOperationalControl,
@@ -223,6 +255,8 @@ module.exports = {
   controlFromSnapshot,
   isMemberRef,
   isInviteRef,
+  assertLegalConsent,
+  hasAcceptedLegalConsent,
   publicMember,
   publicInvite,
 }

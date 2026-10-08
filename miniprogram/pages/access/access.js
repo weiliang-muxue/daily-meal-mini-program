@@ -4,6 +4,7 @@ const { userStore } = require('../../services/user-store')
 const { clearPrivateCache } = require('../../services/private-cache')
 const { callFunction } = require('../../utils/cloud')
 const { navigateToUserAgreement, openPrivacyContractOrLocal } = require('../../utils/privacy-auth')
+const { LEGAL_CONSENT_VERSION, hasCurrentLegalConsent, legalConsentPayload } = require('../../utils/legal-consent')
 
 function validCacheNamespace(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
@@ -21,18 +22,72 @@ Page({
     continuingDeletion: false,
     deletionError: '',
     privacyError: '',
+    needsLegalConsent: false,
+    legalConsentVersion: LEGAL_CONSENT_VERSION,
+    privacyRead: false,
+    agreementRead: false,
+    legalAccepted: false,
+    legalError: '',
+    openingLegal: false,
   },
-  onLoad() { this.check() },
+  onLoad() {
+    this.unloaded = false
+    this.resetLegalConsent()
+    if (typeof membershipStore.onCacheNamespaceChange === 'function') {
+      this.unsubscribeNamespace = membershipStore.onCacheNamespaceChange(() => this.resetLegalConsent())
+    }
+    return this.check()
+  },
+  onShow() {
+    this.ensureLegalScope()
+    this.setData({ legalAccepted: false })
+  },
+  onUnload() {
+    this.unloaded = true
+    this.legalReadRevision = (this.legalReadRevision || 0) + 1
+    if (this.unsubscribeNamespace) this.unsubscribeNamespace()
+  },
+
+  resetLegalConsent() {
+    this.legalReadRevision = (this.legalReadRevision || 0) + 1
+    this.legalNamespace = membershipStore.cacheNamespace || ''
+    this.legalIdentityRevision = membershipStore.identityRequestRevision
+    this.setData({
+      legalConsentVersion: LEGAL_CONSENT_VERSION, privacyRead: false,
+      agreementRead: false, legalAccepted: false, legalError: '', openingLegal: false,
+    })
+  },
+
+  ensureLegalScope() {
+    if (this.legalNamespace !== (membershipStore.cacheNamespace || '')
+      || this.legalIdentityRevision !== membershipStore.identityRequestRevision
+      || this.data.legalConsentVersion !== LEGAL_CONSENT_VERSION) this.resetLegalConsent()
+  },
+
+  changeLegalConsent(event) {
+    this.ensureLegalScope()
+    const selected = event && event.detail && event.detail.value
+    const accepted = !this.data.submitting && !this.data.openingLegal
+      && this.data.privacyRead && this.data.agreementRead
+      && Array.isArray(selected) && selected.includes('legal-accepted')
+    this.setData({ legalAccepted: Boolean(accepted), legalError: '' })
+  },
 
   async check(force = false) {
     if (this.data.loading && force) return
     this.setData({
       loading: true, checkError: '', inviteError: '', showInviteForm: false,
-      deletionRecovery: false, deletionError: '',
+      deletionRecovery: false, deletionError: '', needsLegalConsent: false,
     })
+    this.resetLegalConsent()
     try {
-      const member = await membershipStore.init({ force })
-      if (member && member.status === 'active') return this.enter()
+      const member = await membershipStore.init({ force, allowUnconsented: true })
+      this.ensureLegalScope()
+      if (hasCurrentLegalConsent(member)) return this.enter(member)
+      if (member && member.status === 'active') {
+        this.setData({ loading: false, needsLegalConsent: true })
+        return
+      }
       if (member && member.status === 'deleting' && validCacheNamespace(member.cacheNamespace)) {
         this.setData({ loading: false, deletionRecovery: true })
         return
@@ -49,7 +104,7 @@ Page({
 
   retryCheck() { return this.check(true) },
   useInviteInstead() {
-    if (this.data.deletionRecovery) return
+    if (this.data.deletionRecovery || this.data.needsLegalConsent) return
     this.setData({ showInviteForm: true, inviteError: '' })
   },
 
@@ -61,16 +116,27 @@ Page({
   },
 
   async submit() {
-    if (this.data.deletionRecovery) return
+    if (this.data.deletionRecovery || this.data.loading || this.data.submitting) return
+    this.ensureLegalScope()
     const code = this.data.code.trim()
-    if (!code) return this.setData({ inviteError: '请输入邀请码' })
-    if (this.data.submitting) return
-    this.setData({ submitting: true, inviteError: '' })
+    if (!this.data.needsLegalConsent && !code) return this.setData({ inviteError: '请输入邀请码' })
+    const legalConsent = legalConsentPayload({
+      version: this.data.legalConsentVersion, privacyRead: this.data.privacyRead,
+      agreementRead: this.data.agreementRead, accepted: this.data.legalAccepted,
+    })
+    if (!legalConsent) return this.setData({ legalError: '请先分别打开两份协议，再主动勾选同意。', legalAccepted: false })
+    this.setData({ submitting: true, inviteError: '', legalError: '' })
     try {
-      await membershipStore.acceptInvite(code)
-      await this.enter()
+      const member = this.data.needsLegalConsent
+        ? await membershipStore.acceptLegalConsent(legalConsent)
+        : await membershipStore.acceptInvite(code, legalConsent)
+      if (!hasCurrentLegalConsent(member)) throw new Error('暂时无法确认协议同意结果，请重新验证微信身份。')
+      await this.enter(member)
     } catch (error) {
-      this.setData({ inviteError: error.message || '邀请码验证失败，请核对后重试' })
+      this.setData({
+        [this.data.needsLegalConsent ? 'legalError' : 'inviteError']: error.message || '验证失败，请稍后重试',
+        legalAccepted: false,
+      })
     } finally { this.setData({ submitting: false }) }
   },
 
@@ -91,7 +157,7 @@ Page({
     } catch (error) {
       let recoveryState = 'unknown'
       try {
-        const member = await membershipStore.init({ force: true })
+        const member = await membershipStore.init({ force: true, allowUnconsented: true })
         if (membershipStore.state === 'ready') {
           recoveryState = deletionRecoveryState(member, cacheNamespace)
         }
@@ -112,18 +178,50 @@ Page({
     }
   },
 
-  async enter() {
+  async enter(member) {
+    if (!hasCurrentLegalConsent(member)) return
     try { await authStore.init({ force: true }); await userStore.init({ force: true }) } catch (_) {}
     wx.switchTab({ url: '/pages/plan/plan' })
   },
 
-  openUserAgreement() { return navigateToUserAgreement() },
-  async openPrivacyGuide() {
-    this.setData({ privacyError: '' })
-    const result = await openPrivacyContractOrLocal()
-    if (!result.openedPlatformContract && !result.usedLocalFallback) {
-      this.setData({ privacyError: result.error || '《隐私保护指引》暂时无法打开，请稍后重试。' })
+  async openLegalDocument(document) {
+    if (this.data.openingLegal || this.data.submitting) return
+    this.ensureLegalScope()
+    const revision = this.legalReadRevision
+    const openRevision = this.legalOpenRevision = (this.legalOpenRevision || 0) + 1
+    const field = document === 'privacy' ? 'privacyRead' : 'agreementRead'
+    this.setData({ [field]: false, legalAccepted: false, legalError: '', privacyError: '', openingLegal: true })
+    const onRead = (detail) => {
+      if (this.unloaded || revision !== this.legalReadRevision || openRevision !== this.legalOpenRevision
+        || this.legalNamespace !== (membershipStore.cacheNamespace || '')
+        || this.legalIdentityRevision !== membershipStore.identityRequestRevision
+        || !detail || detail.document !== document || detail.version !== LEGAL_CONSENT_VERSION) return
+      this.setData({ [field]: true, legalAccepted: false })
     }
-    return result
+    try {
+      const result = document === 'privacy'
+        ? await openPrivacyContractOrLocal(null, { onRead })
+        : await navigateToUserAgreement(null, { onRead })
+      if (this.unloaded || revision !== this.legalReadRevision) return result
+      const opened = document === 'privacy'
+        ? result && (result.openedPlatformContract || result.usedLocalFallback)
+        : result && result.navigated
+      if (!opened) {
+        this.setData({
+          [field]: false, legalAccepted: false,
+          [document === 'privacy' ? 'privacyError' : 'legalError']: result && result.error
+            || `《${document === 'privacy' ? '隐私保护指引' : '用户协议'}》暂时无法打开，请稍后重试。`,
+        })
+      }
+      return result
+    } catch (_) {
+      if (!this.unloaded && revision === this.legalReadRevision) {
+        this.setData({ [field]: false, legalAccepted: false, legalError: '协议暂时无法打开，请稍后重试。' })
+      }
+    } finally {
+      if (!this.unloaded && revision === this.legalReadRevision) this.setData({ openingLegal: false })
+    }
   },
+  openUserAgreement() { return this.openLegalDocument('agreement') },
+  openPrivacyGuide() { return this.openLegalDocument('privacy') },
 })

@@ -11,7 +11,7 @@
   </view>
 
   <view class="legal-document" user-select="{{true}}">
-    <view class="legal-notice">请在使用前了解本协议中的服务规则和重要提醒。头像、照片等隐私相关功能只会在你主动操作时，按照微信平台规则请求授权。</view>
+    <view class="legal-notice">请在使用前分别打开本协议与《隐私保护指引》，再主动勾选同意。查看协议或返回不会自动同意；头像、照片等功能仍只在你主动操作时按微信平台规则单独请求授权。</view>
 
     <view class="legal-section">
       <text class="legal-section-title">一、服务范围与成员资格</text>
@@ -40,7 +40,7 @@
 
     <view class="legal-section">
       <text class="legal-section-title">五、账号与数据隔离</text>
-      <text class="legal-paragraph">餐单、采购、提醒、资料和健康记录按当前微信身份隔离。邀请管理员只能管理成员资格、邀请码和管理员交接，不能因此查看其他成员的私人餐单、体重、运动、备注、头像或照片。</text>
+      <text class="legal-paragraph">餐单、采购、提醒、资料和健康记录按当前微信身份隔离。邀请管理员可以管理成员资格、邀请码和管理员交接，并查看成员主动保存的昵称、邀请备注、加入时间与邀请来源。仅管理员可见这些管理信息，不能因此查看其他成员的手机号、头像、照片、私人餐单、体重、运动或健康备注。</text>
       <text class="legal-paragraph">用户应妥善管理微信账号和设备。发现异常访问时，应先保护微信账号，并通过下述支持路径报告问题。</text>
     </view>
 
@@ -59,7 +59,7 @@
     <view class="legal-section">
       <text class="legal-section-title">八、服务可用性与变更</text>
       <text class="legal-paragraph">网络、微信平台、云服务或第三方 AI 异常可能导致部分功能暂时不可用。应用会在可行范围内提供错误提示、重试或本机快照，但不以静态结果冒充新的 AI 生成，也不保证服务始终无中断或生成结果绝对准确。</text>
-      <text class="legal-paragraph">功能或规则发生实质变化时，应同步更新发布版本中的页面和相关说明。用户可以在继续操作前重新查阅。</text>
+      <text class="legal-paragraph">功能或规则发生实质变化时，应同步更新发布版本中的页面和相关说明。协议更新后，用户需重新打开阅读并主动勾选同意，才能继续使用核心功能；尚未完成的私人数据清理仍可继续。</text>
     </view>
 
     <view class="legal-section">

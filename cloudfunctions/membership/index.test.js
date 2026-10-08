@@ -8,6 +8,7 @@ const { CONTROL_ID } = require('./core')
 
 const OWNER = 'owner-account'
 const MEMBER = 'member-account'
+const CONSENT = Object.freeze({ version: 1, privacyRead: true, agreementRead: true, accepted: true })
 const HOURS_PER_DAY = 24
 const LEGACY_MAX_MEMBERS = 7
 const LEGACY_CONTROL_CONFIGURATION = Object.freeze({
@@ -37,6 +38,8 @@ class MemoryDatabase {
       collection, new Map(Object.entries(records).map(([id, value]) => [id, clone(value)])),
     ]))
     this.tail = Promise.resolve()
+    this.beforeQueryGet = null
+    this.beforeTransaction = null
   }
 
   bucket(name, source = this.docs) {
@@ -76,6 +79,7 @@ class MemoryDatabase {
       skip(value) { return database.query(collectionName, criteria, resolveSource, Number(value) || 0, maximum) },
       limit(value) { return database.query(collectionName, criteria, resolveSource, offset, Number(value) || 0) },
       async get() {
+        if (database.beforeQueryGet) await database.beforeQueryGet({ collectionName, criteria })
         const rows = [...database.bucket(collectionName, resolveSource()).entries()]
           .filter(([, record]) => Object.entries(criteria).every(([key, value]) => record[key] === value))
           .slice(offset, offset + maximum)
@@ -87,6 +91,7 @@ class MemoryDatabase {
 
   runTransaction(callback) {
     const run = this.tail.then(async () => {
+      if (this.beforeTransaction) await this.beforeTransaction()
       const draft = new Map([...this.docs.entries()].map(([name, records]) => [
         name, new Map([...records.entries()].map(([id, value]) => [id, clone(value)])),
       ]))
@@ -182,8 +187,8 @@ async function twoAccountsCannotConsumeOneInvite() {
   seed({ invitation: invite('CODE-A', now + 60000, '家人') })
   database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), reservedInviteCount: 1 })
   const results = await Promise.allSettled([
-    membership._test.acceptInvite('account-a', 'CODE-A'),
-    membership._test.acceptInvite('account-b', 'CODE-A'),
+    membership._test.acceptInvite('account-a', 'CODE-A', CONSENT),
+    membership._test.acceptInvite('account-b', 'CODE-A', CONSENT),
   ])
   assert.strictEqual(results.filter((item) => item.status === 'fulfilled').length, 1)
   assert.strictEqual(results.filter((item) => item.status === 'rejected').length, 1)
@@ -207,8 +212,8 @@ async function oneAccountCannotConsumeTwoInvites() {
   seed({ first: invite('CODE-B', now + 60000), second: invite('CODE-C', now + 60000) })
   database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), reservedInviteCount: 2 })
   const results = await Promise.allSettled([
-    membership._test.acceptInvite('same-account', 'CODE-B'),
-    membership._test.acceptInvite('same-account', 'CODE-C'),
+    membership._test.acceptInvite('same-account', 'CODE-B', CONSENT),
+    membership._test.acceptInvite('same-account', 'CODE-C', CONSENT),
   ])
   assert(results.every((item) => item.status === 'fulfilled'))
   const invitations = database.records('meal_invites')
@@ -227,7 +232,7 @@ async function exactExpiryIsRejected() {
     seed({ expired: invite('CODE-D', expiresAt) })
     database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), reservedInviteCount: 1 })
     await assert.rejects(
-      membership._test.acceptInvite('late-account', 'CODE-D'),
+      membership._test.acceptInvite('late-account', 'CODE-D', CONSENT),
       (error) => error.code === 'INVITE_INVALID',
     )
     assert.strictEqual(database.record('meal_members', 'late-account'), undefined)
@@ -289,7 +294,7 @@ async function legacyTenCharacterInviteStillCreatesOnlyMember() {
   seed({ [inviteRef]: invite(legacyCode, Date.now() + 60000, '旧版邀请') })
   database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), reservedInviteCount: 1 })
 
-  const result = await membership._test.acceptInvite('legacy-invite-account', legacyCode.toLowerCase())
+  const result = await membership._test.acceptInvite('legacy-invite-account', legacyCode.toLowerCase(), CONSENT)
   const joined = database.record('meal_members', 'legacy-invite-account')
   assert.strictEqual(result.status, 'active')
   assert.strictEqual(result.role, 'member')
@@ -378,7 +383,7 @@ async function redeemAndRevokeAreSerialized() {
   seed({ [inviteRef]: { ...invite('RACE-CODE', Date.now() + 60000), createdBy: OWNER } })
   database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), reservedInviteCount: 1 })
   const results = await Promise.allSettled([
-    membership._test.acceptInvite('race-member', 'RACE-CODE'),
+    membership._test.acceptInvite('race-member', 'RACE-CODE', CONSENT),
     membership._test.revokeInvite(OWNER, inviteRef),
   ])
   const joined = database.record('meal_members', 'race-member')
@@ -452,7 +457,7 @@ async function bootstrapSentinelBlocksEveryMembershipWrite() {
       (error) => error.code === 'MEMBERSHIP_BOOTSTRAP_IN_PROGRESS',
     )
     await assert.rejects(
-      membership._test.acceptInvite('new-account', 'NO-CODE'),
+      membership._test.acceptInvite('new-account', 'NO-CODE', CONSENT),
       (error) => error.code === 'MEMBERSHIP_BOOTSTRAP_IN_PROGRESS',
     )
     await assert.rejects(
@@ -628,7 +633,7 @@ async function deletingIdentityReceivesOnlyItsRecoveryHandle() {
     'b'.repeat(32), 'c'.repeat(32), '3'.repeat(32),
   ]) assert.strictEqual(serialized.includes(privateValue), false)
   await assert.rejects(
-    membership._test.acceptInvite(MEMBER, 'ANY-CODE'),
+    membership._test.acceptInvite(MEMBER, 'ANY-CODE', CONSENT),
     (error) => error.code === 'ACCOUNT_DELETION_IN_PROGRESS',
     '清理中的可信身份不能通过邀请码重新加入',
   )
@@ -641,6 +646,213 @@ async function deletingIdentityReceivesOnlyItsRecoveryHandle() {
     (error) => error.code === 'MEMBERSHIP_INVARIANT_FAILED',
     '缺失可信旧 namespace 时必须拒绝返回可恢复状态',
   )
+}
+
+async function missingOrInvalidConsentCannotWrite() {
+  const inviteRef = 'e'.repeat(32)
+  seed({ [inviteRef]: { ...invite('CONSENT-CODE', Date.now() + 60000), createdBy: OWNER, createdAt: 2 } })
+  database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), reservedInviteCount: 1 })
+  const beforeMembers = database.records('meal_members')
+  const beforeInvites = database.records('meal_invites')
+  for (const legalConsent of [
+    undefined, null, {}, true, { accepted: true }, { ...CONSENT, privacyRead: false },
+    { ...CONSENT, agreementRead: false }, { ...CONSENT, accepted: false },
+    { ...CONSENT, accepted: 'true' }, { ...CONSENT, version: 2 }, { ...CONSENT, version: '1' },
+    { ...CONSENT, acceptedAt: 123 },
+  ]) {
+    await assert.rejects(
+      membership._test.acceptInvite(MEMBER, 'CONSENT-CODE', legalConsent),
+      (error) => error.code === 'LEGAL_CONSENT_REQUIRED',
+    )
+    await assert.rejects(
+      membership._test.acceptLegalConsent(OWNER, legalConsent, '1'.repeat(32)),
+      (error) => error.code === 'LEGAL_CONSENT_REQUIRED',
+    )
+    assert.deepStrictEqual(database.records('meal_members'), beforeMembers)
+    assert.deepStrictEqual(database.records('meal_invites'), beforeInvites)
+  }
+}
+
+async function existingMembersExplicitlyAcceptOnceForTheirOwnGeneration() {
+  seed({}, { [MEMBER]: activeMember('member', 'b'.repeat(32), '2'.repeat(32)) })
+  database.bucket('meal_members').set(CONTROL_ID, {
+    ...CONTROL(), activeMemberCount: 2, inviteSlots: 3, inviteTtlHours: 168,
+  })
+  const initial = await membership._test.status(MEMBER)
+  assert.strictEqual(initial.legalConsentVersion, 1)
+  assert.strictEqual(initial.legalConsentAccepted, false)
+  assert.strictEqual(database.record('meal_members', MEMBER).legalConsent, undefined)
+  assert.strictEqual((await membership._test.status('unjoined-account')).legalConsentAccepted, false)
+  assert.strictEqual((await membership._test.acceptInvite(MEMBER, 'UNUSED', CONSENT)).legalConsentAccepted, false)
+  const ownerBefore = database.record('meal_members', OWNER)
+  currentIdentity = MEMBER
+  const accepted = await membership.main({
+    action: 'acceptLegalConsent', legalConsent: CONSENT, cacheNamespace: '2'.repeat(32),
+    openid: OWNER, OPENID: OWNER, role: 'owner', acceptedAt: 9999999999999,
+  })
+  assert.strictEqual(accepted.success, true)
+  assert.strictEqual(accepted.data.legalConsentAccepted, true)
+  assert.strictEqual(accepted.data.role, 'member')
+  const after = database.record('meal_members', MEMBER)
+  assert.deepStrictEqual(Object.keys(after.legalConsent).sort(), ['acceptedAt', 'version'])
+  assert.strictEqual(after.legalConsent.version, 1)
+  assert(after.legalConsent.acceptedAt > 1000 && after.legalConsent.acceptedAt < 9999999999999)
+  assert.deepStrictEqual(database.record('meal_members', OWNER), ownerBefore)
+  const controlAfter = database.record('meal_members', CONTROL_ID)
+  await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))
+  assert.deepStrictEqual(database.record('meal_members', MEMBER), after, '重复同意必须保留首次服务器时间')
+  assert.deepStrictEqual(database.record('meal_members', CONTROL_ID), controlAfter)
+  for (const cacheNamespace of [undefined, '', 'invalid', '1'.repeat(32), '3'.repeat(32)]) {
+    await assert.rejects(membership._test.acceptLegalConsent(MEMBER, CONSENT, cacheNamespace),
+      (error) => error.code === 'ACCOUNT_GENERATION_CHANGED')
+    assert.deepStrictEqual(database.record('meal_members', MEMBER), after)
+  }
+  await assert.rejects(membership._test.acceptLegalConsent('unjoined-account', CONSENT, '2'.repeat(32)),
+    (error) => error.code === 'MEMBERSHIP_REQUIRED')
+  currentIdentity = ''
+  assert.strictEqual((await membership.main({
+    action: 'acceptLegalConsent', legalConsent: CONSENT, cacheNamespace: '2'.repeat(32), OPENID: MEMBER,
+  })).code, 'IDENTITY_REQUIRED')
+  currentIdentity = OWNER
+}
+
+async function consentCannotArriveAfterDeletionOrGenerationChange() {
+  for (const changed of [
+    { status: 'deleting' }, { cacheNamespace: '9'.repeat(32) },
+  ]) {
+    seed({}, { [MEMBER]: activeMember('member', 'b'.repeat(32), '2'.repeat(32)) })
+    database.beforeTransaction = async () => {
+      database.beforeTransaction = null
+      database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), ...changed })
+    }
+    await assert.rejects(membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32)),
+      (error) => error.code === (changed.status ? 'ACCOUNT_DELETION_IN_PROGRESS' : 'ACCOUNT_GENERATION_CHANGED'))
+    assert.strictEqual(database.record('meal_members', MEMBER).legalConsent, undefined)
+  }
+  seed({}, { [MEMBER]: {
+    ...activeMember('member', 'b'.repeat(32), '2'.repeat(32)), legalConsent: { version: 1, acceptedAt: 0 },
+  } })
+  assert.strictEqual((await membership._test.status(MEMBER)).legalConsentAccepted, false)
+  assert.strictEqual((await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))).legalConsentAccepted, true)
+}
+
+async function acceptedInvitationExposesOnlyDisplayRelationship() {
+  seed()
+  database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), createdAt: 1 })
+  database.bucket('meal_users').set(OWNER, { nickname: ' 邀请人的昵称 ', unionid: '<fixture-owner-identity>' })
+  database.bucket('meal_users').set(MEMBER, {
+    nickname: ' 受邀用户的昵称 ', avatarFileId: 'private-avatar-file', maskedPhone: '****9876',
+    phoneNumber: 'private-phone', unionid: '<fixture-member-identity>', health: 'private-health',
+  })
+  const created = await membership._test.createInvite(OWNER, '家人备注')
+  currentIdentity = MEMBER
+  const joined = await membership.main({
+    action: 'acceptInvite', code: created.code, legalConsent: CONSENT,
+    role: 'owner', OPENID: OWNER, inviterMemberRef: 'f'.repeat(32), createdBy: 'forged-inviter',
+  })
+  assert.strictEqual(joined.success, true)
+  assert.strictEqual(joined.data.role, 'member')
+  assert.strictEqual(joined.data.legalConsentAccepted, true)
+  const record = database.record('meal_members', MEMBER)
+  assert.strictEqual(record.inviterMemberRef, 'a'.repeat(32))
+  assert.strictEqual(record.joinSource, 'invite')
+  assert.deepStrictEqual(Object.keys(record.legalConsent).sort(), ['acceptedAt', 'version'])
+  const summary = await membership._test.listMembers(OWNER)
+  assert.strictEqual(summary.count, 2)
+  assert.deepStrictEqual(summary.activeInvites, [])
+  const visible = summary.members.find((item) => item.memberRef === record.memberRef)
+  assert.deepStrictEqual(visible, {
+    memberRef: record.memberRef, role: 'member', label: '家人备注', joinedAt: record.joinedAt,
+    displayName: '受邀用户的昵称', inviterLabel: '邀请人的昵称', invitationLabel: '家人备注', joinSource: 'invite',
+  })
+  assert.strictEqual(summary.members.find((item) => item.role === 'owner').joinSource, 'owner')
+  const serialized = JSON.stringify(summary)
+  for (const forbidden of [
+    OWNER, MEMBER, '<fixture-owner-identity>', 'private-avatar-file', '****9876', 'private-phone',
+    '<fixture-member-identity>', 'private-health', created.code, hash(created.code), record.cacheNamespace,
+  ]) assert.strictEqual(serialized.includes(forbidden), false, `不得返回私有值 ${forbidden}`)
+  assert.strictEqual((await membership.main({ action: 'listMembers', role: 'owner', OPENID: OWNER })).code, 'OWNER_REQUIRED')
+
+  await membership._test.transferOwner(OWNER, record.memberRef, true)
+  const transferred = await membership._test.listMembers(MEMBER)
+  const newOwner = transferred.members.find((item) => item.memberRef === record.memberRef)
+  assert.strictEqual(newOwner.role, 'owner')
+  assert.strictEqual(newOwner.joinSource, 'invite')
+  assert.strictEqual(newOwner.inviterLabel, '邀请人的昵称')
+  assert.strictEqual(database.record('meal_members', MEMBER).inviterMemberRef, 'a'.repeat(32))
+  database.bucket('meal_members').delete(OWNER)
+  database.bucket('meal_users').delete(OWNER)
+  database.bucket('meal_invites').delete(created.inviteRef)
+  database.bucket('meal_members').set(CONTROL_ID, { ...database.record('meal_members', CONTROL_ID), activeMemberCount: 1 })
+  assert.strictEqual((await membership._test.listMembers(MEMBER)).members[0].inviterLabel, '原邀请人已退出')
+  database.bucket('meal_members').set(OWNER, activeMember('member', 'c'.repeat(32), '3'.repeat(32)))
+  database.bucket('meal_users').set(OWNER, { nickname: '同账号重新加入后的昵称' })
+  database.bucket('meal_members').set(CONTROL_ID, { ...database.record('meal_members', CONTROL_ID), activeMemberCount: 2 })
+  assert.strictEqual((await membership._test.listMembers(MEMBER)).members
+    .find((item) => item.memberRef === record.memberRef).inviterLabel, '原邀请人已退出')
+  currentIdentity = OWNER
+}
+
+async function legacyRelationshipsRequireEvidenceAndKeepUnknowns() {
+  const inviteRef = 'e'.repeat(32)
+  seed({ [inviteRef]: {
+    ...invite('LEGACY-RELATION', Date.now() + 60000, '旧邀请备注'), active: false,
+    createdBy: OWNER, createdAt: 2, usedBy: MEMBER, usedCount: 1,
+  } }, { [MEMBER]: {
+    ...activeMember('member', 'b'.repeat(32), '2'.repeat(32)), inviteId: inviteRef, joinedAt: 3,
+  } })
+  database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), activeMemberCount: 2 })
+  database.bucket('meal_users').set(OWNER, { nickname: '原邀请人的昵称' })
+  let row = (await membership._test.listMembers(OWNER)).members.find((item) => item.role === 'member')
+  assert.strictEqual(row.joinSource, 'invite')
+  assert.strictEqual(row.inviterLabel, '原邀请人的昵称')
+  assert.strictEqual(row.invitationLabel, '旧邀请备注')
+  database.bucket('meal_members').set(OWNER, {
+    ...activeMember('owner', 'c'.repeat(32), '3'.repeat(32)), joinedAt: 4,
+  })
+  row = (await membership._test.listMembers(OWNER)).members.find((item) => item.role === 'member')
+  assert.strictEqual(row.inviterLabel, '原邀请人已退出', '旧邀请不能归给同账号的新代际')
+  database.bucket('meal_invites').delete(inviteRef)
+  row = (await membership._test.listMembers(OWNER)).members.find((item) => item.role === 'member')
+  assert.strictEqual(row.joinSource, 'legacy')
+  assert.strictEqual(row.inviterLabel, '邀请人信息未记录')
+  assert.strictEqual(row.invitationLabel, '')
+  assert.strictEqual((await membership._test.listMembers(OWNER)).members[0].joinSource, 'legacy',
+    '当前管理员身份不能作为初始加入来源的证据')
+}
+
+async function memberListRechecksOwnerAndDeletionBeforeProjection() {
+  for (const mutation of ['transfer', 'delete']) {
+    seed({}, { [MEMBER]: activeMember('member', 'b'.repeat(32), '2'.repeat(32)) })
+    database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), activeMemberCount: 2 })
+    database.bucket('meal_users').set(MEMBER, { nickname: '即将退出的昵称' })
+    let activeReads = 0
+    database.beforeQueryGet = async ({ collectionName, criteria }) => {
+      if (collectionName !== 'meal_members' || criteria.status !== 'active') return
+      activeReads += 1
+      if (activeReads !== 2) return
+      database.beforeTransaction = async () => {
+        database.beforeTransaction = null
+        const control = database.record('meal_members', CONTROL_ID)
+        if (mutation === 'transfer') {
+          database.bucket('meal_members').set(OWNER, { ...database.record('meal_members', OWNER), role: 'member' })
+          database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), role: 'owner' })
+          database.bucket('meal_members').set(CONTROL_ID, { ...control, ownerOpenid: MEMBER })
+        } else {
+          database.bucket('meal_members').delete(MEMBER)
+          database.bucket('meal_users').delete(MEMBER)
+          database.bucket('meal_members').set(CONTROL_ID, { ...control, activeMemberCount: 1 })
+        }
+      }
+    }
+    if (mutation === 'transfer') {
+      await assert.rejects(membership._test.listMembers(OWNER), (error) => error.code === 'OWNER_REQUIRED')
+    } else {
+      const summary = await membership._test.listMembers(OWNER)
+      assert.strictEqual(summary.count, 1)
+      assert.strictEqual(JSON.stringify(summary).includes('即将退出的昵称'), false)
+    }
+  }
 }
 
 async function run() {
@@ -666,6 +878,12 @@ async function run() {
   await migrationRevokesAllInvitesWhenActiveCapacityIsFull()
   await concurrentEntrancesRevokeOnlyExcessInvites()
   await deletingIdentityReceivesOnlyItsRecoveryHandle()
+  await missingOrInvalidConsentCannotWrite()
+  await existingMembersExplicitlyAcceptOnceForTheirOwnGeneration()
+  await consentCannotArriveAfterDeletionOrGenerationChange()
+  await acceptedInvitationExposesOnlyDisplayRelationship()
+  await legacyRelationshipsRequireEvidenceAndKeepUnknowns()
+  await memberListRechecksOwnerAndDeletionBeforeProjection()
   console.log('membership transaction entry tests passed')
 }
 

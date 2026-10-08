@@ -36,6 +36,38 @@ function cleanMemberName(value) {
   return typeof value === 'string' ? value.trim().slice(0, 20) : ''
 }
 
+function memberJoinedText(value) {
+  const isTimestamp = typeof value === 'number' && Number.isFinite(value) && value > 0
+  const isExplicitDate = typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)
+  if (!isTimestamp && !isExplicitDate) return '加入时间未记录'
+  const formatted = formatBeijingDateTime(value)
+  return formatted ? `${formatted}（北京时间）` : '加入时间未记录'
+}
+
+function visibleJoinedMembers(summary) {
+  const source = summary && Array.isArray(summary.members) ? summary.members : []
+  const seen = new Set()
+  return source.reduce((result, item) => {
+    const memberRef = item && typeof item.memberRef === 'string' ? item.memberRef.toLowerCase() : ''
+    if (!item || !['owner', 'member'].includes(item.role) || !/^[a-f0-9]{32}$/.test(memberRef) || seen.has(memberRef)) return result
+    seen.add(memberRef)
+    const joinSource = ['invite', 'owner'].includes(item.joinSource) ? item.joinSource : 'legacy'
+    result.push({
+      memberRef,
+      displayName: cleanMemberName(item.displayName) || cleanMemberName(item.label) || (item.role === 'owner' ? '管理员' : '受邀成员'),
+      role: item.role,
+      roleLabel: item.role === 'owner' ? '管理员' : '普通成员',
+      joinedText: memberJoinedText(item.joinedAt),
+      inviterLabel: joinSource === 'owner' ? '无需邀请加入'
+        : joinSource === 'invite' ? cleanMemberName(item.inviterLabel) || '邀请人信息未记录' : '邀请人信息未记录',
+      invitationLabel: joinSource === 'owner' ? '无需邀请'
+        : cleanMemberName(item.invitationLabel) || (joinSource === 'invite' ? '未填写' : '未记录'),
+    })
+    return result
+  }, [])
+}
+
 function visibleTransferMembers(summary) {
   const source = summary && Array.isArray(summary.members) ? summary.members : []
   return source.reduce((result, item) => {
@@ -96,6 +128,7 @@ Page({
     inviteTtlHours: DEFAULT_INVITE_TTL_HOURS, inviteTtlText: inviteTtlText(DEFAULT_INVITE_TTL_HOURS),
     inviteLabel: '', inviteCode: '', inviteExpiresText: '', creatingInvite: false,
     activeInvites: [], inviteCapacityKnown: false, revokingInviteRef: '',
+    joinedMembers: [], joinedMembersState: 'idle',
     transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '', transferringOwner: false,
   },
 
@@ -105,8 +138,12 @@ Page({
     if (typeof wx.onThemeChange === 'function') wx.onThemeChange(this.themeChangeHandler)
     this.connect()
   },
-  onShow() { this.render() },
+  onShow() {
+    this.render()
+    if (!this.data.profileLoading && this.data.member.role === 'owner') this.loadMembers()
+  },
   onUnload() {
+    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
     if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
     this.themeChangeHandler = null
   },
@@ -148,7 +185,9 @@ Page({
   },
 
   resetMemberManagement() {
+    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
     this.setData({
+      joinedMembers: [], joinedMembersState: 'idle',
       transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '',
       memberCount: 0, occupiedCount: 0, activeInvites: [], inviteCapacityKnown: false,
       maxMembers: DEFAULT_MAX_MEMBERS,
@@ -162,21 +201,31 @@ Page({
       this.resetMemberManagement()
       return
     }
-    this.setData({ membersState: 'loading', membersError: '', inviteCapacityKnown: false })
+    const requestRevision = this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
+    const cacheNamespace = membershipStore.cacheNamespace
+    this.setData({
+      joinedMembers: [], joinedMembersState: 'loading',
+      membersState: 'loading', membersError: '', inviteCapacityKnown: false,
+      memberCount: 0, occupiedCount: 0, activeInvites: [],
+    })
     try {
       const summary = await membershipStore.listMembers()
-      if (!membershipStore.member || membershipStore.member.role !== 'owner') {
+      if (requestRevision !== this.memberRequestRevision) return
+      if (!membershipStore.member || membershipStore.member.role !== 'owner' || membershipStore.cacheNamespace !== cacheNamespace) {
         this.resetMemberManagement()
         return
       }
+      const joinedMembers = visibleJoinedMembers(summary)
       const transferMembers = visibleTransferMembers(summary)
       const activeInvites = visibleActiveInvites(summary)
-      const memberCount = Number.isSafeInteger(summary && summary.count) ? summary.count : transferMembers.length + 1
+      const memberCount = Number.isSafeInteger(summary && summary.count) && summary.count >= 0 ? summary.count : joinedMembers.length
       const maxMembers = positiveSafeInteger(summary && summary.maxMembers, DEFAULT_MAX_MEMBERS)
       const inviteTtlHours = positiveSafeInteger(summary && summary.inviteTtlHours, DEFAULT_INVITE_TTL_HOURS)
       const selectedMemberRef = transferMembers.some((item) => item.memberRef === this.data.selectedMemberRef)
         ? this.data.selectedMemberRef : ''
       this.setData({
+        joinedMembers,
+        joinedMembersState: joinedMembers.length ? 'ready' : 'empty',
         transferMembers,
         activeInvites,
         selectedMemberRef,
@@ -190,9 +239,15 @@ Page({
         inviteTtlText: inviteTtlText(inviteTtlHours),
       })
     } catch (error) {
+      if (requestRevision !== this.memberRequestRevision) return
+      if (!membershipStore.member || membershipStore.member.role !== 'owner' || membershipStore.cacheNamespace !== cacheNamespace) {
+        this.resetMemberManagement()
+        return
+      }
       this.setData({
+        joinedMembers: [], joinedMembersState: 'error',
         transferMembers: [], activeInvites: [], selectedMemberRef: '', membersState: 'error',
-        occupiedCount: 0, inviteCapacityKnown: false,
+        memberCount: 0, occupiedCount: 0, inviteCapacityKnown: false,
         membersError: error.message || '成员列表加载失败，请重试',
       })
     }
@@ -268,15 +323,17 @@ Page({
       waterReminderSummary: waterReminderSummary(userStore.data.waterReminder),
       member: membershipStore.member || {},
     })
+    if (!membershipStore.member || membershipStore.member.role !== 'owner') this.resetMemberManagement()
   },
 
   clearRenderedPrivateData() {
+    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
     this.setData({
       profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
       avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false,
       phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false }, waterReminderSummary: '未开启',
       updatedText: '', member: {}, memberCount: 0, occupiedCount: 0,
-      activeInvites: [], transferMembers: [], selectedMemberRef: '',
+      activeInvites: [], joinedMembers: [], joinedMembersState: 'idle', transferMembers: [], selectedMemberRef: '',
       inviteCode: '', inviteExpiresText: '', inviteLabel: '',
     })
   },

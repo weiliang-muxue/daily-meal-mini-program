@@ -1,7 +1,9 @@
 'use strict'
 
+const { LEGAL_CONSENT_VERSION } = require('./legal-consent')
 const LOCAL_PRIVACY_PATH = '/pages/legal/privacy'
 const USER_AGREEMENT_PATH = '/pages/legal/user-agreement'
+const LEGAL_DOCUMENT_READY_EVENT = 'legalDocumentReady'
 
 function currentWx(wxApi) {
   if (wxApi) return wxApi
@@ -72,25 +74,61 @@ async function ensurePrivacyAuthorized(wxApi) {
   }
 }
 
-async function navigateTo(wxApi, url) {
+function notifyDocumentRead(options, document) {
+  if (typeof options.onRead !== 'function') return
+  try { options.onRead({ document, version: LEGAL_CONSENT_VERSION }) } catch (_) {}
+}
+
+// Navigation alone does not prove that the local text was displayed: require
+// both navigation success and the legal page's initial-render callback.
+async function navigateTo(wxApi, url, document, options = {}) {
   const api = currentWx(wxApi)
   if (!api || typeof api.navigateTo !== 'function') {
     return { navigated: false, url }
   }
+  let navigated = false
+  let ready = false
+  let reported = false
+  const report = () => {
+    if (!navigated || !ready || reported) return
+    reported = true
+    notifyDocumentRead(options, document)
+  }
   try {
-    await invoke(api, 'navigateTo', { url })
+    await invoke(api, 'navigateTo', {
+      url,
+      events: {
+        [LEGAL_DOCUMENT_READY_EVENT]: (detail) => {
+          if (!detail || detail.document !== document || detail.version !== LEGAL_CONSENT_VERSION) return
+          ready = true
+          report()
+        },
+      },
+    })
+    navigated = true
+    report()
     return { navigated: true, url }
   } catch (_) {
     return { navigated: false, url }
   }
 }
 
-function navigateToUserAgreement(wxApi) {
-  return navigateTo(wxApi, USER_AGREEMENT_PATH)
+function navigateToUserAgreement(wxApi, options = {}) {
+  return navigateTo(wxApi, USER_AGREEMENT_PATH, 'agreement', options)
 }
 
-function navigateToLocalPrivacy(wxApi) {
-  return navigateTo(wxApi, LOCAL_PRIVACY_PATH)
+function navigateToLocalPrivacy(wxApi, options = {}) {
+  return navigateTo(wxApi, LOCAL_PRIVACY_PATH, 'privacy', options)
+}
+
+function reportLegalDocumentReady(page, document) {
+  if (!['privacy', 'agreement'].includes(document)) return false
+  try {
+    const channel = page && typeof page.getOpenerEventChannel === 'function' && page.getOpenerEventChannel()
+    if (!channel || typeof channel.emit !== 'function') return false
+    channel.emit(LEGAL_DOCUMENT_READY_EVENT, { document, version: LEGAL_CONSENT_VERSION })
+    return true
+  } catch (_) { return false }
 }
 
 async function openPrivacyContractOrLocal(wxApi, options = {}) {
@@ -98,12 +136,13 @@ async function openPrivacyContractOrLocal(wxApi, options = {}) {
   if (api && typeof api.openPrivacyContract === 'function') {
     try {
       await invoke(api, 'openPrivacyContract')
+      notifyDocumentRead(options, 'privacy')
       return { openedPlatformContract: true, usedLocalFallback: false }
     } catch (_) {}
   }
 
   const hasCustomFallback = typeof options.onFallback === 'function'
-  const fallback = hasCustomFallback ? options.onFallback : () => navigateToLocalPrivacy(api)
+  const fallback = hasCustomFallback ? options.onFallback : () => navigateToLocalPrivacy(api, options)
   try {
     const fallbackResult = await fallback()
     const fallbackFailed = fallbackResult === false
@@ -129,4 +168,5 @@ module.exports = {
   navigateToLocalPrivacy,
   navigateToUserAgreement,
   openPrivacyContractOrLocal,
+  reportLegalDocumentReady,
 }

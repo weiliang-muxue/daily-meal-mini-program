@@ -104,6 +104,64 @@ async function testPrivacyContractAndLocalFallbackBothFail() {
   assert(result.error.includes('均暂时无法打开'))
 }
 
+async function testReadProofRequiresRenderedPageAndNavigationSuccess() {
+  const reads = []
+  let navigation
+  const api = callbackApi({ navigateTo: (options) => { navigation = options; options.success({}) } })
+  await privacyAuth.navigateToUserAgreement(api, { onRead: (detail) => reads.push(detail) })
+  assert.deepStrictEqual(reads, [], 'navigateTo 成功不能单独证明本地正文已显示')
+  navigation.events.legalDocumentReady({ document: 'privacy', version: 1 })
+  navigation.events.legalDocumentReady({ document: 'agreement', version: 0 })
+  assert.deepStrictEqual(reads, [], '错误文档或旧版本不能解锁')
+  privacyAuth.reportLegalDocumentReady({
+    getOpenerEventChannel: () => ({ emit: (event, detail) => navigation.events[event](detail) }),
+  }, 'agreement')
+  navigation.events.legalDocumentReady({ document: 'agreement', version: 1 })
+  assert.deepStrictEqual(reads, [{ document: 'agreement', version: 1 }], '重复回调只计一次')
+
+  const failedReads = []
+  const failed = callbackApi({
+    navigateTo: ({ events, fail }) => {
+      events.legalDocumentReady({ document: 'agreement', version: 1 })
+      fail({ errMsg: 'navigateTo:fail' })
+    },
+  })
+  const result = await privacyAuth.navigateToUserAgreement(failed, { onRead: (detail) => failedReads.push(detail) })
+  assert.strictEqual(result.navigated, false)
+  assert.deepStrictEqual(failedReads, [], '失败导航即使有迟到或提前回调也不得解锁')
+}
+
+async function testPlatformAndLocalPrivacyReadProofStaySeparateFromAuthorization() {
+  let authorizationCalls = 0
+  let readCount = 0
+  let localNavigation
+  const api = callbackApi({
+    requirePrivacyAuthorize: () => { authorizationCalls += 1 },
+    openPrivacyContract: ({ fail }) => fail({ errMsg: 'cannot open native contract' }),
+    navigateTo: (options) => { localNavigation = options; options.success({}) },
+  })
+  const fallback = await privacyAuth.openPrivacyContractOrLocal(api, { onRead: () => { readCount += 1 } })
+  assert.strictEqual(fallback.usedLocalFallback, true)
+  assert.strictEqual(readCount, 0, '本地回退导航发起后仍需等待正文页回调')
+  localNavigation.events.legalDocumentReady({ document: 'privacy', version: 1 })
+  assert.strictEqual(readCount, 1)
+  assert.strictEqual(authorizationCalls, 0, '打开协议不是申请微信原生敏感权限')
+
+  await privacyAuth.openPrivacyContractOrLocal(callbackApi({
+    openPrivacyContract: ({ success }) => success({}),
+  }), { onRead: () => { readCount += 1 } })
+  assert.strictEqual(readCount, 2, '平台协议仅在成功打开后记录')
+  await privacyAuth.openPrivacyContractOrLocal(callbackApi({
+    openPrivacyContract: ({ fail }) => fail({}),
+    navigateTo: ({ fail }) => fail({}),
+  }), { onRead: () => { readCount += 1 } })
+  assert.strictEqual(readCount, 2, '平台和本地均失败不得计为阅读')
+  await privacyAuth.openPrivacyContractOrLocal(api, {
+    onFallback() {}, onRead: () => { readCount += 1 },
+  })
+  assert.strictEqual(readCount, 2, '任意 fallback 返回不能充当正文已显示证明')
+}
+
 function installPageDependencies(privacyMock) {
   const membershipStore = { init: async () => ({ status: 'active' }), member: {} }
   const authStore = { profile: {}, state: 'ready', error: '', init: async () => {}, updateProfile: async () => ({}) }
@@ -299,6 +357,8 @@ async function main() {
   await testMissingApiUsesLegacyNativeFlow()
   await testPrivacyContractFallback()
   await testPrivacyContractAndLocalFallbackBothFail()
+  await testReadProofRequiresRenderedPageAndNavigationSuccess()
+  await testPlatformAndLocalPrivacyReadProofStaySeparateFromAuthorization()
   await testHealthActionIsBlocked()
   await testHealthMissingChooseMediaRecoversForRetry()
   await testHealthSynchronousChooseMediaThrowRecovers()

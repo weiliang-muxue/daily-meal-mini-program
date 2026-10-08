@@ -2,7 +2,7 @@
   "lastReleasedVersion": "0.1.0",
   "workingVersion": "0.2.0",
   "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.2.0：新增任意1–14天 AI 动态餐单、候选预览和历史恢复，并加入默认关闭的每日/周一至周五喝水提醒及用户确认后的系统日历排程。",
+  "wechatUploadDescription": "0.2.0：协议需先打开阅读再主动勾选，旧成员不默认同意；管理员可查看已加入成员、加入时间与邀请来源，私人餐单和健康数据保持隔离。",
   "stateSchemaVersion": 8,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 2,

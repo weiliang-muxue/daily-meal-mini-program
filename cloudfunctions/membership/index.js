@@ -8,6 +8,7 @@ const {
   assertOperationalControl, reviseOperationalControl,
   capacityExceeded, assertReactivationAllowed, controlFromSnapshot,
   isMemberRef, isInviteRef, publicMember, publicInvite,
+  LEGAL_CONSENT_VERSION, assertLegalConsent, hasAcceptedLegalConsent,
 } = require('./core')
 const { notFound } = require('./not-found')
 
@@ -60,6 +61,8 @@ function safeMember(member, control) {
     inviteTtlHours: config.inviteTtlHours,
     capacityExceeded: capacityExceeded(control, config),
     cacheNamespace: active && isCacheNamespace(member.cacheNamespace) ? member.cacheNamespace : '',
+    legalConsentVersion: LEGAL_CONSENT_VERSION,
+    legalConsentAccepted: active && hasAcceptedLegalConsent(member),
   }
 }
 
@@ -341,7 +344,8 @@ async function revokeInvite(openid, inviteRef) {
   })
 }
 
-async function acceptInvite(openid, code) {
+async function acceptInvite(openid, code, legalConsent) {
+  assertLegalConsent(legalConsent)
   assertOperationalControl(await ensureControl())
   const current = await ensureMemberIdentity(openid, await readMember(openid))
   assertReactivationAllowed(current)
@@ -364,6 +368,9 @@ async function acceptInvite(openid, code) {
     throw error
   }
   const memberRef = await uniqueMemberRef()
+  if (typeof invitation.createdBy === 'string' && invitation.createdBy) {
+    await ensureMemberIdentity(invitation.createdBy, await readMember(invitation.createdBy))
+  }
   const cacheNamespace = isCacheNamespace(current && current.cacheNamespace) ? current.cacheNamespace : randomHex(16)
   await db.runTransaction(async (transaction) => {
     const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
@@ -382,6 +389,9 @@ async function acceptInvite(openid, code) {
       error.code = 'INVITE_INVALID'
       throw error
     }
+    const inviter = typeof freshInvite.createdBy === 'string' && freshInvite.createdBy
+      ? await readDocument(transaction.collection('meal_members').doc(freshInvite.createdBy)) : null
+    const inviterMemberRef = isOriginalInviterGeneration(freshInvite, inviter) ? inviter.memberRef : ''
     const next = consumeInvite(rawControl, config)
     await inviteReference.update({ data: {
       usedCount: 1, active: false, usedAt: db.serverDate(), usedBy: openid, updatedAt: db.serverDate(),
@@ -389,6 +399,8 @@ async function acceptInvite(openid, code) {
     await memberReference.set({ data: {
       status: 'active', role: 'member', memberRef,
       cacheNamespace, inviteId: invitation._id, displayLabel: clean(freshInvite.label, 20),
+      joinSource: 'invite', inviterMemberRef,
+      legalConsent: { version: LEGAL_CONSENT_VERSION, acceptedAt: db.serverDate() },
       joinedAt: db.serverDate(), updatedAt: db.serverDate(),
     } })
     await controlReference.update({ data: {
@@ -396,6 +408,91 @@ async function acceptInvite(openid, code) {
     } })
   })
   return status(openid)
+}
+
+async function acceptLegalConsent(openid, legalConsent, cacheNamespace) {
+  assertLegalConsent(legalConsent)
+  await db.runTransaction(async (transaction) => {
+    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
+    const memberReference = transaction.collection('meal_members').doc(openid)
+    const control = assertOperationalControl(await readDocument(controlReference))
+    const member = await readDocument(memberReference)
+    assertReactivationAllowed(member)
+    if (!member || member.status !== 'active') {
+      const error = new Error('请先使用有效成员身份加入')
+      error.code = 'MEMBERSHIP_REQUIRED'
+      throw error
+    }
+    if (!isCacheNamespace(cacheNamespace) || member.cacheNamespace !== cacheNamespace) {
+      const error = new Error('账号数据状态已变化，请重新进入')
+      error.code = 'ACCOUNT_GENERATION_CHANGED'
+      throw error
+    }
+    if (!hasAcceptedLegalConsent(member)) {
+      const consent = { version: LEGAL_CONSENT_VERSION, acceptedAt: db.serverDate() }
+      const nextControl = reviseOperationalControl(control)
+      await memberReference.update({ data: { legalConsent: consent, updatedAt: db.serverDate() } })
+      await controlReference.update({ data: { ...nextControl, updatedAt: db.serverDate() } })
+    }
+  })
+  // serverDate is resolved by the database only when the write commits.
+  return status(openid)
+}
+
+function storedTimestamp(value) {
+  const milliseconds = value instanceof Date ? value.getTime() : value
+  return typeof milliseconds === 'number' && Number.isFinite(milliseconds) && milliseconds > 0
+    ? milliseconds : 0
+}
+
+function sameStoredTimestamp(left, right) {
+  return storedTimestamp(left) > 0 && storedTimestamp(left) === storedTimestamp(right)
+}
+
+function isOriginalInviterGeneration(invitation, member) {
+  return Boolean(invitation && member && member.status === 'active' && isMemberRef(member.memberRef)
+    && storedTimestamp(member.joinedAt) > 0
+    && storedTimestamp(invitation.createdAt) >= storedTimestamp(member.joinedAt))
+}
+
+async function joinedMemberProjection(transaction, ordered, rawControl) {
+  const byOpenid = new Map(ordered.map((member) => [member._id, member]))
+  const byMemberRef = new Map(ordered.map((member) => [member.memberRef, member]))
+  const names = new Map()
+  for (const [index, member] of ordered.entries()) {
+    const profile = await readDocument(transaction.collection('meal_users').doc(member._id))
+    names.set(member.memberRef, clean(profile && profile.nickname, 20) || publicMember(member, index).displayName)
+  }
+  const result = []
+  for (const [index, member] of ordered.entries()) {
+    const invitation = typeof member.inviteId === 'string' && member.inviteId
+      ? await readDocument(transaction.collection('meal_invites').doc(member.inviteId)) : null
+    const relatedInvite = invitation && (!invitation.usedBy || invitation.usedBy === member._id)
+      ? invitation : null
+    const hasStoredInviter = Object.prototype.hasOwnProperty.call(member, 'inviterMemberRef')
+    const legacyInviter = relatedInvite && byOpenid.get(relatedInvite.createdBy)
+    const inviter = hasStoredInviter
+      ? byMemberRef.get(member.inviterMemberRef)
+      : isOriginalInviterGeneration(relatedInvite, legacyInviter) ? legacyInviter : null
+    const knownInvite = member.joinSource === 'invite' || Boolean(relatedInvite)
+    const knownOwner = !member.inviteId && (
+      sameStoredTimestamp(member.joinedAt, rawControl.createdAt)
+      || (member.role === 'owner' && sameStoredTimestamp(member.joinedAt, member.resetAt))
+    )
+    const joinSource = knownInvite ? 'invite' : knownOwner ? 'owner' : 'legacy'
+    const inviterExited = isMemberRef(member.inviterMemberRef)
+      || Boolean(!hasStoredInviter && relatedInvite && relatedInvite.createdBy && (
+        !legacyInviter || (storedTimestamp(relatedInvite.createdAt) > 0
+          && storedTimestamp(legacyInviter.joinedAt) > storedTimestamp(relatedInvite.createdAt))
+      ))
+    result.push(publicMember(member, index, {
+      displayName: names.get(member.memberRef),
+      invitationLabel: clean(member.displayLabel, 20) || clean(relatedInvite && relatedInvite.label, 20),
+      inviterLabel: inviter ? names.get(inviter.memberRef) : inviterExited ? '原邀请人已退出' : '邀请人信息未记录',
+      joinSource,
+    }))
+  }
+  return result
 }
 
 async function listMembers(openid) {
@@ -412,18 +509,39 @@ async function listMembers(openid) {
       && Number(invite.usedCount || 0) < Number(invite.maxUses || 1)
     ))
     .sort((left, right) => Number(left.expiresAt || 0) - Number(right.expiresAt || 0))
-  await requireOwner(openid)
-  const ordered = fresh.sort((left, right) => (left.role === 'owner' ? -1 : right.role === 'owner' ? 1 : 0))
-  const control = assertOperationalControl(await ensureControl())
-  return {
-    count: ordered.length,
-    maxMembers: config.maxMembers,
-    inviteSlots: config.inviteSlots,
-    inviteTtlHours: config.inviteTtlHours,
-    capacityExceeded: capacityExceeded(control, config),
-    members: ordered.map((member, index) => publicMember(member, index)),
-    activeInvites: activeInvites.map(publicInvite),
-  }
+  return db.runTransaction(async (transaction) => {
+    const rawControl = await readDocument(transaction.collection('meal_members').doc(CONTROL_ID))
+    const control = assertOperationalControl(rawControl)
+    const owner = await readDocument(transaction.collection('meal_members').doc(openid))
+    if (!owner || owner.status !== 'active' || owner.role !== 'owner' || control.ownerOpenid !== openid) {
+      const error = new Error('只有当前管理员可以查看成员')
+      error.code = 'OWNER_REQUIRED'
+      throw error
+    }
+    const currentMembers = []
+    for (const candidate of fresh) {
+      const member = await readDocument(transaction.collection('meal_members').doc(candidate._id))
+      if (member && member.status === 'active') currentMembers.push({ ...member, _id: candidate._id })
+    }
+    const ordered = currentMembers.sort((left, right) => (left.role === 'owner' ? -1 : right.role === 'owner' ? 1 : 0))
+    const visibleInvites = []
+    for (const candidate of activeInvites) {
+      const invitation = await readDocument(transaction.collection('meal_invites').doc(candidate._id))
+      if (invitation && invitation.active === true && !inviteExpired(invitation.expiresAt)
+        && Number(invitation.usedCount || 0) < Number(invitation.maxUses || 1)) {
+        visibleInvites.push(publicInvite({ ...invitation, _id: candidate._id }))
+      }
+    }
+    return {
+      count: ordered.length,
+      maxMembers: config.maxMembers,
+      inviteSlots: config.inviteSlots,
+      inviteTtlHours: config.inviteTtlHours,
+      capacityExceeded: capacityExceeded(control, config),
+      members: await joinedMemberProjection(transaction, ordered, rawControl),
+      activeInvites: visibleInvites,
+    }
+  })
 }
 
 async function transferOwner(openid, memberRef, confirmed) {
@@ -490,6 +608,9 @@ function publicError(error) {
     ACCOUNT_DELETION_IN_PROGRESS: '账号数据正在删除，请等待完成后再重新加入',
     MEMBERSHIP_NOT_INITIALIZED: '成员服务尚未初始化，请联系管理员',
     MEMBERSHIP_BOOTSTRAP_IN_PROGRESS: '管理员初始化正在进行，请稍后重试',
+    LEGAL_CONSENT_REQUIRED: '请阅读隐私政策和用户协议后明确同意',
+    MEMBERSHIP_REQUIRED: '请先使用有效成员身份加入',
+    ACCOUNT_GENERATION_CHANGED: '账号数据状态已变化，请重新进入',
   })
   const requestedCode = error && error.code
   const known = typeof requestedCode === 'string'
@@ -504,7 +625,8 @@ exports.main = async (event = {}) => {
   if (!OPENID) return { success: false, code: 'IDENTITY_REQUIRED', message: '无法识别微信身份' }
   try {
     if (event.action === 'status') return { success: true, data: await status(OPENID) }
-    if (event.action === 'acceptInvite') return { success: true, data: await acceptInvite(OPENID, event.code) }
+    if (event.action === 'acceptInvite') return { success: true, data: await acceptInvite(OPENID, event.code, event.legalConsent) }
+    if (event.action === 'acceptLegalConsent') return { success: true, data: await acceptLegalConsent(OPENID, event.legalConsent, event.cacheNamespace) }
     if (event.action === 'createInvite') return { success: true, data: await createInvite(OPENID, event.label) }
     if (event.action === 'listMembers') return { success: true, data: await listMembers(OPENID) }
     if (event.action === 'revokeInvite') return { success: true, data: await revokeInvite(OPENID, event.inviteRef) }
@@ -519,5 +641,5 @@ exports.main = async (event = {}) => {
 exports._test = {
   ensureControl, cleanupExpiredInvites, cleanupExcessInvites, reconcileInvites,
   revokeExcessInvite, upgradeControlConfiguration, publicError, inviteExpired,
-  status, createInvite, acceptInvite, listMembers, revokeInvite, transferOwner, expireInvite,
+  status, createInvite, acceptInvite, acceptLegalConsent, listMembers, revokeInvite, transferOwner, expireInvite,
 }

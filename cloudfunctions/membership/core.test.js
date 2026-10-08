@@ -6,6 +6,7 @@ const {
   CONTROL_PHASE_ACTIVE, CONTROL_PHASE_BOOTSTRAP_PENDING,
   assertOperationalControl, reviseOperationalControl, capacityExceeded,
   activateOwner, transferOwner, removeMember, assertReactivationAllowed, controlFromSnapshot, publicMember, publicInvite,
+  LEGAL_CONSENT_VERSION, assertLegalConsent, hasAcceptedLegalConsent,
 } = require('./core')
 
 const config = configuration({})
@@ -98,7 +99,10 @@ assert.throws(() => controlFromSnapshot([
 const visible = publicMember({
   _id: 'must-not-leak', memberRef: 'a'.repeat(32), role: 'member', displayLabel: '家人', joinedAt: 123,
 })
-assert.deepStrictEqual(visible, { memberRef: 'a'.repeat(32), role: 'member', label: '家人', joinedAt: 123 })
+assert.deepStrictEqual(visible, {
+  memberRef: 'a'.repeat(32), role: 'member', label: '家人', joinedAt: 123,
+  displayName: '家人', inviterLabel: '邀请人信息未记录', invitationLabel: '', joinSource: 'legacy',
+})
 assert.strictEqual(JSON.stringify(visible).includes('must-not-leak'), false)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(visible, '_id'), false)
 
@@ -110,5 +114,32 @@ assert.deepStrictEqual(visibleInvite, { inviteRef: 'b'.repeat(32), label: '家�
 assert.strictEqual(JSON.stringify(visibleInvite).includes('must-not-leak'), false)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(visibleInvite, 'codeHash'), false)
 assert.throws(() => publicInvite({ _id: 'invalid' }), (error) => error.code === 'INVITE_REFERENCE_INVALID')
+
+assert.strictEqual(LEGAL_CONSENT_VERSION, 1)
+const accepted = { version: 1, privacyRead: true, agreementRead: true, accepted: true }
+assert.doesNotThrow(() => assertLegalConsent(accepted))
+for (const invalid of [
+  undefined, null, true, [], {}, { accepted: true },
+  ...Object.keys(accepted).map((field) => ({ ...accepted, [field]: false })),
+  { ...accepted, version: '1' }, { ...accepted, version: 2 },
+  { ...accepted, privacyRead: 'true' }, { ...accepted, acceptedAt: 1 },
+]) assert.throws(() => assertLegalConsent(invalid), (error) => error.code === 'LEGAL_CONSENT_REQUIRED')
+for (const legalConsent of [
+  undefined, null, {}, { version: 1 }, { version: 1, accepted: true },
+  { version: 0, acceptedAt: 1 }, { version: '1', acceptedAt: 1 },
+  { version: 1, acceptedAt: 0 }, { version: 1, acceptedAt: -1 },
+  { version: 1, acceptedAt: NaN }, { version: 1, acceptedAt: '2026-09-21T00:00:00Z' },
+  { version: 1, acceptedAt: new Date('invalid') },
+  { version: 1, acceptedAt: 123, accepted: false },
+]) assert.strictEqual(hasAcceptedLegalConsent({ legalConsent }), false)
+assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: 1, acceptedAt: 123 } }), true)
+assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: 1, acceptedAt: new Date(123) } }), true)
+
+const fs = require('fs')
+const path = require('path')
+assert.strictEqual(
+  fs.readFileSync(path.join(__dirname, 'core.js')).equals(fs.readFileSync(path.join(__dirname, '../privacy/membership-core.js'))),
+  true, '隐私函数的成员 core 副本必须与源文件逐字节一致',
+)
 
 console.log('membership control tests passed')

@@ -19,6 +19,17 @@
 .identity-retry { background: transparent; border-color: transparent; }
 .alternate-action[disabled], .identity-retry[disabled] { opacity: .48; }
 .access-button-hover { opacity: .78; }
+.submit[disabled] { background: var(--primary-fill); color: var(--on-primary); opacity: .48; }
+.consent-section { margin-top: 24rpx; padding-top: 22rpx; border-top: 1rpx solid var(--line); }
+.consent-instruction { display: block; color: var(--muted-strong); font-size: 13px; line-height: 1.6; }
+.consent-links { display: flex; flex-direction: column; gap: 12rpx; margin-top: 16rpx; }
+.consent-link { width: 100%; min-height: 48px; margin: 0; padding: 14rpx 18rpx; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8rpx 16rpx; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--surface); color: var(--primary); font-size: 13px; line-height: 1.5; text-align: left; }
+.consent-link[disabled] { background: var(--surface); color: var(--muted); }
+.consent-read-state { color: var(--muted-strong); font-size: 12px; font-weight: 500; }
+.consent-choice { display: flex; align-items: center; gap: 12rpx; min-height: 48px; margin-top: 12rpx; padding: 8rpx 0; color: var(--ink); font-size: 14px; line-height: 1.6; }
+.consent-choice checkbox { flex: 0 0 auto; }
+.consent-choice-disabled { color: var(--muted); }
+.consent-hint { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .hint { display: block; margin-top: 20rpx; color: var(--muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .legal-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16rpx; margin-top: 18rpx; }
 .legal-link { min-height: 88rpx; padding: 12rpx 8rpx; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.92); font-size: 13px; line-height: 1.45; font-weight: 650; text-align: center; }
