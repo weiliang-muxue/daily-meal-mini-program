@@ -45,6 +45,8 @@ class MembershipStore {
     this.verifiedInRuntime = false
     this.namespaceListeners = new Set()
     this.identityRequestRevision = 0
+    this.membershipListeners = new Set()
+    this.membershipRevision = 0
   }
 
   init(options = {}) {
@@ -73,6 +75,10 @@ class MembershipStore {
   save(member) {
     const previousNamespace = this.cacheNamespace
     const nextNamespace = normalizeCacheNamespace(member && member.cacheNamespace)
+    const previousMember = this.member
+    const identityChanged = previousNamespace !== nextNamespace
+      || (previousMember && previousMember.role) !== (member && member.role)
+      || (previousMember && previousMember.status) !== (member && member.status)
     this.member = member
     this.cacheNamespace = nextNamespace
     this.verifiedInRuntime = true
@@ -87,7 +93,21 @@ class MembershipStore {
         try { listener(nextNamespace, previousNamespace) } catch (_) {}
       })
     }
+    if (identityChanged) this.notifyMembershipChange()
     return member
+  }
+
+  notifyMembershipChange() {
+    this.membershipRevision += 1
+    this.membershipListeners.forEach((listener) => {
+      try { listener(this.member) } catch (_) {}
+    })
+  }
+
+  onMembershipChange(listener) {
+    if (typeof listener !== 'function') return () => {}
+    this.membershipListeners.add(listener)
+    return () => this.membershipListeners.delete(listener)
   }
 
   onCacheNamespaceChange(listener) {
@@ -110,6 +130,7 @@ class MembershipStore {
         try { listener('', previousNamespace) } catch (_) {}
       })
     }
+    this.notifyMembershipChange()
   }
 
   runIdentityAction(action, payload) {
@@ -136,6 +157,7 @@ class MembershipStore {
   }
   createInvite(label) { return callFunction('membership', 'createInvite', { label }) }
   listMembers() { return callFunction('membership', 'listMembers') }
+  setMemberNote(memberRef, note) { return callFunction('membership', 'setMemberNote', { memberRef, note }) }
   revokeInvite(inviteRef) { return callFunction('membership', 'revokeInvite', { inviteRef }) }
   transferOwner(memberRef, confirmed) { return this.runIdentityAction('transferOwner', { memberRef, confirmed }) }
 }

@@ -404,7 +404,7 @@ const membershipEnvironmentGuide = read('cloudfunctions/membership/.env.example'
 assert(!/^\s*(?:INVITE_SLOTS|INVITE_TTL_HOURS)\s*=/m.test(membershipEnvironmentGuide),
   '成员容量和邀请码有效期不得再由云端环境变量覆盖')
 assert.deepStrictEqual(membershipCore.configuration({ INVITE_SLOTS: '19', INVITE_TTL_HOURS: '24' }), {
-  inviteSlots: 3, inviteTtlHours: 168, maxMembers: 4, inviteTtlMs: 604800000,
+  inviteSlots: 10, inviteTtlHours: 168, maxMembers: 11, inviteTtlMs: 604800000,
 }, '云端遗留配置不得改变当前邀请制规则')
 
 const membershipFiles = [
@@ -548,6 +548,7 @@ assert(/<view class="calendar-scroll">/.test(healthMarkup)
   '健康月历必须在 320px 内完整显示七列，不得依赖横向滚动或 336px 裁切')
 
 const testScripts = [
+  'scripts/build-wechat-package.test.js',
   'scripts/release-gate.test.js',
   'scripts/git-hooks.test.js',
   'scripts/deploy-production-function.test.js',

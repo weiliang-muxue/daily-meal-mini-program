@@ -459,7 +459,7 @@ async function run() {
   assert.strictEqual(database.record('meal_members', CONTROL_ID).ownerOpenid, 'target-owner')
   assert.strictEqual(database.record('meal_members', CONTROL_ID).phase, 'active')
   assert.strictEqual(database.record('meal_members', CONTROL_ID).bootstrapRequestId, '')
-  assert.strictEqual(database.record('meal_members', CONTROL_ID).inviteSlots, 3)
+  assert.strictEqual(database.record('meal_members', CONTROL_ID).inviteSlots, 10)
   assert.strictEqual(database.record('meal_members', CONTROL_ID).inviteTtlHours, 168)
   assert.strictEqual(database.record('meal_members', REQUEST_DOCUMENT_ID), undefined)
 

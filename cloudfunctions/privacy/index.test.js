@@ -214,7 +214,8 @@ const member = (role = 'member', status = 'active', cacheNamespace = CACHE_NAMES
 async function memberDeletionUsesControl() {
   resetEffects()
   database.reset({ meal_members: {
-    [CONTROL_ID]: activeControl(), owner: member('owner'), member: member(),
+    [CONTROL_ID]: activeControl(), owner: member('owner'),
+    member: { ...member(), adminNote: 'private member administrator note', adminNoteUpdatedAt: 123 },
   } })
   await privacy._test.prepareMembershipDeletion('member', CACHE_NAMESPACE)
   assert.strictEqual(database.record('meal_members', 'member').status, 'deleting')
@@ -223,6 +224,8 @@ async function memberDeletionUsesControl() {
   const finalized = await privacy._test.finalizeMembershipDeletion('member', CACHE_NAMESPACE)
   assert.deepStrictEqual(finalized, { membershipDeleted: true, ownerAccessRetained: false })
   assert.strictEqual(database.record('meal_members', 'member'), undefined)
+  assert.strictEqual(JSON.stringify(finalized).includes('adminNote'), false)
+  assert.strictEqual(JSON.stringify([...database.bucket('meal_members').values()]).includes('private member administrator note'), false)
   assert.strictEqual(database.record('meal_members', CONTROL_ID).revision, 12)
   await assert.rejects(
     privacy._test.finalizeMembershipDeletion('member', CACHE_NAMESPACE),
@@ -913,6 +916,7 @@ async function soleOwnerClearRetainsMinimalAdministrator() {
       owner: {
         ...member('owner'), memberRef: 'a'.repeat(32), cacheNamespace: 'b'.repeat(32),
         displayLabel: 'private label', inviteId: 'private invite',
+        adminNote: 'private owner administrator note', adminNoteUpdatedAt: 123,
       },
     },
     meal_users: { owner: {
@@ -945,6 +949,9 @@ async function soleOwnerClearRetainsMinimalAdministrator() {
   ])
   assert.strictEqual(retained.status, 'active')
   assert.strictEqual(retained.role, 'owner')
+  assert.strictEqual(retained.adminNote, undefined, '管理员清空数据后恢复的最小身份不得保留备注')
+  assert.strictEqual(retained.adminNoteUpdatedAt, undefined)
+  assert.strictEqual(JSON.stringify(result).includes('adminNote'), false)
   assert(/^[a-f0-9]{32}$/.test(retained.memberRef))
   assert(/^[a-f0-9]{32}$/.test(retained.cacheNamespace))
   assert.notStrictEqual(retained.memberRef, 'a'.repeat(32))

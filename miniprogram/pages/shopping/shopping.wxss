@@ -10,7 +10,11 @@
 .plan-summary { display: flex; flex-wrap: wrap; gap: 8rpx 22rpx; margin: -4rpx 4rpx 22rpx; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .offline-strip, .saving-strip { box-sizing: border-box; min-height: 88rpx; padding: 18rpx 20rpx; border-radius: var(--radius-control); margin-bottom: 22rpx; display: flex; align-items: center; font-size: 14px; line-height: 1.5; }
 .offline-strip { border: 1rpx solid var(--warm-line); background: var(--warm-soft); color: var(--warm-ink); }
-.offline-hover { opacity: .76; }
+.sync-notice { align-items: stretch; flex-direction: column; gap: 12rpx; }
+.sync-notice-title { font-weight: 700; }
+.sync-error { overflow-wrap: anywhere; }
+.sync-retry { width: 100%; min-height: 48px; margin: 4rpx 0 0; padding: 16rpx 22rpx; }
+.sync-retry[disabled] { opacity: .5; }
 .saving-strip { border: 1rpx solid var(--line-strong); background: var(--primary-soft); color: var(--primary-soft-ink); }
 .progress-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10rpx; margin-bottom: 22rpx; padding: 22rpx 14rpx; border-top: 1rpx solid var(--line); border-bottom: 1rpx solid var(--line); }
 .progress-summary view { min-width: 0; text-align: center; }

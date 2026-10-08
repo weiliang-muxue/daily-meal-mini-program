@@ -48,6 +48,7 @@ assertControlTransaction(membership, 'upgradeControlConfiguration', ['controlRef
 assertControlTransaction(membership, 'createInvite', ['inviteReference.set(', 'controlReference.update('])
 assertControlTransaction(membership, 'acceptInvite', ['inviteReference.update(', 'memberReference.set(', 'controlReference.update('])
 assertControlTransaction(membership, 'revokeInvite', ['inviteReference.update(', 'controlReference.update('])
+assertControlTransaction(membership, 'setMemberNote', ['targetReference.update(', 'controlReference.update('])
 assertControlTransaction(membership, 'transferOwner', ['ownerReference.update(', 'targetReference.update(', 'controlReference.update('])
 
 assertControlTransaction(privacy, 'prepareMembershipDeletion', [

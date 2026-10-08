@@ -63,9 +63,9 @@
       <view class="joined-members-heading">
         <view class="joined-members-summary">
           <text class="joined-members-title">{{joinedMembersState === 'ready' ? '当前 ' + joinedMembers.length + ' 位成员' : '成员与邀请来源'}}</text>
-          <text class="joined-members-hint">仅管理员可见；含管理员本人</text>
+          <text class="joined-members-hint">仅管理员可见；含管理员本人。成员备注与邀请备注分别保存。</text>
         </view>
-        <button class="joined-members-refresh" bindtap="retryMembers" loading="{{joinedMembersState === 'loading'}}" disabled="{{profileLoading || joinedMembersState === 'loading' || transferringOwner || creatingInvite || revokingInviteRef}}" hover-class="profile-control-hover" aria-label="刷新已加入成员和邀请状态">刷新</button>
+        <button class="joined-members-refresh" bindtap="retryMembers" loading="{{joinedMembersState === 'loading'}}" disabled="{{profileLoading || joinedMembersState === 'loading' || transferringOwner || creatingInvite || revokingInviteRef || savingMemberNote}}" hover-class="profile-control-hover" aria-label="刷新已加入成员和邀请状态">刷新</button>
       </view>
 
       <view wx:if="{{joinedMembersState === 'loading' || joinedMembersState === 'idle'}}" class="member-status" aria-label="正在加载已加入成员">
@@ -91,6 +91,23 @@
           <view class="joined-member-detail"><text class="joined-member-label">加入时间</text><text class="joined-member-value">{{item.joinedText}}</text></view>
           <view class="joined-member-detail"><text class="joined-member-label">邀请人</text><text class="joined-member-value">{{item.inviterLabel}}</text></view>
           <view class="joined-member-detail"><text class="joined-member-label">邀请备注</text><text class="joined-member-value">{{item.invitationLabel}}</text></view>
+          <view class="member-note-section">
+            <view class="member-note-heading">
+              <text class="member-note-label">成员备注（仅管理员可见）</text>
+              <button wx:if="{{editingMemberRef !== item.memberRef}}" class="member-note-edit" data-member-ref="{{item.memberRef}}" bindtap="editMemberNote" disabled="{{profileLoading || savingMemberNote || transferringOwner}}" hover-class="profile-control-hover" aria-label="{{item.adminNote ? '编辑' : '添加'}} {{item.displayName}} 的管理员私有备注">{{item.adminNote ? '编辑备注' : '添加备注'}}</button>
+            </view>
+            <view wx:if="{{editingMemberRef === item.memberRef}}" class="member-note-editor">
+              <label class="member-note-input-label" for="member-note-input-{{item.memberRef}}">编辑成员备注</label>
+              <textarea id="member-note-input-{{item.memberRef}}" class="member-note-input" value="{{memberNoteDraft}}" bindinput="inputMemberNote" maxlength="-1" disabled="{{savingMemberNote || transferringOwner}}" auto-height="{{true}}" placeholder="例如：称呼或需要记住的事项" aria-label="{{item.displayName}} 的私有备注，最多 {{maxMemberNoteLength}} 字" />
+              <view class="member-note-help"><text>清空后保存可移除备注；首尾空格不计。</text><text class="member-note-count {{memberNoteLength > maxMemberNoteLength ? 'over-limit' : ''}}">{{memberNoteLength}} / {{maxMemberNoteLength}}</text></view>
+              <text wx:if="{{memberNoteError}}" class="member-note-error" aria-role="alert">{{memberNoteError}}</text>
+              <view class="member-note-actions">
+                <button class="member-note-cancel" bindtap="cancelMemberNote" disabled="{{savingMemberNote}}" hover-class="profile-control-hover">取消</button>
+                <button class="member-note-save" bindtap="saveMemberNote" loading="{{savingMemberNote}}" disabled="{{savingMemberNote || transferringOwner || memberNoteLength > maxMemberNoteLength}}" hover-class="profile-control-hover">{{savingMemberNote ? '正在保存' : memberNoteError ? '重试保存' : '保存备注'}}</button>
+              </view>
+            </view>
+            <text wx:else class="member-note-value {{item.adminNote ? '' : 'empty'}}">{{item.adminNote || '未填写'}}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -105,7 +122,7 @@
         <text class="invite-field-label">邀请备注（可选）</text>
         <input id="invite-label-input" class="invite-label" maxlength="20" value="{{inviteLabel}}" bindinput="inputInviteLabel" disabled="{{profileLoading}}" placeholder="例如：家人" aria-label="邀请备注（可选）" />
       </label>
-      <button class="secondary-button" loading="{{creatingInvite}}" disabled="{{profileLoading || creatingInvite || revokingInviteRef || !inviteCapacityKnown || occupiedCount >= maxMembers}}" bindtap="createInvite">生成一次性邀请码</button>
+      <button class="secondary-button" loading="{{creatingInvite}}" disabled="{{profileLoading || creatingInvite || revokingInviteRef || savingMemberNote || !inviteCapacityKnown || occupiedCount >= maxMembers}}" bindtap="createInvite">生成一次性邀请码</button>
       <view wx:if="{{inviteCode}}" class="invite-result touch-target" bindtap="copyInvite" hover-class="profile-control-hover" aria-role="button" aria-label="复制邀请码"><text class="invite-code">{{inviteCode}}</text><text class="invite-expire">有效至 {{inviteExpiresText}}（北京时间） · 点击复制</text></view>
 
       <view class="active-invite-heading"><text class="active-invite-title">待使用邀请</text><text wx:if="{{inviteCapacityKnown}}" class="active-invite-count">{{activeInvites.length}} 个</text><text wx:else class="active-invite-count">待确认</text></view>
@@ -115,7 +132,7 @@
       <view wx:else class="active-invite-list">
         <view wx:for="{{activeInvites}}" wx:key="inviteRef" class="active-invite-row">
           <view class="active-invite-copy"><text class="active-invite-label">{{item.label}}</text><text class="active-invite-expire">有效至 {{item.expiresText}}（北京时间）</text></view>
-          <button class="invite-revoke" data-invite-ref="{{item.inviteRef}}" bindtap="revokeInvite" hover-class="profile-control-hover" loading="{{revokingInviteRef === item.inviteRef}}" disabled="{{profileLoading || revokingInviteRef || creatingInvite}}" aria-label="撤销 {{item.label}} 的待使用邀请">撤销</button>
+          <button class="invite-revoke" data-invite-ref="{{item.inviteRef}}" bindtap="revokeInvite" hover-class="profile-control-hover" loading="{{revokingInviteRef === item.inviteRef}}" disabled="{{profileLoading || revokingInviteRef || creatingInvite || savingMemberNote}}" aria-label="撤销 {{item.label}} 的待使用邀请">撤销</button>
         </view>
       </view>
     </view>
@@ -149,7 +166,7 @@
         </label>
       </radio-group>
 
-      <button class="transfer-button" bindtap="transferOwner" loading="{{transferringOwner}}" disabled="{{profileLoading || transferringOwner || membersState !== 'ready' || !selectedMemberRef}}">转移管理员身份</button>
+      <button class="transfer-button" bindtap="transferOwner" loading="{{transferringOwner}}" disabled="{{profileLoading || transferringOwner || savingMemberNote || membersState !== 'ready' || !selectedMemberRef}}">转移管理员身份</button>
     </view>
   </block>
 

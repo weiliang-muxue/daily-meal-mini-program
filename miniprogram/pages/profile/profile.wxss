@@ -70,6 +70,24 @@
 .joined-member-detail { display: flex; align-items: flex-start; gap: 16rpx; margin-top: 10rpx; font-size: 14px; line-height: 1.55; }
 .joined-member-label { width: 4em; flex: none; color: var(--muted); }
 .joined-member-value { min-width: 0; flex: 1; color: var(--ink); overflow-wrap: anywhere; }
+.member-note-section { margin-top: 20rpx; padding-top: 16rpx; border-top: 1rpx solid var(--line); }
+.member-note-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.member-note-label, .member-note-input-label { display: block; min-width: 0; color: var(--muted-strong); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.member-note-edit, .member-note-cancel, .member-note-save { min-width: 88px; min-height: 48px; margin: 0; padding: 10px 12px; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.5; font-weight: 680; }
+.member-note-edit { width: auto; flex: 0 0 auto; }
+.member-note-edit[disabled], .member-note-cancel[disabled], .member-note-save[disabled] { opacity: .48; }
+.member-note-value { display: block; margin-top: 8rpx; color: var(--ink); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+.member-note-value.empty { color: var(--muted); }
+.member-note-editor { margin-top: 16rpx; }
+.member-note-input { width: 100%; min-width: 0; min-height: 96px; margin-top: 8rpx; padding: 12px; box-sizing: border-box; border: 1rpx solid var(--line-strong); border-radius: 10rpx; background: var(--input-surface); color: var(--ink); font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.member-note-help { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 8rpx; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.member-note-help text { min-width: 0; overflow-wrap: anywhere; }
+.member-note-count { margin-left: auto; white-space: nowrap; }
+.member-note-count.over-limit { color: var(--danger); }
+.member-note-error { display: block; margin-top: 10rpx; color: var(--danger); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.member-note-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16rpx; }
+.member-note-actions button { width: 100%; min-width: 0; }
+.member-note-save { background: var(--primary-fill); border-color: var(--primary-fill); color: var(--on-primary); }
 .invite-card { padding: 28rpx; }
 .invite-title { display: block; font-size: 16px; font-weight: 730; }.invite-copy { display: block; margin-top: 7rpx; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .invite-field { display: block; margin: 22rpx 0; }

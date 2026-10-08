@@ -53,6 +53,8 @@ function createOperationScope(identity) {
     pendingOperations: new Map(),
     syncTimer: null,
     syncPromise: null,
+    retryPromise: null,
+    errorMessage: '',
     conflictPending: false,
   }
 }
@@ -71,6 +73,7 @@ const shoppingPage = {
     isAiPlan: false,
     offline: false,
     saving: false,
+    pendingSync: false,
     errorMessage: '',
     emptyKind: '',
     skeletons: [1, 2, 3],
@@ -79,7 +82,7 @@ const shoppingPage = {
   onLoad() {
     this.skipFirstShow = true
     this.operationScope = createOperationScope(operationIdentity())
-    this.unsubscribeNamespace = membershipStore.onCacheNamespaceChange(() => this.ensureOperationScope())
+    this.unsubscribeNamespace = membershipStore.onCacheNamespaceChange(() => this.render())
     this.loadData()
   },
 
@@ -96,13 +99,13 @@ const shoppingPage = {
   onHide() {
     const scope = this.ensureOperationScope()
     clearTimeout(scope.syncTimer)
-    if (scope.pendingOperations.size) this.syncChanges(scope).catch(() => {})
+    if (scope.pendingOperations.size && !scope.retryPromise) this.syncChanges(scope).catch(() => {})
   },
 
   onUnload() {
     const scope = this.ensureOperationScope()
     clearTimeout(scope.syncTimer)
-    if (scope.pendingOperations.size) this.syncChanges(scope).catch(() => {})
+    if (scope.pendingOperations.size && !scope.retryPromise) this.syncChanges(scope).catch(() => {})
     if (this.unsubscribeNamespace) this.unsubscribeNamespace()
   },
 
@@ -114,6 +117,7 @@ const shoppingPage = {
       this.operationScope.pendingOperations.clear()
     }
     this.operationScope = createOperationScope(identity)
+    this.setData({ saving: false, pendingSync: false, errorMessage: '' })
     return this.operationScope
   },
 
@@ -122,24 +126,35 @@ const shoppingPage = {
   },
 
   async loadData(force = false) {
-    const initialScope = this.ensureOperationScope()
-    if (initialScope.pendingOperations.size) return this.retrySync()
+    let loadScope = this.ensureOperationScope()
+    if (loadScope.pendingOperations.size) return this.retrySync()
+    const loadSequence = (this.loadSequence || 0) + 1
+    this.loadSequence = loadSequence
+    const isCurrentLoad = () => this.loadSequence === loadSequence
+      && loadScope === this.operationScope
+      && loadScope.cacheNamespace === (membershipStore.cacheNamespace || '')
+    loadScope.errorMessage = ''
     this.setData({ viewState: 'loading', errorMessage: '' })
     let loadError = ''
     try {
       const member = await membershipStore.init({ force })
+      // The first load may acquire its namespace while membership initializes.
+      if (!loadScope.cacheNamespace && this.loadSequence === loadSequence) loadScope = this.ensureOperationScope()
+      if (!isCurrentLoad()) return
       if (!member || member.status !== 'active') return wx.reLaunch({ url: '/pages/access/access' })
       await authStore.init({ force })
+      if (!isCurrentLoad()) return
       await userStore.init({ force })
     } catch (error) {
       loadError = error.message || '采购清单加载失败，请重试'
     }
-    this.ensureOperationScope()
-    this.render(loadError)
+    if (!isCurrentLoad()) return
+    this.ensureOperationScope().errorMessage = loadError
+    this.render()
     wx.stopPullDownRefresh()
   },
 
-  render(loadError = '') {
+  render() {
     const scope = this.ensureOperationScope()
     const state = userStore.data || {}
     const planView = buildPlanView(state.activePlan, state)
@@ -147,10 +162,10 @@ const shoppingPage = {
     const offline = userStore.state === 'offline'
     let viewState = 'ready'
     let emptyKind = ''
-    const errorMessage = loadError || (offline ? userStore.error : '') || ''
+    const errorMessage = scope.errorMessage || (offline ? userStore.error : '') || ''
 
     if (!planView.hasPlan) {
-      if (loadError || userStore.state === 'error') viewState = 'error'
+      if (errorMessage || userStore.state === 'error') viewState = 'error'
       else {
         viewState = 'empty'
         emptyKind = 'no-plan'
@@ -172,7 +187,8 @@ const shoppingPage = {
       mealSummaryText: planView.mealSummary.text,
       isAiPlan: Boolean(state.activePlan && state.activePlan.source === 'ai'),
       offline,
-      saving: scope.pendingOperations.size > 0 || userStore.state === 'saving',
+      saving: Boolean(scope.syncPromise || scope.retryPromise || userStore.pendingSave),
+      pendingSync: scope.pendingOperations.size > 0,
       errorMessage,
       emptyKind,
     })
@@ -194,10 +210,12 @@ const shoppingPage = {
     try {
       userStore.patch({ checkedShoppingIds }, { localOnly: true })
       scope.conflictPending = false
+      scope.errorMessage = ''
       this.render()
       this.scheduleSync(500, scope)
     } catch (error) {
-      this.setData({ errorMessage: error.message || '采购进度无法保存' })
+      scope.errorMessage = error.message || '采购进度无法保存'
+      this.render()
     }
   },
 
@@ -212,7 +230,7 @@ const shoppingPage = {
   },
 
   scheduleSync(delay = 500, requestedScope = this.ensureOperationScope()) {
-    if (!this.isCurrentOperationScope(requestedScope)) return
+    if (!this.isCurrentOperationScope(requestedScope) || requestedScope.retryPromise) return
     clearTimeout(requestedScope.syncTimer)
     requestedScope.syncTimer = setTimeout(() => {
       if (this.isCurrentOperationScope(requestedScope)) this.syncChanges(requestedScope).catch(() => {})
@@ -225,6 +243,8 @@ const shoppingPage = {
     if (!requestedScope.pendingOperations.size) return Promise.resolve(userStore.data)
     if (requestedScope.syncPromise) return requestedScope.syncPromise
     const syncedSequence = requestedScope.changeSequence
+    let succeeded = false
+    requestedScope.errorMessage = ''
     this.setData({ saving: true, errorMessage: '' })
     const request = userStore.flush().then((data) => {
       if (!this.isCurrentOperationScope(requestedScope)) return data
@@ -232,17 +252,20 @@ const shoppingPage = {
         if (operation.sequence <= syncedSequence) requestedScope.pendingOperations.delete(id)
       }
       requestedScope.conflictPending = false
-      this.render()
+      succeeded = true
       return data
     }).catch((error) => {
       if (this.isCurrentOperationScope(requestedScope)) {
         requestedScope.conflictPending = isConflict(error)
-        this.render(error.message || '尚未同步到云端，点此重试')
+        requestedScope.errorMessage = error.message || '同步失败，请稍后重试'
       }
       throw error
     }).finally(() => {
       if (requestedScope.syncPromise === request) requestedScope.syncPromise = null
-      if (this.isCurrentOperationScope(requestedScope) && requestedScope.pendingOperations.size && !requestedScope.conflictPending && userStore.state !== 'offline') {
+      if (requestedScope !== this.operationScope || requestedScope.cacheNamespace !== (membershipStore.cacheNamespace || '')) return
+      this.render()
+      if (!this.isCurrentOperationScope(requestedScope)) return
+      if (succeeded && requestedScope.pendingOperations.size && !requestedScope.conflictPending && userStore.state !== 'offline') {
         this.scheduleSync(80, requestedScope)
       }
     })
@@ -252,16 +275,16 @@ const shoppingPage = {
 
   async mergePendingWithCloud(requestedScope = this.ensureOperationScope()) {
     if (!this.isCurrentOperationScope(requestedScope)) return userStore.data
-    const operations = [...requestedScope.pendingOperations.entries()]
     await userStore.init({ force: true })
     if (!this.isCurrentOperationScope(requestedScope)) {
-      this.ensureOperationScope()
-      this.render()
+      if (requestedScope === this.operationScope && requestedScope.cacheNamespace === (membershipStore.cacheNamespace || '')) this.render()
       return userStore.data
     }
     if (userStore.state !== 'ready') throw new Error(userStore.error || '云端状态仍不可用')
 
     const latest = this.currentShopping()
+    // Include edits made while the cloud reload was in flight.
+    const operations = [...requestedScope.pendingOperations.entries()]
     const allowed = new Set(latest.groups.flatMap((group) => group.items.map((item) => item.itemId)))
     const checked = new Set(latest.checkedIds)
     operations.forEach(([id, operation]) => {
@@ -282,18 +305,27 @@ const shoppingPage = {
     userStore.patch({ checkedShoppingIds: [...checked] }, { localOnly: true })
     requestedScope.conflictPending = false
     await this.syncChanges(requestedScope)
-    if (this.isCurrentOperationScope(requestedScope)) wx.showToast({ title: '已合并云端进度', icon: 'success' })
+    if (this.isCurrentOperationScope(requestedScope) && !requestedScope.pendingOperations.size) {
+      wx.showToast({ title: '已合并云端进度', icon: 'success' })
+    }
   },
 
-  async retrySync() {
+  retrySync() {
     const scope = this.ensureOperationScope()
-    if (scope.syncPromise) return scope.syncPromise.catch(() => {})
-    if (!scope.pendingOperations.size) return this.loadData(true)
-    try {
-      if (scope.conflictPending) await this.mergePendingWithCloud(scope)
-      else await this.syncChanges(scope)
-    } catch (error) {
+    if (scope.retryPromise) return scope.retryPromise
+    if (scope.syncPromise) return scope.syncPromise.catch(() => {}).finally(() => {
+      if (this.isCurrentOperationScope(scope)) wx.stopPullDownRefresh()
+    })
+    clearTimeout(scope.syncTimer)
+    const request = Promise.resolve().then(async () => {
       if (!this.isCurrentOperationScope(scope)) return
+      scope.errorMessage = ''
+      if (!scope.pendingOperations.size) await this.loadData(true)
+      else if (scope.conflictPending) await this.mergePendingWithCloud(scope)
+      else await this.syncChanges(scope)
+    }).catch((error) => {
+      if (!this.isCurrentOperationScope(scope)) return
+      scope.errorMessage = error.message || '同步失败，请检查网络后重试'
       if (isConflict(error)) {
         scope.conflictPending = true
         wx.showModal({
@@ -305,9 +337,18 @@ const shoppingPage = {
       } else {
         wx.showToast({ title: error.message || '同步失败，请检查网络', icon: 'none' })
       }
-    } finally {
+    }).finally(() => {
+      if (scope.retryPromise === request) scope.retryPromise = null
+      if (!this.isCurrentOperationScope(scope)) return
+      this.render()
+      if (scope.pendingOperations.size && !scope.errorMessage && !scope.conflictPending && userStore.state !== 'offline') {
+        this.scheduleSync(80, scope)
+      }
       wx.stopPullDownRefresh()
-    }
+    })
+    scope.retryPromise = request
+    this.setData({ saving: true })
+    return request
   },
 
   resetChecked() {

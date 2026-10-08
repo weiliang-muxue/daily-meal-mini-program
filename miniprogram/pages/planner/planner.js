@@ -229,7 +229,8 @@ function summaryRows(preferences) {
   return [
     { label: '餐次', value: mealLabels.join('、') || '尚未选择' },
     { label: '周期', value: `${preferences.durationDays} 天，${preferences.startDate} 至 ${endDate}` },
-    { label: '目标', value: [...preferences.goals, preferences.customGoal].filter(Boolean).join('、') || '未填写' },
+    { label: '目标', value: preferences.goals.join('、') || '未选择' },
+    { label: '想吃 / 补充', value: preferences.customGoal || '未填写' },
     { label: '风格', value: preferences.styles.join('、') || '未选择' },
     { label: '约束', value: preferences.restrictions || preferences.healthNotes ? '已填写，将仅用于本次生成' : '未填写' },
     {

@@ -1,8 +1,8 @@
 {
-  "lastReleasedVersion": "0.1.0",
-  "workingVersion": "0.2.0",
+  "lastReleasedVersion": "0.2.0",
+  "workingVersion": "0.2.1",
   "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.2.0：协议需先打开阅读再主动勾选，旧成员不默认同意；管理员可查看已加入成员、加入时间与邀请来源，私人餐单和健康数据保持隔离。",
+  "wechatUploadDescription": "0.2.1：支持管理员邀请最多10位成员，新增仅管理员可见的成员备注；生成前可填写想吃的菜品或食材，改善采购清单同步失败提示和重试。保留已有餐单、记录及有效邀请，不重置用户数据。",
   "stateSchemaVersion": 8,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 2,

@@ -72,7 +72,7 @@ async function main() {
     },
     { inviteRef: 'invalid-ref', label: '必须过滤', expiresAt: 2000000000000 },
   ]
-  let summaryOverrides = { maxMembers: 4, inviteTtlHours: 168 }
+  let summaryOverrides = { maxMembers: 11, inviteTtlHours: 168 }
   let listMembersCalls = 0
   membershipStore.listMembers = async () => {
     listMembersCalls += 1
@@ -93,7 +93,7 @@ async function main() {
   await page.loadMembers()
   assert.strictEqual(page.data.membersState, 'ready')
   assert.strictEqual(page.data.memberCount, 3)
-  assert.strictEqual(page.data.maxMembers, 4, '页面必须采用 listMembers 返回的默认 4 人容量')
+  assert.strictEqual(page.data.maxMembers, 11, '页面必须采用 listMembers 返回的默认 11 人容量')
   assert.strictEqual(page.data.inviteTtlHours, 168, '页面必须采用 listMembers 返回的默认 168 小时 TTL')
   assert.strictEqual(page.data.inviteTtlText, '7 天', '默认 168 小时必须友好显示为 7 天')
   assert.strictEqual(page.data.occupiedCount, 4, '待使用邀请必须占用成员容量')
@@ -126,14 +126,14 @@ async function main() {
   summaryOverrides = {}
   const missingConfigPage = makePage()
   await missingConfigPage.loadMembers()
-  assert.strictEqual(missingConfigPage.data.maxMembers, 4, '缺失容量必须回退到防御默认值')
+  assert.strictEqual(missingConfigPage.data.maxMembers, 11, '缺失容量必须回退到防御默认值')
   assert.strictEqual(missingConfigPage.data.inviteTtlHours, 168, '缺失 TTL 必须回退到防御默认值')
   assert.strictEqual(missingConfigPage.data.inviteTtlText, '7 天')
 
   summaryOverrides = { maxMembers: 0, inviteTtlHours: -1 }
   const invalidConfigPage = makePage()
   await invalidConfigPage.loadMembers()
-  assert.strictEqual(invalidConfigPage.data.maxMembers, 4, '非法容量必须回退到防御默认值')
+  assert.strictEqual(invalidConfigPage.data.maxMembers, 11, '非法容量必须回退到防御默认值')
   assert.strictEqual(invalidConfigPage.data.inviteTtlHours, 168, '非法 TTL 必须回退到防御默认值')
   assert.strictEqual(invalidConfigPage.data.inviteTtlText, '7 天')
   summaryOverrides = { maxMembers: 4, inviteTtlHours: 168 }
@@ -230,6 +230,7 @@ async function main() {
 
   page.selectTransferMember({ detail: { value: memberRefA } })
   assert.strictEqual(page.data.selectedMemberRef, memberRefA)
+  page.setData({ editingMemberRef: memberRefA, memberNoteDraft: '交接前草稿', memberNoteError: '旧错误' })
 
   const transferCalls = []
   membershipStore.transferOwner = async (...args) => {
@@ -247,6 +248,10 @@ async function main() {
   assert.strictEqual(page.data.membersState, 'idle')
   assert.strictEqual(page.data.selectedMemberRef, '')
   assert.strictEqual(page.data.transferringOwner, false)
+  assert.deepStrictEqual(page.data.joinedMembers, [], '管理员交接后不得保留私有成员备注')
+  assert.strictEqual(page.data.editingMemberRef, '')
+  assert.strictEqual(page.data.memberNoteDraft, '')
+  assert.strictEqual(page.data.memberNoteError, '')
   assert(toastCalls.some((item) => item.title === '管理员已转移' && item.icon === 'success'))
 
   membershipStore.member = { status: 'active', role: 'owner', cacheNamespace: 'c'.repeat(32) }

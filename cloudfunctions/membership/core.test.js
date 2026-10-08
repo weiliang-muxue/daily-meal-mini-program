@@ -10,7 +10,7 @@ const {
 } = require('./core')
 
 const config = configuration({})
-assert.deepStrictEqual(config, { inviteSlots: 3, inviteTtlHours: 168, maxMembers: 4, inviteTtlMs: 604800000 })
+assert.deepStrictEqual(config, { inviteSlots: 10, inviteTtlHours: 168, maxMembers: 11, inviteTtlMs: 604800000 })
 assert.deepStrictEqual(
   configuration({ INVITE_SLOTS: '19', INVITE_TTL_HOURS: '24' }),
   config,
@@ -38,7 +38,8 @@ const legacyControl = {
   ownerOpenid: 'legacy-owner', activeMemberCount: 3, reservedInviteCount: 2, revision: 7,
 }
 assert.strictEqual(assertOperationalControl(legacyControl, config).phase, CONTROL_PHASE_ACTIVE)
-assert.strictEqual(capacityExceeded(legacyControl, config), true)
+assert.strictEqual(capacityExceeded(legacyControl, config), false)
+assert.strictEqual(capacityExceeded({ ...legacyControl, activeMemberCount: 11, reservedInviteCount: 1 }, config), true)
 assert.deepStrictEqual(reviseOperationalControl(legacyControl, config), {
   kind: 'control', status: 'control', schemaVersion: 2,
   phase: CONTROL_PHASE_ACTIVE, bootstrapRequestId: '',
@@ -51,19 +52,19 @@ control = {
   phase: CONTROL_PHASE_ACTIVE, bootstrapRequestId: '',
 }
 assert.strictEqual(control.activeMemberCount, 1)
-for (let index = 0; index < 3; index += 1) control = reserveInvite(control, config)
-assert.strictEqual(control.reservedInviteCount, 3)
+for (let index = 0; index < 10; index += 1) control = reserveInvite(control, config)
+assert.strictEqual(control.reservedInviteCount, 10)
 assert.throws(() => reserveInvite(control, config), (error) => error.code === 'MEMBERSHIP_FULL')
 
 control = consumeInvite(control, config)
 assert.strictEqual(control.activeMemberCount, 2)
-assert.strictEqual(control.reservedInviteCount, 2)
-assert.strictEqual(control.activeMemberCount + control.reservedInviteCount, 4)
+assert.strictEqual(control.reservedInviteCount, 9)
+assert.strictEqual(control.activeMemberCount + control.reservedInviteCount, 11)
 control = releaseInvite(control)
-assert.strictEqual(control.reservedInviteCount, 1)
+assert.strictEqual(control.reservedInviteCount, 8)
 assert.strictEqual(capacityExceeded(control, config), false)
 assert.throws(
-  () => consumeInvite({ ...control, activeMemberCount: 4, reservedInviteCount: 1 }, config),
+  () => consumeInvite({ ...control, activeMemberCount: 11, reservedInviteCount: 1 }, config),
   (error) => error.code === 'MEMBERSHIP_FULL',
 )
 
@@ -98,6 +99,7 @@ assert.throws(() => controlFromSnapshot([
 
 const visible = publicMember({
   _id: 'must-not-leak', memberRef: 'a'.repeat(32), role: 'member', displayLabel: '家人', joinedAt: 123,
+  adminNote: 'private administrator note', adminNoteUpdatedAt: 456,
 })
 assert.deepStrictEqual(visible, {
   memberRef: 'a'.repeat(32), role: 'member', label: '家人', joinedAt: 123,
@@ -105,6 +107,8 @@ assert.deepStrictEqual(visible, {
 })
 assert.strictEqual(JSON.stringify(visible).includes('must-not-leak'), false)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(visible, '_id'), false)
+assert.strictEqual(JSON.stringify(visible).includes('adminNote'), false)
+assert.strictEqual(JSON.stringify(visible).includes('private administrator note'), false)
 
 const visibleInvite = publicInvite({
   _id: 'b'.repeat(32), label: ' 家人 ', expiresAt: 123,

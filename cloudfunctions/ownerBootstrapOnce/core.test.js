@@ -19,9 +19,9 @@ const pending = {
   approvedRequestId: '', approvedTargetDigest: '', expiresAtMs: now + REQUEST_TTL_MS,
 }
 const pendingControl = bootstrapControl(pending, CONTROL_PHASE_PENDING, 1)
-assert.strictEqual(INVITE_SLOTS, 3)
+assert.strictEqual(INVITE_SLOTS, 10)
 assert.strictEqual(INVITE_TTL_HOURS, 168)
-assert.strictEqual(pendingControl.inviteSlots, 3)
+assert.strictEqual(pendingControl.inviteSlots, 10)
 assert.strictEqual(pendingControl.inviteTtlHours, 168)
 
 assert.doesNotThrow(() => assertOperationalActivationContext({ SOURCE: 'unknown-operation' }))

@@ -12,8 +12,9 @@ const {
   openPrivacyContractOrLocal,
 } = require('../../utils/privacy-auth')
 
-const DEFAULT_MAX_MEMBERS = 4
+const DEFAULT_MAX_MEMBERS = 11
 const DEFAULT_INVITE_TTL_HOURS = 168
+const MAX_MEMBER_NOTE_LENGTH = 100
 
 function pad(value) { return String(value).padStart(2, '0') }
 
@@ -34,6 +35,17 @@ function formatBeijingDateTime(value) {
 
 function cleanMemberName(value) {
   return typeof value === 'string' ? value.trim().slice(0, 20) : ''
+}
+
+function memberManagementIdentity() {
+  const member = membershipStore.member
+  if (!member || member.status !== 'active' || member.role !== 'owner' || !membershipStore.cacheNamespace) return ''
+  return `${membershipStore.cacheNamespace}:${membershipStore.membershipRevision}`
+}
+
+function memberNoteAccessChanged(error) {
+  return ['OWNER_REQUIRED', 'MEMBERSHIP_REQUIRED', 'IDENTITY_REQUIRED', 'LEGAL_CONSENT_REQUIRED',
+    'ACCOUNT_DELETION_IN_PROGRESS', 'ACCOUNT_GENERATION_CHANGED', 'MEMBER_NOT_FOUND'].includes(error && error.code)
 }
 
 function memberJoinedText(value) {
@@ -63,6 +75,7 @@ function visibleJoinedMembers(summary) {
         : joinSource === 'invite' ? cleanMemberName(item.inviterLabel) || '邀请人信息未记录' : '邀请人信息未记录',
       invitationLabel: joinSource === 'owner' ? '无需邀请'
         : cleanMemberName(item.invitationLabel) || (joinSource === 'invite' ? '未填写' : '未记录'),
+      adminNote: typeof item.adminNote === 'string' ? Array.from(item.adminNote.trim()).slice(0, MAX_MEMBER_NOTE_LENGTH).join('') : '',
     })
     return result
   }, [])
@@ -129,21 +142,33 @@ Page({
     inviteLabel: '', inviteCode: '', inviteExpiresText: '', creatingInvite: false,
     activeInvites: [], inviteCapacityKnown: false, revokingInviteRef: '',
     joinedMembers: [], joinedMembersState: 'idle',
+    editingMemberRef: '', memberNoteDraft: '', memberNoteLength: 0, memberNoteError: '', savingMemberNote: false,
+    maxMemberNoteLength: MAX_MEMBER_NOTE_LENGTH,
     transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '', transferringOwner: false,
   },
 
   onLoad() {
+    this.watchMemberManagement()
     this.applyTheme()
     this.themeChangeHandler = (event) => this.applyTheme(event)
     if (typeof wx.onThemeChange === 'function') wx.onThemeChange(this.themeChangeHandler)
     this.connect()
   },
   onShow() {
+    this.memberManagementSuspended = false
     this.render()
     if (!this.data.profileLoading && this.data.member.role === 'owner') this.loadMembers()
   },
+  onHide() {
+    this.memberManagementSuspended = true
+    this.resetMemberManagement()
+  },
   onUnload() {
-    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
+    this.memberManagementUnloaded = true
+    this.memberManagementSuspended = true
+    this.resetMemberManagement()
+    if (this.unsubscribeMembership) this.unsubscribeMembership()
+    this.unsubscribeMembership = null
     if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
     this.themeChangeHandler = null
   },
@@ -161,6 +186,7 @@ Page({
   },
 
   async connect(force = false) {
+    this.resetMemberManagement()
     this.setData({ authState: 'connecting', authDetail: '正在加载资料', profileLoading: true })
     try {
       const member = await membershipStore.init({ force })
@@ -184,8 +210,47 @@ Page({
     }
   },
 
+  watchMemberManagement() {
+    if (this.memberManagementUnloaded) return
+    if (!this.unsubscribeMembership) {
+      this.unsubscribeMembership = membershipStore.onMembershipChange(() => {
+        this.resetMemberManagement()
+        this.setData({ member: membershipStore.member || {} })
+      })
+    }
+  },
+
+  syncMemberManagementIdentity() {
+    this.watchMemberManagement()
+    const identity = memberManagementIdentity()
+    if (!identity || this.memberManagementSuspended) {
+      this.resetMemberManagement()
+      return false
+    }
+    if (typeof this.memberManagementIdentity === 'undefined') this.memberManagementIdentity = identity
+    else if (this.memberManagementIdentity !== identity) {
+      this.resetMemberManagement()
+      this.memberManagementIdentity = identity
+    }
+    return true
+  },
+
+  isMemberManagementCurrent(identity) {
+    return !this.memberManagementSuspended && Boolean(identity)
+      && identity === memberManagementIdentity() && identity === this.memberManagementIdentity
+  },
+
+  resetMemberNoteEditor() {
+    this.memberNoteRequestRevision = (this.memberNoteRequestRevision || 0) + 1
+    this.setData({
+      editingMemberRef: '', memberNoteDraft: '', memberNoteLength: 0, memberNoteError: '', savingMemberNote: false,
+    })
+  },
+
   resetMemberManagement() {
     this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
+    this.memberManagementIdentity = ''
+    this.resetMemberNoteEditor()
     this.setData({
       joinedMembers: [], joinedMembersState: 'idle',
       transferMembers: [], membersState: 'idle', membersError: '', selectedMemberRef: '',
@@ -197,21 +262,19 @@ Page({
   },
 
   async loadMembers() {
-    if (!membershipStore.member || membershipStore.member.role !== 'owner') {
-      this.resetMemberManagement()
-      return
-    }
+    if (!this.syncMemberManagementIdentity()) return
     const requestRevision = this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
-    const cacheNamespace = membershipStore.cacheNamespace
+    const identity = this.memberManagementIdentity
+    this.resetMemberNoteEditor()
     this.setData({
       joinedMembers: [], joinedMembersState: 'loading',
       membersState: 'loading', membersError: '', inviteCapacityKnown: false,
-      memberCount: 0, occupiedCount: 0, activeInvites: [],
+      memberCount: 0, occupiedCount: 0, activeInvites: [], transferMembers: [],
     })
     try {
       const summary = await membershipStore.listMembers()
       if (requestRevision !== this.memberRequestRevision) return
-      if (!membershipStore.member || membershipStore.member.role !== 'owner' || membershipStore.cacheNamespace !== cacheNamespace) {
+      if (!this.isMemberManagementCurrent(identity)) {
         this.resetMemberManagement()
         return
       }
@@ -238,9 +301,10 @@ Page({
         inviteTtlHours,
         inviteTtlText: inviteTtlText(inviteTtlHours),
       })
+      return true
     } catch (error) {
       if (requestRevision !== this.memberRequestRevision) return
-      if (!membershipStore.member || membershipStore.member.role !== 'owner' || membershipStore.cacheNamespace !== cacheNamespace) {
+      if (!this.isMemberManagementCurrent(identity)) {
         this.resetMemberManagement()
         return
       }
@@ -250,12 +314,85 @@ Page({
         memberCount: 0, occupiedCount: 0, inviteCapacityKnown: false,
         membersError: error.message || '成员列表加载失败，请重试',
       })
+      return false
     }
   },
 
   retryMembers() {
-    if (this.data.profileLoading || this.data.membersState === 'loading') return
+    if (this.data.profileLoading || this.data.membersState === 'loading' || this.data.savingMemberNote) return
     return this.loadMembers()
+  },
+
+  editMemberNote(event) {
+    if (!this.syncMemberManagementIdentity() || this.data.profileLoading || this.data.savingMemberNote
+      || this.data.transferringOwner || this.data.joinedMembersState !== 'ready') return
+    const memberRef = String(event && event.currentTarget && event.currentTarget.dataset.memberRef || '').toLowerCase()
+    const target = this.data.joinedMembers.find((item) => item.memberRef === memberRef)
+    if (!target) return
+    this.resetMemberNoteEditor()
+    this.setData({
+      editingMemberRef: memberRef, memberNoteDraft: target.adminNote,
+      memberNoteLength: Array.from(target.adminNote).length,
+    })
+  },
+
+  inputMemberNote(event) {
+    if (!this.syncMemberManagementIdentity() || !this.data.editingMemberRef || this.data.savingMemberNote) return
+    const memberNoteDraft = String(event && event.detail && event.detail.value || '')
+    const memberNoteLength = Array.from(memberNoteDraft.trim()).length
+    this.setData({
+      memberNoteDraft, memberNoteLength,
+      memberNoteError: memberNoteLength > MAX_MEMBER_NOTE_LENGTH ? `最多填写 ${MAX_MEMBER_NOTE_LENGTH} 字，请删减后保存` : '',
+    })
+  },
+
+  cancelMemberNote() {
+    if (this.data.savingMemberNote) return
+    this.resetMemberNoteEditor()
+  },
+
+  async saveMemberNote() {
+    if (!this.syncMemberManagementIdentity() || this.data.profileLoading || this.data.savingMemberNote
+      || this.data.transferringOwner || this.data.joinedMembersState !== 'ready') return
+    const memberRef = this.data.editingMemberRef
+    if (!this.data.joinedMembers.some((item) => item.memberRef === memberRef)) return
+    const note = this.data.memberNoteDraft.trim()
+    if (Array.from(note).length > MAX_MEMBER_NOTE_LENGTH) {
+      this.setData({ memberNoteError: `最多填写 ${MAX_MEMBER_NOTE_LENGTH} 字，请删减后保存` })
+      return
+    }
+    const identity = this.memberManagementIdentity
+    const requestRevision = this.memberNoteRequestRevision = (this.memberNoteRequestRevision || 0) + 1
+    this.setData({ savingMemberNote: true, memberNoteError: '' })
+    try {
+      await membershipStore.setMemberNote(memberRef, note)
+      if (requestRevision !== this.memberNoteRequestRevision) return
+      if (!this.isMemberManagementCurrent(identity)) {
+        this.resetMemberManagement()
+        return
+      }
+      // Only a fresh, owner-authorized list may render the saved note.
+      const refreshed = await this.loadMembers()
+      if (refreshed && this.isMemberManagementCurrent(identity)) {
+        wx.showToast({ title: note ? '成员备注已保存' : '成员备注已清空', icon: 'success' })
+      }
+    } catch (error) {
+      if (requestRevision !== this.memberNoteRequestRevision) return
+      if (!this.isMemberManagementCurrent(identity)) {
+        this.resetMemberManagement()
+        return
+      }
+      if (memberNoteAccessChanged(error)) {
+        this.resetMemberManagement()
+        await this.loadMembers()
+        return
+      }
+      this.setData({ memberNoteError: `${error.message || '备注保存失败'}，可重试保存` })
+    } finally {
+      if (requestRevision === this.memberNoteRequestRevision && this.isMemberManagementCurrent(identity)) {
+        this.setData({ savingMemberNote: false })
+      }
+    }
   },
 
   selectTransferMember(event) {
@@ -266,7 +403,7 @@ Page({
   },
 
   async transferOwner() {
-    if (this.data.profileLoading || this.data.transferringOwner) return
+    if (this.data.profileLoading || this.data.transferringOwner || this.data.savingMemberNote) return
     const target = this.data.transferMembers.find((item) => item.memberRef === this.data.selectedMemberRef)
     if (!target) return wx.showToast({ title: '请先选择接任成员', icon: 'none' })
 
@@ -285,6 +422,9 @@ Page({
     })
     if (!secondConfirmed) return
 
+    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
+    this.resetMemberNoteEditor()
+    this.setData({ joinedMembers: [], joinedMembersState: 'idle' })
     this.setData({ transferringOwner: true })
     wx.showLoading({ title: '正在转移', mask: true })
     try {
@@ -305,6 +445,8 @@ Page({
   },
 
   render() {
+    if (this.memberManagementUnloaded) return
+    this.syncMemberManagementIdentity()
     const profile = authStore.profile || {}
     const authState = authStore.state === 'ready' || authStore.state === 'offline'
       ? authStore.state : this.data.authState === 'connecting' ? 'connecting' : authStore.state
@@ -323,11 +465,10 @@ Page({
       waterReminderSummary: waterReminderSummary(userStore.data.waterReminder),
       member: membershipStore.member || {},
     })
-    if (!membershipStore.member || membershipStore.member.role !== 'owner') this.resetMemberManagement()
   },
 
   clearRenderedPrivateData() {
-    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
+    this.resetMemberManagement()
     this.setData({
       profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
       avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false,
@@ -540,7 +681,7 @@ Page({
     if (!this.data.profileLoading) this.setData({ inviteLabel: event.detail.value })
   },
   async createInvite() {
-    if (this.data.profileLoading || this.data.creatingInvite || this.data.revokingInviteRef) return
+    if (this.data.profileLoading || this.data.creatingInvite || this.data.revokingInviteRef || this.data.savingMemberNote) return
     if (!this.data.inviteCapacityKnown) return wx.showToast({ title: '请先刷新邀请状态', icon: 'none' })
     if (this.data.occupiedCount >= this.data.maxMembers) return wx.showToast({ title: '成员名额已满', icon: 'none' })
     this.setData({ creatingInvite: true })
@@ -556,7 +697,7 @@ Page({
     wx.setClipboardData({ data: this.data.inviteCode, success: () => wx.showToast({ title: '邀请码已复制', icon: 'success' }) })
   },
   async revokeInvite(event) {
-    if (this.data.profileLoading || this.data.revokingInviteRef || this.data.creatingInvite) return
+    if (this.data.profileLoading || this.data.revokingInviteRef || this.data.creatingInvite || this.data.savingMemberNote) return
     const inviteRef = String(event.currentTarget && event.currentTarget.dataset.inviteRef || '').toLowerCase()
     const invite = this.data.activeInvites.find((item) => item.inviteRef === inviteRef)
     if (!invite) return wx.showToast({ title: '邀请状态已变化，请刷新', icon: 'none' })

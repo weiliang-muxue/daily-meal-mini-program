@@ -7,7 +7,7 @@
   <view wx:elif="{{viewState === 'error'}}" class="surface status-panel" aria-role="alert">
     <text class="status-title">采购清单暂时无法加载</text>
     <text class="status-detail">{{errorMessage}}</text>
-    <button class="primary-button status-action" bindtap="retrySync" hover-class="button-hover">重新加载</button>
+    <button class="primary-button status-action" bindtap="retrySync" disabled="{{saving}}" loading="{{saving}}" hover-class="button-hover">重新加载</button>
   </view>
 
   <block wx:else>
@@ -33,11 +33,17 @@
       <text class="ai-origin-copy">本采购清单根据 AI 生成的已确认餐单汇总，请按实际人数和家中库存核对。</text>
     </view>
 
-    <view wx:if="{{offline}}" class="offline-strip touch-target" bindtap="retrySync" hover-class="offline-hover" aria-role="button" aria-label="当前显示已保存内容，点此重试同步">
-      <text>{{saving ? '勾选已保存，尚未同步，点此重试' : '当前显示已保存内容，点此重试同步'}}</text>
+    <view wx:if="{{errorMessage || offline}}" class="offline-strip sync-notice" aria-live="polite">
+      <text class="sync-notice-title">{{pendingSync ? '采购进度尚未同步' : '采购清单暂未更新'}}</text>
+      <text wx:if="{{offline}}">暂时无法连接，当前显示本机内容。</text>
+      <text wx:if="{{errorMessage}}" class="sync-error" aria-role="alert">{{errorMessage}}</text>
+      <button class="secondary-button sync-retry" bindtap="retrySync" disabled="{{saving}}" loading="{{saving}}" hover-class="button-hover">{{saving ? '正在重试' : '重试同步'}}</button>
     </view>
     <view wx:elif="{{saving}}" class="saving-strip" aria-live="polite">
-      <text>正在保存采购进度</text>
+      <text>正在同步采购进度</text>
+    </view>
+    <view wx:elif="{{pendingSync}}" class="saving-strip" aria-live="polite">
+      <text>本机勾选等待同步</text>
     </view>
 
     <view wx:if="{{viewState === 'empty'}}" class="surface status-panel">

@@ -1676,7 +1676,27 @@ function testExplicitDietAndExerciseIntent() {
   assert(wxml.includes("preferences.exerciseIntent === 'daily'"), '逐日运动编辑只在用户明确选择后展示')
 }
 
+async function testMealWishesReuseExistingPreferences() {
+  resetMocks()
+  const page = makePage()
+  const wishes = '想吃番茄牛腩和面条，优先用鸡蛋'
+  page.inputCustomGoal({ detail: { value: wishes } })
+  assert.strictEqual(page.data.preferences.customGoal, wishes)
+  assert.strictEqual(page.validateStep(2), '', '只填写想吃什么，也可以继续选择约束和运动')
+  assert.strictEqual(page.data.summaryRows.find((row) => row.label === '想吃 / 补充').value, wishes)
+  const restored = { ...page.data.preferences }
+  page.renderPreferences(restored)
+  assert.strictEqual(page.data.preferences.customGoal, wishes, '沿用旧字段，不丢失已有补充目标')
+  const wxml = fs.readFileSync(plannerWxmlPath, 'utf8')
+  assert(wxml.includes('这次想吃什么（可选）'))
+  assert.strictEqual((wxml.match(/bindinput="inputCustomGoal"/g) || []).length, 1, '不能出现两个相互覆盖的输入框')
+  assert(wxml.indexOf('这次想吃什么（可选）') < wxml.indexOf('bindchange="onGoalsChange"'))
+  await tick()
+  await page.flushPreferenceDraft()
+}
+
 async function main() {
+  await testMealWishesReuseExistingPreferences()
   testSecondaryPageNavigation()
   await testPreferenceDraftDebounce()
   await testLifecycleFlushConsumesFailure()

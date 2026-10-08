@@ -17,6 +17,7 @@ const db = cloud.database()
 const members = db.collection('meal_members')
 const invites = db.collection('meal_invites')
 const config = configuration()
+const ADMIN_NOTE_MAX_LENGTH = 100
 
 function clean(value, maxLength = 40) { return typeof value === 'string' ? value.trim().slice(0, maxLength) : '' }
 function codeHash(value) { return crypto.createHash('sha256').update(clean(value).toUpperCase()).digest('hex') }
@@ -449,6 +450,11 @@ function sameStoredTimestamp(left, right) {
   return storedTimestamp(left) > 0 && storedTimestamp(left) === storedTimestamp(right)
 }
 
+function adminNoteText(value) {
+  return typeof value === 'string'
+    ? Array.from(value.trim()).slice(0, ADMIN_NOTE_MAX_LENGTH).join('') : ''
+}
+
 function isOriginalInviterGeneration(invitation, member) {
   return Boolean(invitation && member && member.status === 'active' && isMemberRef(member.memberRef)
     && storedTimestamp(member.joinedAt) > 0
@@ -485,12 +491,16 @@ async function joinedMemberProjection(transaction, ordered, rawControl) {
         !legacyInviter || (storedTimestamp(relatedInvite.createdAt) > 0
           && storedTimestamp(legacyInviter.joinedAt) > storedTimestamp(relatedInvite.createdAt))
       ))
-    result.push(publicMember(member, index, {
-      displayName: names.get(member.memberRef),
-      invitationLabel: clean(member.displayLabel, 20) || clean(relatedInvite && relatedInvite.label, 20),
-      inviterLabel: inviter ? names.get(inviter.memberRef) : inviterExited ? '原邀请人已退出' : '邀请人信息未记录',
-      joinSource,
-    }))
+    result.push({
+      ...publicMember(member, index, {
+        displayName: names.get(member.memberRef),
+        invitationLabel: clean(member.displayLabel, 20) || clean(relatedInvite && relatedInvite.label, 20),
+        inviterLabel: inviter ? names.get(inviter.memberRef) : inviterExited ? '原邀请人已退出' : '邀请人信息未记录',
+        joinSource,
+      }),
+      adminNote: adminNoteText(member.adminNote),
+      adminNoteUpdatedAt: storedTimestamp(member.adminNoteUpdatedAt) || null,
+    })
   }
   return result
 }
@@ -542,6 +552,53 @@ async function listMembers(openid) {
       activeInvites: visibleInvites,
     }
   })
+}
+
+async function setMemberNote(openid, memberRef, note) {
+  await requireOwner(openid)
+  const targetRef = typeof memberRef === 'string' ? memberRef.trim().toLowerCase() : ''
+  if (!isMemberRef(targetRef)) {
+    const error = new Error('成员引用无效')
+    error.code = 'MEMBER_REFERENCE_INVALID'
+    throw error
+  }
+  if (typeof note !== 'string' || Array.from(note.trim()).length > ADMIN_NOTE_MAX_LENGTH) {
+    const error = new Error('管理员备注最多 100 字')
+    error.code = 'MEMBER_NOTE_INVALID'
+    throw error
+  }
+  const normalizedNote = note.trim()
+  const result = await members.where({ memberRef: targetRef, status: 'active' }).limit(2).get()
+  if (result.data.length !== 1) {
+    const error = new Error('成员不存在或状态已变化')
+    error.code = 'MEMBER_NOT_FOUND'
+    throw error
+  }
+  const targetOpenid = result.data[0]._id
+  await db.runTransaction(async (transaction) => {
+    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
+    const ownerReference = transaction.collection('meal_members').doc(openid)
+    const targetReference = transaction.collection('meal_members').doc(targetOpenid)
+    const control = assertOperationalControl(await readDocument(controlReference))
+    const owner = await readDocument(ownerReference)
+    const target = await readDocument(targetReference)
+    if (!owner || owner.status !== 'active' || owner.role !== 'owner' || control.ownerOpenid !== openid) {
+      const error = new Error('只有当前管理员可以编辑成员备注')
+      error.code = 'OWNER_REQUIRED'
+      throw error
+    }
+    if (!target || target.status !== 'active' || target.memberRef !== targetRef) {
+      const error = new Error('成员不存在或状态已变化')
+      error.code = 'MEMBER_NOT_FOUND'
+      throw error
+    }
+    const next = reviseOperationalControl(control)
+    await targetReference.update({ data: {
+      adminNote: normalizedNote, adminNoteUpdatedAt: db.serverDate(),
+    } })
+    await controlReference.update({ data: { ...next, updatedAt: db.serverDate() } })
+  })
+  return { updated: true, memberRef: targetRef }
 }
 
 async function transferOwner(openid, memberRef, confirmed) {
@@ -602,6 +659,9 @@ function publicError(error) {
     INVITE_CREATE_FAILED: '无法创建邀请码，请重试',
     MEMBER_REFERENCE_FAILED: '无法创建成员引用，请重试',
     MEMBER_REFERENCE_MISSING: '成员引用尚未初始化，请重试',
+    MEMBER_REFERENCE_INVALID: '成员引用无效',
+    MEMBER_NOT_FOUND: '成员不存在或状态已变化',
+    MEMBER_NOTE_INVALID: '管理员备注最多 100 字',
     TRANSFER_CONFIRMATION_REQUIRED: '请在客户端二次确认管理员转移',
     TRANSFER_TARGET_INVALID: '接任成员不存在或状态已变化',
     INVITE_REFERENCE_INVALID: '邀请不存在或状态已变化',
@@ -629,6 +689,7 @@ exports.main = async (event = {}) => {
     if (event.action === 'acceptLegalConsent') return { success: true, data: await acceptLegalConsent(OPENID, event.legalConsent, event.cacheNamespace) }
     if (event.action === 'createInvite') return { success: true, data: await createInvite(OPENID, event.label) }
     if (event.action === 'listMembers') return { success: true, data: await listMembers(OPENID) }
+    if (event.action === 'setMemberNote') return { success: true, data: await setMemberNote(OPENID, event.memberRef, event.note) }
     if (event.action === 'revokeInvite') return { success: true, data: await revokeInvite(OPENID, event.inviteRef) }
     if (event.action === 'transferOwner') return { success: true, data: await transferOwner(OPENID, event.memberRef, event.confirmed) }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的成员操作' }
@@ -641,5 +702,5 @@ exports.main = async (event = {}) => {
 exports._test = {
   ensureControl, cleanupExpiredInvites, cleanupExcessInvites, reconcileInvites,
   revokeExcessInvite, upgradeControlConfiguration, publicError, inviteExpired,
-  status, createInvite, acceptInvite, acceptLegalConsent, listMembers, revokeInvite, transferOwner, expireInvite,
+  status, createInvite, acceptInvite, acceptLegalConsent, listMembers, setMemberNote, revokeInvite, transferOwner, expireInvite,
 }

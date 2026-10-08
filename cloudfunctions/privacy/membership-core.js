@@ -5,7 +5,7 @@ const CONTROL_SCHEMA = 2
 const CONTROL_PHASE_ACTIVE = 'active'
 const CONTROL_PHASE_BOOTSTRAP_PENDING = 'bootstrap_pending'
 const CONTROL_PHASE_BOOTSTRAP_APPROVED = 'bootstrap_approved'
-const INVITE_SLOTS = 3
+const INVITE_SLOTS = 10
 const INVITE_TTL_HOURS = 168
 const LEGAL_CONSENT_VERSION = 1
 

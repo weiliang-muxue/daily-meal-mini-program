@@ -74,6 +74,11 @@
     <view wx:elif="{{currentStep === 2}}" class="step-body">
       <text class="section-heading">本次饮食目标</text>
       <text class="section-description">至少选择一个目标或风格，也可以填写这次特别想吃什么。</text>
+      <view class="field-block">
+        <text class="field-label">这次想吃什么（可选）</text>
+        <textarea maxlength="160" value="{{preferences.customGoal}}" bindinput="inputCustomGoal" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：想吃番茄牛腩、面条；家里有鸡蛋和西兰花，希望清淡一点" aria-label="这次想吃什么，也可填写现有食材和补充目标，最多160字" auto-height="false" />
+        <text class="field-counter">可填菜名、食材或补充目标，最多 160 字；过敏与忌口请在下一步填写。</text>
+      </view>
       <text class="field-label group-label">目标</text>
       <checkbox-group class="choice-grid" bindchange="onGoalsChange">
         <label wx:for="{{goalOptions}}" wx:key="label" class="choice touch-target {{item.checked ? 'selected' : ''}}">
@@ -90,11 +95,6 @@
           <text>{{item.label}}</text>
         </label>
       </checkbox-group>
-      <view class="field-block">
-        <text class="field-label">本次补充目标</text>
-        <textarea maxlength="160" value="{{preferences.customGoal}}" bindinput="inputCustomGoal" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：这周希望主食更充足，优先米饭和面食" auto-height="false" />
-        <text class="field-counter">最多 160 字</text>
-      </view>
     </view>
 
     <view wx:elif="{{currentStep === 3}}" class="step-body">
