@@ -11,13 +11,33 @@ const DETAIL = 'pages/recipe-detail/recipe-detail'
 const SOURCES = 'pages/legal/sources'
 const call = (stage, fn) => withAutomatorResponseTimeout(fn, { stage, timeoutMs: 10000 })
 
-async function assertFixture(miniProgram) {
-  const marker = await call('FIXTURE_GUARD', () => miniProgram.evaluate(() => ({
-    kind: getApp().globalData.catalogUiFixture, sourceHash: getApp().globalData.catalogUiSourceHash,
-  })))
+async function assertFixture(miniProgram, options = {}) {
+  const timeoutMs = options.timeoutMs == null ? 20000 : options.timeoutMs
+  const deadline = Date.now() + timeoutMs
+  let marker
+  do {
+    marker = await call('FIXTURE_GUARD', () => miniProgram.evaluate(() => {
+      const app = typeof getApp === 'function' ? getApp() : null
+      if (!app) return { initializing: true }
+      return { kind: app.globalData && app.globalData.catalogUiFixture,
+        sourceHash: app.globalData && app.globalData.catalogUiSourceHash }
+    }))
+    if (!marker || marker.initializing !== true) break
+    if (Date.now() >= deadline) throw Object.assign(new Error('Fixture app not initialized'), { code: 'FIXTURE_NOT_READY' })
+    await new Promise(resolve => setTimeout(resolve, options.pollMs == null ? 250 : options.pollMs))
+  } while (true)
   if (!marker || marker.kind !== KIND) throw Object.assign(new Error('Isolated fixture required'), { code: 'FIXTURE_REQUIRED' })
   if (marker.sourceHash !== contents().manifest.sourceHash) {
     throw Object.assign(new Error('Rebuild fixture for this public source revision'), { code: 'FIXTURE_SOURCE_STALE' })
+  }
+}
+async function waitForNativePage(miniProgram, page) {
+  // Page data can settle before native navigation chrome. Use the same 3s transition
+  // allowance as the installed official SDK's changeRoute, then recheck the route.
+  await call('NATIVE_TRANSITION_SETTLE', () => page.waitFor(3000))
+  const visible = await call('CAPTURE_CURRENT_ROUTE', () => miniProgram.currentPage())
+  if (!visible || visible.path !== page.path) {
+    throw Object.assign(new Error('Page changed before capture'), { code: 'FIXTURE_CAPTURE_ROUTE_CHANGED' })
   }
 }
 async function runScenario(miniProgram, outputDir, record) {
@@ -68,10 +88,11 @@ async function runScenario(miniProgram, outputDir, record) {
   }
   async function capture(page, name) {
     try {
+      await waitForNativePage(miniProgram, page)
       await captureScreenshotWithRetry(miniProgram, path.join(outputDir, name + '.png'), {
         expectedRoute: page.path, timeoutMs: 10000,
       })
-      record(name, { screenshot: 'captured' })
+      record(name, { screenshot: 'captured', transitionSettleMs: 3000 })
     } catch (error) {
       record(name, { screenshot: 'unverified', errorCode: sanitizeCode(error.code || 'CAPTURE_FAILED') })
     }
@@ -183,4 +204,4 @@ async function main() {
   if (errorCode) process.exitCode = 1
 }
 if (require.main === module) main().catch(() => { console.error('CATALOG_NATIVE_RUN_FAILED'); process.exitCode = 1 })
-module.exports = { assertFixture, runScenario }
+module.exports = { assertFixture, waitForNativePage, runScenario }
