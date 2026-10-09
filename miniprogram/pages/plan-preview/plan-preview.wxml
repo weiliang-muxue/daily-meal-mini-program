@@ -27,14 +27,45 @@
     </view>
 
       <view class="hero-section">
-      <text class="eyebrow">待确认餐单</text>
+      <text class="eyebrow">{{replacementMode ? '单餐替换预览' : '待确认餐单'}}</text>
       <text class="page-title">{{plan.title}}</text>
       <text class="date-range">{{plan.dateRange}}</text>
       <view class="meta-row">
         <text>{{plan.versionText}}</text>
         <text>生成于 {{plan.generatedText}}</text>
       </view>
-        <text class="safety-note">确认后才会替换当前餐单。网络失败或其他设备已更新时，当前餐单保持不变。</text>
+        <text class="safety-note">{{replacementMode ? '确认后只替换这一餐并同步采购。其他日期、餐次、定制偏好和历史记录不变。' : '确认后才会替换当前餐单。网络失败或其他设备已更新时，当前餐单保持不变。'}}</text>
+      </view>
+
+      <view wx:if="{{replacementError}}" class="section-block" aria-role="alert">
+        <text class="section-title">这份单餐候选暂不能使用</text>
+        <text class="meal-method">{{replacementError}}</text>
+        <text class="meal-method">请重新连接核对；若原餐已修改，可丢弃候选后从当前餐单重新选择。原餐仍然保留。</text>
+        <button class="secondary-action" bindtap="retry" disabled="{{busyAction}}">重新连接核对</button>
+      </view>
+      <view wx:if="{{replacementPreview}}" class="section-block replacement-comparison">
+        <text class="section-title">{{replacementPreview.label}}</text>
+        <view class="comparison-meal">
+          <text class="meal-label">现在这一餐</text>
+          <text class="comparison-title">{{replacementPreview.original.title}}</text>
+          <text class="meal-method">{{replacementPreview.original.ingredients}}</text>
+          <text class="meal-method">做法：{{replacementPreview.original.method}}</text>
+        </view>
+        <view class="comparison-meal">
+          <text class="meal-label">确认后换成</text>
+          <text class="comparison-title">{{replacementPreview.candidate.title}}</text>
+          <text class="meal-method">{{replacementPreview.candidate.ingredients}}</text>
+          <text class="meal-method">做法：{{replacementPreview.candidate.method}}</text>
+        </view>
+        <text wx:if="{{replacementPreview.modeNote}}" class="meal-method">{{replacementPreview.modeNote}}</text>
+        <text wx:if="{{replacementPreview.targetMealTitle}}" class="meal-method">将更新原备选餐“{{replacementPreview.targetMealTitle}}”，并切换为新晚餐。</text>
+        <text class="section-title comparison-heading">采购会怎样变化</text>
+        <view wx:for="{{replacementPreview.changes}}" wx:key="id" class="purchase-change">
+          <text>{{item.name}}</text>
+          <text class="purchase-amount">{{item.before}} → {{item.after}}</text>
+        </view>
+        <text wx:if="{{!replacementPreview.changes.length}}" class="meal-method">采购数量不变。</text>
+        <text class="meal-method">{{replacementPreview.checkedReset ? replacementPreview.checkedReset + ' 项采购勾选需重新确认。' : '现有采购勾选保留。'}}未受影响的勾选不会重置。</text>
       </view>
 
       <view wx:if="{{plan.isAiGenerated}}" class="ai-origin-notice" aria-label="AI 生成内容">
@@ -60,7 +91,7 @@
       </view>
     </view>
 
-    <view class="section-block days-section">
+    <view wx:if="{{!replacementMode}}" class="section-block days-section">
       <view class="section-heading">
         <text class="section-title">全部餐单</text>
         <text class="section-count">{{plan.days.length}} 天</text>
@@ -92,9 +123,9 @@
 
     <view class="action-area">
       <text class="safety-note">仅供日常饮食参考，不能替代医生或注册营养师建议。存在过敏、疾病或治疗相关限制时，请先咨询专业人员。</text>
-      <button class="primary-action" loading="{{busyAction === 'confirm'}}" disabled="{{busyAction}}" bindtap="confirmPlan" hover-class="button-pressed">确认并使用餐单</button>
-      <button class="secondary-action" disabled="{{busyAction}}" bindtap="backToPlanner" hover-class="button-pressed">调整生成条件</button>
-      <button class="danger-action" loading="{{busyAction === 'discard'}}" disabled="{{busyAction}}" bindtap="discardPlan" hover-class="button-pressed">丢弃候选餐单</button>
+      <button class="primary-action" loading="{{busyAction === 'confirm'}}" disabled="{{busyAction || offline || replacementError}}" bindtap="confirmPlan" hover-class="button-pressed">{{replacementMode ? '确认，只替换这一餐' : '确认并使用餐单'}}</button>
+      <button wx:if="{{!replacementMode}}" class="secondary-action" disabled="{{busyAction}}" bindtap="backToPlanner" hover-class="button-pressed">调整生成条件</button>
+      <button class="danger-action" loading="{{busyAction === 'discard'}}" disabled="{{busyAction || offline}}" bindtap="discardPlan" hover-class="button-pressed">{{replacementMode ? '丢弃单餐候选，保留原餐' : '丢弃候选餐单'}}</button>
     </view>
   </block>
 </view>

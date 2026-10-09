@@ -1,3 +1,5 @@
+.replacement-scope { padding: 24rpx; margin-bottom: 24rpx; border: 1rpx solid var(--line-strong); border-radius: var(--radius-card); overflow-wrap: anywhere; }
+.replacement-scope .option-title { display: block; margin-top: 12rpx; }
 .planner-screen {
   box-sizing: border-box;
   max-width: 720px;
@@ -35,6 +37,7 @@
 .step-count { color: var(--primary); font-size: 12px; font-weight: 700; }
 .step-title { min-width: 0; color: var(--ink); font-size: 16px; line-height: 1.35; font-weight: 750; text-align: right; overflow-wrap: anywhere; }
 .step-track { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10rpx; margin-top: 20rpx; }
+.step-track.single { grid-template-columns: repeat(4, 1fr); }
 .step-segment { height: 8rpx; border-radius: 4rpx; background: var(--line); }
 .step-segment.done, .step-segment.current { background: var(--primary); }
 .status-action { margin-top: 24rpx; }

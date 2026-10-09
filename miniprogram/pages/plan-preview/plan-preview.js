@@ -2,6 +2,7 @@
 
 const { membershipStore } = require('../../services/membership-store')
 const { userStore } = require('../../services/user-store')
+const replacementView = require('../../services/meal-replacement-view')
 
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 const SCENARIO_LABELS = { default: '', rest: '不运动', workout: '运动' }
@@ -100,8 +101,9 @@ function generationBasisRows(plan) {
 
 function preparePlan(plan) {
   const days = Array.isArray(plan.days) ? plan.days.map(prepareDay) : []
+  const { replacementTarget, ...displayPlan } = plan
   return {
-    ...plan,
+    ...displayPlan,
     days,
     dateRange: dateRange(plan),
     basisRows: generationBasisRows(plan),
@@ -114,7 +116,7 @@ function preparePlan(plan) {
 
 function isConflict(error) {
   const text = `${error && error.code || ''} ${error && error.message || ''}`
-  return /STATE_REVISION_CONFLICT|版本|冲突|其他设备|another device|changed|reload/i.test(text)
+  return /STATE_REVISION_CONFLICT|MEAL_REPLACEMENT_CONFLICT|版本|冲突|其他设备|another device|changed|reload/i.test(text)
 }
 
 function confirmModal(options) {
@@ -130,10 +132,15 @@ Page({
     errorMessage: '',
     plan: null,
     busyAction: '',
+    replacementMode: false,
+    replacementPreview: null,
+    replacementError: '',
   },
 
-  onLoad() { this.refreshPageNavigation(); this.loadData() },
-  onShow() { this.refreshPageNavigation(); if (this.data.viewState !== 'loading') this.render() },
+  onLoad() { this.pageActive = true; this.refreshPageNavigation(); this.loadData() },
+  onShow() { this.pageActive = true; this.refreshPageNavigation(); if (this.data.viewState !== 'loading') this.render() },
+  onHide() { this.pageActive = false; clearTimeout(this.returnTimer) },
+  onUnload() { this.onHide() },
   onPullDownRefresh() { this.loadData(true) },
 
   async loadData(force = false) {
@@ -153,13 +160,23 @@ Page({
 
   render(forceOffline = false) {
     const draft = userStore.data && userStore.data.draftPlan
+    const offline = userStore.state !== 'ready' || forceOffline
+    this.previewNamespace = userStore.namespace
+    this.previewRevision = userStore.data && userStore.data.stateRevision
+    this.previewTarget = draft && draft.replacementTarget
+    let replacementPreview = null, replacementError = ''
+    if (this.previewTarget) {
+      try { replacementPreview = replacementView.preview(userStore.data, draft) }
+      catch (error) { replacementError = error.message || '原餐已变化，请丢弃候选后重新选择' }
+    }
+    this.setData({ replacementMode: Boolean(this.previewTarget), replacementPreview, replacementError })
     if (!draft) {
-      this.setData({ viewState: 'no-draft', offline: userStore.state === 'offline' || forceOffline, plan: null, errorMessage: '' })
+      this.setData({ viewState: 'no-draft', offline, plan: null, errorMessage: '' })
       return
     }
     this.setData({
-      viewState: userStore.state === 'offline' || forceOffline ? 'offline' : 'ready',
-      offline: userStore.state === 'offline' || forceOffline,
+      viewState: offline ? 'offline' : 'ready',
+      offline,
       errorMessage: userStore.error || '',
       plan: preparePlan(draft),
     })
@@ -197,14 +214,25 @@ Page({
   },
 
   async confirmPlan() {
-    if (this.data.busyAction || !this.data.plan) return
+    if (this.data.busyAction || !this.data.plan || this.data.offline || this.data.replacementError) return
     const expectedDraftPlanId = this.data.plan.id
+    if (this.previewNamespace !== userStore.namespace) {
+      this.setData({ viewState: 'error', plan: null, errorMessage: '登录身份已变化，请重新加载' })
+      return
+    }
+    const namespace = this.previewNamespace
+    const replacementMode = this.data.replacementMode
     this.setData({ busyAction: 'confirm' })
     try {
-      await userStore.confirmDraft(expectedDraftPlanId)
-      wx.showToast({ title: '餐单已应用', icon: 'success' })
-      setTimeout(() => wx.switchTab({ url: '/pages/plan/plan' }), 350)
+      if (replacementMode) await userStore.confirmMealReplacement(expectedDraftPlanId, this.previewRevision)
+      else await userStore.confirmDraft(expectedDraftPlanId)
+      if (this.pageActive === false || namespace !== userStore.namespace) return
+      wx.showToast({ title: replacementMode ? '这一餐已替换' : '餐单已应用', icon: 'success' })
+      this.returnTimer = setTimeout(() => {
+        if (this.pageActive !== false && namespace === userStore.namespace) wx.switchTab({ url: PLAN_URL })
+      }, 350)
     } catch (error) {
+      if (this.pageActive === false || namespace !== userStore.namespace) return
       if (isConflict(error)) await this.refreshAfterConflict()
       else wx.showModal({ title: '确认失败', content: `${error.message || '请稍后重试'}。当前餐单没有变化。`, showCancel: false, confirmText: '知道了' })
     } finally {
@@ -213,28 +241,33 @@ Page({
   },
 
   async discardPlan() {
-    if (this.data.busyAction || !this.data.plan) return
+    if (this.data.busyAction || !this.data.plan || this.data.offline) return
     const expectedDraftPlanId = this.data.plan.id
+    const namespace = this.previewNamespace
+    if (namespace !== userStore.namespace) return this.loadData(true)
+    this.setData({ busyAction: 'discard-prompt' })
     const confirmed = await confirmModal({
       title: '丢弃这份候选餐单？',
       content: '丢弃后无法从预览恢复，但不会影响当前餐单。',
       confirmText: '继续',
       confirmColor: '#A33F2B',
     })
-    if (!confirmed) return
+    if (!confirmed || this.pageActive === false || namespace !== userStore.namespace) { this.setData({ busyAction: '' }); return }
     const confirmedAgain = await confirmModal({
       title: '再次确认丢弃',
       content: '确定删除这份尚未确认的候选餐单吗？',
       confirmText: '确认丢弃',
       confirmColor: '#A33F2B',
     })
-    if (!confirmedAgain) return
+    if (!confirmedAgain || this.pageActive === false || namespace !== userStore.namespace) { this.setData({ busyAction: '' }); return }
     this.setData({ busyAction: 'discard' })
     try {
       await userStore.discardDraft(expectedDraftPlanId)
+      if (this.pageActive === false || namespace !== userStore.namespace) return
       wx.showToast({ title: '候选已丢弃', icon: 'success' })
       this.render()
     } catch (error) {
+      if (this.pageActive === false || namespace !== userStore.namespace) return
       if (isConflict(error)) await this.refreshAfterConflict()
       else wx.showToast({ title: error.message || '丢弃失败，请重试', icon: 'none' })
     } finally {
@@ -243,6 +276,11 @@ Page({
   },
 
   backToPlanner() {
+    if (this.data.busyAction) return
+    if (this.previewTarget) {
+      const { planId, mealId, dinnerMode } = this.previewTarget
+      return wx.redirectTo({ url: replacementView.plannerUrl({ planId, mealId, ...(dinnerMode ? { dinnerMode } : {}) }) })
+    }
     wx.redirectTo({ url: '/pages/planner/planner' })
   },
 })

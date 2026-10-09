@@ -7,6 +7,8 @@
 .meal-label { min-width: 0; flex: 1; color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 700; overflow-wrap: anywhere; }
 .edit-action { margin-left: auto; min-width: 88rpx; min-height: 88rpx; display: flex; align-items: center; justify-content: flex-end; color: var(--primary); font-size: 13px; font-weight: 700; }
 .edit-hover { opacity: .72; }
+.replace-action { box-sizing: border-box; width: 100%; min-height: 48px; margin: 16rpx 0 0; padding: 12rpx 20rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.5; }
+.replace-action::after { border: 0; }
 .meal-title { display: block; font-size: 18px; line-height: 1.35; font-weight: 750; color: var(--ink); overflow-wrap: anywhere; }
 .meal-ingredients { display: block; margin-top: 12rpx; font-size: 14px; line-height: 1.58; font-weight: 550; color: var(--muted-strong); overflow-wrap: anywhere; }
 .meal-divider { height: 1rpx; background: var(--line); margin: 16rpx 0; }

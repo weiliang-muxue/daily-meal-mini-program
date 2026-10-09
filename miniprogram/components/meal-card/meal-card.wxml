@@ -10,4 +10,5 @@
   <text class="meal-method">{{meal.method}}</text>
   <text class="meal-tag">{{meal.tag}}</text>
   <text wx:if="{{meal.personalized}}" class="personal-tag">我的方案</text>
+  <button wx:if="{{replaceable}}" class="replace-action" bindtap="replace" hover-class="edit-hover" aria-label="为{{meal.label}}生成单餐候选，预览确认后生效">这顿换一个</button>
 </view>

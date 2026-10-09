@@ -2,7 +2,7 @@
   "lastReleasedVersion": "0.2.1",
   "workingVersion": "0.3.0-dev.0",
   "releaseStatus": "unreleased",
-  "wechatUploadDescription": "开发中：个人食材与采购联动；单餐替换服务链路已实现、页面待接通。喝水消息未验证送达。尚缺云端与真机验收，不作为可发布版本。",
+  "wechatUploadDescription": "开发中：个人食材与采购联动；单餐替换入口、候选对比与确认已本地接通。喝水消息未验证送达。尚缺云端与真机验收，不作为可发布版本。",
   "stateSchemaVersion": 10,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 2,

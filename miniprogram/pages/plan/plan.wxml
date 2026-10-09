@@ -26,8 +26,8 @@
 
     <view wx:if="{{hasDraft}}" class="draft-strip touch-target" bindtap="openDraft" hover-class="strip-hover" aria-role="button" aria-label="有一份待确认餐单，点此预览">
       <view class="strip-copy">
-        <text class="strip-title">有一份待确认餐单</text>
-        <text class="strip-detail">预览并确认后才会替换当前餐单</text>
+        <text class="strip-title">{{hasMealDraft ? '有一餐待确认' : '有一份待确认餐单'}}</text>
+        <text class="strip-detail">{{hasMealDraft ? '先对比原餐与采购变化，确认后只替换这一餐' : '预览并确认后才会替换当前餐单'}}</text>
       </view>
       <text class="strip-link">去预览</text>
     </view>
@@ -101,7 +101,7 @@
           <text class="meal-count">{{selectedDay.mealCount}} 餐</text>
         </view>
         <view wx:if="{{selectedDay.meals.length}}" class="meal-list">
-          <meal-card wx:for="{{selectedDay.meals}}" wx:key="mealId" meal="{{item}}" tone="{{item.scenario === 'workout' ? 'workout' : (item.scenario === 'rest' ? 'rest' : item.type)}}" editable bind:edit="editMeal" data-id="{{item.mealId}}"></meal-card>
+          <meal-card wx:for="{{selectedDay.meals}}" wx:key="mealId" meal="{{item}}" tone="{{item.scenario === 'workout' ? 'workout' : (item.scenario === 'rest' ? 'rest' : item.type)}}" editable replaceable bind:edit="editMeal" bind:replace="replaceMeal" data-id="{{item.mealId}}"></meal-card>
         </view>
         <view wx:else class="status-panel compact">
           <text class="status-title">当天暂无餐次</text>
@@ -110,6 +110,7 @@
       </view>
 
       <view class="plan-actions">
+        <button wx:if="{{canReplaceRestDinner}}" class="secondary-button" bindtap="replaceRestDinner" hover-class="button-hover">当天不运动，重新搭配晚餐</button>
         <button class="secondary-button" bindtap="openHistory" hover-class="button-hover">查看餐单历史</button>
         <button class="text-button" bindtap="openBasis" hover-class="action-hover">查看生成依据与健康说明</button>
         <text class="version-text">餐单版本 {{planVersion}}</text>

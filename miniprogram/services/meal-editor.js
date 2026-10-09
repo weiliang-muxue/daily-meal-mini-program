@@ -34,6 +34,9 @@ function previewChange(state, mealId, override) {
   // Validate aggregate bounds before presenting a saveable preview.
   if (state.activePlan) shoppingIds(state.activePlan, overrides)
   const next = reconcileChecks(state, { ...state, mealOverrides: overrides })
+  return shoppingChanges(state, next)
+}
+function shoppingChanges(state, next) {
   const flatten = value => shoppingView(value.activePlan, value).groups.flatMap(g => g.items.map(i => ({ ...i, category: g.name })))
   const before = flatten(state), after = flatten(next), changes = []
   const ids = new Set([...before.map(i => i.id), ...after.map(i => i.id)])
@@ -44,4 +47,4 @@ function previewChange(state, mealId, override) {
   })
   return { changes, checkedReset: before.filter(i => i.checked && !(next.checkedShoppingIds || []).includes(i.id)).length }
 }
-module.exports = { rowSnapshot, cleanRows, rowsText, draftOverride, previewChange }
+module.exports = { rowSnapshot, cleanRows, rowsText, draftOverride, previewChange, shoppingChanges }

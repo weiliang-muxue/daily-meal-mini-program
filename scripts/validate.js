@@ -589,6 +589,7 @@ const testScripts = [
   'scripts/test-legal-consent.js',
   'scripts/test-plan-view.js',
   'scripts/test-meal-shopping.js',
+  'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',
   'scripts/test-water-reminder.js',

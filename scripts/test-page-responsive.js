@@ -317,4 +317,17 @@ for (const field of ['name', 'quantity', 'unit', 'category']) {
 }
 assert(mealEditMarkup.includes('bindtap="confirmSave"') && mealEditMarkup.includes('bindtap="cancelPreview"'))
 
+for (const viewport of [...portraitViewports, landscapeViewport]) {
+  const replacementButton = computedStyle(mealCardRules, '.replace-action', viewport)
+  assert(lengthToPx(replacementButton['min-height'], viewport.width) >= 48, '单餐入口至少 48px')
+  assert.strictEqual(replacementButton['box-sizing'], 'border-box')
+  for (const selector of ['.primary-action', '.secondary-action', '.danger-action']) {
+    assert(lengthToPx(computedStyle(pageRules.preview, selector, viewport)['min-height'], viewport.width) >= 48,
+      '单餐预览确认、重连与丢弃按钮至少 48px')
+  }
+  assert.strictEqual(computedStyle(pageRules.preview, '.purchase-change', viewport)['flex-wrap'], 'wrap',
+    '采购长名称与数量变化必须能换行')
+  assert.strictEqual(computedStyle(pageRules.preview, '.comparison-title', viewport)['overflow-wrap'], 'anywhere')
+}
+
 console.log('page responsive container tests passed')

@@ -5,6 +5,7 @@ const { authStore } = require('../../services/auth-store')
 const { membershipStore } = require('../../services/membership-store')
 const { buildPlanView } = require('../../services/plan-view')
 const { formatUpdatedAt } = require('../../utils/date')
+const mealReplacement = require('../../services/meal-replacement-view')
 
 Page({
   data: {
@@ -48,6 +49,7 @@ Page({
       offline: userStore.state === 'offline',
       hasPlan: view.hasPlan,
       hasDraft: Boolean(state.draftPlan),
+      hasMealDraft: Boolean(state.draftPlan && state.draftPlan.replacementTarget),
       days: view.days,
       displayedDays: selectedWeek.days,
       weeks,
@@ -55,6 +57,8 @@ Page({
       selectedWeekLabel: selectedWeek.label,
       selectedDayIndex,
       selectedDay: view.selectedDay || {},
+      canReplaceRestDinner: Boolean(view.selectedDay && view.selectedDay.dinnerMode === 'workout'
+        && view.selectedDay.allMeals.some(meal => meal.type === 'dinner' && ['rest', 'default'].includes(meal.scenario))),
       planTitle: view.title,
       dateRangeText: view.dateRange.text,
       mealSummaryText: view.mealSummary.text,
@@ -146,6 +150,29 @@ Page({
   editMeal(event) {
     const mealId = event.detail && event.detail.mealId || event.currentTarget.dataset.id
     if (mealId) wx.navigateTo({ url: `/pages/meal-edit/meal-edit?mealId=${encodeURIComponent(mealId)}` })
+  },
+
+  replaceMeal(event) {
+    if (userStore.data.draftPlan) return this.openDraft()
+    const mealId = event.detail && event.detail.mealId || event.currentTarget.dataset.id
+    this.openMealReplacement(mealId)
+  },
+
+  replaceRestDinner() {
+    if (userStore.data.draftPlan) return this.openDraft()
+    const day = this.data.selectedDay
+    const meal = (day.allMeals || []).find(item => item.type === 'dinner' && ['rest', 'default'].includes(item.scenario))
+    if (meal) this.openMealReplacement(meal.id, 'rest')
+  },
+
+  openMealReplacement(mealId, dinnerMode) {
+    try {
+      const scope = { planId: userStore.data.activePlan && userStore.data.activePlan.id, mealId, ...(dinnerMode ? { dinnerMode } : {}) }
+      mealReplacement.createContext(userStore.data, scope)
+      wx.navigateTo({ url: mealReplacement.plannerUrl(scope) })
+    } catch (error) {
+      wx.showModal({ title: '暂时不能只换这一餐', content: error.message, showCancel: false })
+    }
   },
 
   openPlanner() { wx.navigateTo({ url: '/pages/planner/planner' }) },

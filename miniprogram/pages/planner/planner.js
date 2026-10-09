@@ -2,6 +2,8 @@
 
 const { membershipStore } = require('../../services/membership-store')
 const { userStore } = require('../../services/user-store')
+const replacementView = require('../../services/meal-replacement-view')
+const { assertRequest: assertReplacementRequest } = require('../../services/meal-replacement')
 const {
   aiPlanner,
   createClientRequestId,
@@ -304,6 +306,11 @@ Page({
     canNavigateBack: false,
     pageNavigationLabel: '返回餐单首页',
     currentStep: 0,
+    replacementMode: false,
+    replacementLabel: '',
+    replacementDinnerLocked: false,
+    replacementExerciseLabel: '',
+    firstStep: 0,
     stepNumber: 1,
     stepCount: STEP_TITLES.length,
     stepTitle: STEP_TITLES[0],
@@ -337,6 +344,7 @@ Page({
     generating: false,
     canceling: false,
     taskVisible: false,
+    taskPurpose: 'plan',
     taskInterrupted: false,
     taskTitle: '',
     taskDetail: '',
@@ -404,7 +412,9 @@ Page({
     if (!this.formControlActive) this.scheduleFormControlFooterRestore()
   },
 
-  onLoad() {
+  onLoad(options = {}) {
+    try { this.replacementScope = replacementView.routeScope(options) }
+    catch (error) { this.replacementRouteError = error.message }
     this.refreshPageNavigation()
     this.pageActive = true
     this.connected = false
@@ -486,6 +496,7 @@ Page({
   async connect(force = false) {
     this.setData({ loadingPage: true, recoverySettled: false, preferencesOffline: false, pageError: '' })
     try {
+      if (this.replacementRouteError) throw new Error(this.replacementRouteError)
       const member = await membershipStore.init({ force })
       if (!member || member.status !== 'active') {
         this.setData({ loadingPage: false, recoverySettled: true })
@@ -493,7 +504,15 @@ Page({
         return
       }
       const state = await userStore.init({ force })
-      const preferences = normalizePreferences(state.generationPreferences)
+      this.formNamespace = userStore.namespace
+      this.replacementContext = this.replacementScope ? replacementView.createContext(state, this.replacementScope) : null
+      const context = this.replacementContext
+      this.setData({ replacementMode: Boolean(context), replacementLabel: context ? context.label : '',
+        replacementDinnerLocked: Boolean(context && context.dinnerLocked),
+        replacementExerciseLabel: context && context.mode === 'workout' ? '按当天运动安排搭配晚餐' : '按不运动方案搭配晚餐',
+        firstStep: context ? 2 : 0, currentStep: context ? 2 : this.data.currentStep,
+        aiDataConsentAccepted: false })
+      const preferences = normalizePreferences(context ? replacementView.initialPreferences(state, context) : state.generationPreferences)
       this.renderPreferences(preferences)
       this.connected = true
       if (userStore.state === 'offline') {
@@ -537,7 +556,7 @@ Page({
         && status.storageReady === true && displayName) {
         this.setData({
           aiStatus: 'ready', aiStatusTitle: '生成服务可用',
-          aiStatusDetail: '完成六步选择后，可以生成候选餐单。',
+          aiStatusDetail: this.replacementContext ? '核对这一餐的条件后，先生成候选，不会立即替换原餐。' : '完成六步选择后，可以生成候选餐单。',
           providerDisplayName: displayName, providerRevision: Number(status.providerRevision),
         })
         return true
@@ -588,8 +607,9 @@ Page({
   },
 
   renderPreferences(raw) {
-    const preferences = normalizePreferences(raw)
+    const preferences = normalizePreferences(replacementView.lockPreferences(raw, this.replacementContext))
     const currentStep = this.data.currentStep
+    const firstStep = this.replacementContext ? 2 : 0
     const durationDrafts = this.exerciseDurationDrafts || {}
     const durationInputErrors = this.exerciseDurationInputErrors || {}
     this.setData({
@@ -610,13 +630,14 @@ Page({
       ),
       summaryRows: summaryRows(preferences),
       hasDinner: preferences.mealTypes.includes('dinner'),
-      stepNumber: currentStep + 1,
+      stepNumber: currentStep - firstStep + 1,
+      stepCount: STEP_TITLES.length - firstStep,
       stepTitle: STEP_TITLES[currentStep],
       stepItems: STEP_TITLES.map((title, index) => ({
         title,
         index,
         state: index < currentStep ? 'done' : index === currentStep ? 'current' : 'upcoming',
-      })),
+      })).filter(item => item.index >= firstStep),
     })
   },
 
@@ -624,6 +645,7 @@ Page({
     const preferences = normalizePreferences({ ...this.data.preferences, ...patch })
     if (this.data.aiDataConsentAccepted) this.setData({ aiDataConsentAccepted: false })
     this.renderPreferences(preferences)
+    if (this.replacementContext) return
     Promise.resolve().then(() => userStore.patch({ generationPreferences: preferences }, { localOnly: true })).then(() => {
       clearTimeout(this.preferenceSaveTimer)
       this.preferenceSaveTimer = setTimeout(() => this.flushPreferenceDraft(), 700)
@@ -635,6 +657,7 @@ Page({
   flushPreferenceDraft() {
     clearTimeout(this.preferenceSaveTimer)
     this.preferenceSaveTimer = null
+    if (this.replacementContext || this.replacementScope || this.replacementRouteError) return Promise.resolve(userStore.data)
     return userStore.flush().catch((error) => {
       if (this.pageActive) this.setData({ stepError: errorMessage(error, '选择已保留，联网后会自动同步') })
       return userStore.data
@@ -734,6 +757,7 @@ Page({
   inputExerciseNotes(event) { this.updatePreferences({ exerciseNotes: event.detail.value }) },
 
   onExerciseIntentChange(event) {
+    if (this.data.replacementDinnerLocked) return
     const exerciseIntent = event && event.detail && EXERCISE_INTENTS.includes(event.detail.value)
       ? event.detail.value : ''
     if (!exerciseIntent) return
@@ -754,6 +778,7 @@ Page({
   },
 
   toggleExercise(event) {
+    if (this.data.replacementDinnerLocked) return
     if (this.data.preferences.exerciseIntent !== 'daily') return
     const dayIndex = Number(event.currentTarget.dataset.index)
     const current = this.data.preferences.exerciseByDay.find((item) => item.dayIndex === dayIndex)
@@ -853,7 +878,7 @@ Page({
   },
 
   goBack() {
-    const currentStep = Math.max(0, this.data.currentStep - 1)
+    const currentStep = Math.max(this.data.firstStep, this.data.currentStep - 1)
     this.setData({ currentStep, stepError: '' })
     this.renderPreferences(this.data.preferences)
     wx.pageScrollTo({ scrollTop: 0, duration: 180 })
@@ -861,7 +886,7 @@ Page({
 
   goToStep(event) {
     const target = Number(event.currentTarget.dataset.index)
-    if (!Number.isInteger(target) || target < 0 || target >= this.data.currentStep) return
+    if (!Number.isInteger(target) || target < this.data.firstStep || target >= this.data.currentStep) return
     this.setData({ currentStep: target, stepError: '' })
     this.renderPreferences(this.data.preferences)
     wx.pageScrollTo({ scrollTop: 0, duration: 180 })
@@ -870,8 +895,9 @@ Page({
   renderStartingTask() {
     this.setData({
       taskVisible: true,
+      taskPurpose: this.replacementContext ? 'meal' : 'plan',
       taskInterrupted: false,
-      taskTitle: '正在准备候选餐单',
+      taskTitle: this.replacementContext ? '正在准备这一餐的候选' : '正在准备候选餐单',
       taskDetail: '会分步完成并自动保存进度，当前餐单不会改变。',
       taskPercent: 0,
       taskPercentText: '0%',
@@ -895,7 +921,8 @@ Page({
     const terminalDetail = !isActiveTask(task) && task.status !== 'succeeded' ? taskFailureDetail(task) : ''
     const terminalPolicy = failurePolicy(task && task.errorCode, task && task.status)
     const terminalFailure = !isActiveTask(task) && !['succeeded', 'cancelled'].includes(task.status)
-    const canRetry = terminalFailure ? terminalPolicy.retryable : presentation.canRetry
+    const endedMeal = task.purpose === 'meal' && !isActiveTask(task) && task.status !== 'succeeded'
+    const canRetry = endedMeal ? false : terminalFailure ? terminalPolicy.retryable : presentation.canRetry
     this.currentTask = task
     if (this.data.currentStep !== STEP_TITLES.length - 1) {
       this.setData({ currentStep: STEP_TITLES.length - 1 })
@@ -903,9 +930,10 @@ Page({
     }
     this.setData({
       taskVisible: true,
+      taskPurpose: task.purpose === 'meal' ? 'meal' : 'plan',
       taskInterrupted: interrupted,
-      taskTitle: presentation.title,
-      taskDetail: terminalDetail || presentation.detail,
+      taskTitle: task.purpose === 'meal' ? `单餐替换 · ${presentation.title}` : presentation.title,
+      taskDetail: endedMeal ? '本次单餐生成已结束，原餐保留。请返回当前餐单，从需要替换的那一餐重新选择。' : terminalDetail || presentation.detail,
       taskPercent: presentation.percent,
       taskPercentText: presentation.percentText,
       taskStages: presentation.stages.map((stage) => ({
@@ -914,7 +942,7 @@ Page({
       })),
       taskCanCancel: presentation.canCancel,
       taskCanRetry: canRetry,
-      taskCanEdit: !isActiveTask(task) && task.status !== 'succeeded',
+      taskCanEdit: !endedMeal && !isActiveTask(task) && task.status !== 'succeeded',
       taskCanReturn: !isActiveTask(task) && task.status !== 'succeeded' && !canRetry,
       taskRetryLabel: terminalFailure ? '重新确认并生成' : '继续任务',
     })
@@ -1016,7 +1044,7 @@ Page({
       this.renderTask(this.currentTask, { interrupted: true })
       this.setData({
         taskDetail: errorMessage(error, '连接中断，本次生成仍可继续。'),
-        taskCanRetry: retryable,
+        taskCanRetry: retryable && !(task.purpose === 'meal' && !isActiveTask(task) && task.status !== 'succeeded'),
       })
     } else {
       const retryable = !storageNotReady && (!error || !error.code || failurePolicy(error.code, 'failed').retryable)
@@ -1177,7 +1205,8 @@ Page({
   },
 
   async generatePlan() {
-    if (this.data.generating) return
+    if (this.data.generating || this.replacementRouteError || this.data.pageError) return
+    if (this.replacementContext && userStore.data.draftPlan) return wx.navigateTo({ url: PREVIEW_URL })
     for (let step = 0; step < STEP_TITLES.length - 1; step += 1) {
       const error = this.validateStep(step)
       if (error) {
@@ -1208,13 +1237,18 @@ Page({
     this.renderStartingTask()
     try {
       const preferences = normalizePreferences(this.data.preferences)
-      const saved = await userStore.patch({ generationPreferences: preferences }, { immediate: true })
+      const saved = this.replacementContext ? await userStore.flush()
+        : await userStore.patch({ generationPreferences: preferences }, { immediate: true })
+      if (this.replacementContext) this.assertReplacementStart(saved, preferences)
+      const clientRequestId = await createClientRequestId()
+      if (this.replacementContext) this.assertReplacementStart(userStore.data, preferences)
       this.pendingStart = {
         preferences,
         expectedStateRevision: saved.stateRevision,
-        clientRequestId: await createClientRequestId(),
+        clientRequestId,
         consentVersion: AI_DATA_CONSENT_VERSION,
         providerRevision: this.data.providerRevision,
+        ...(this.replacementContext ? { replacement: this.replacementScope } : {}),
       }
       const response = await aiPlanner.start(
         this.pendingStart.preferences,
@@ -1222,6 +1256,7 @@ Page({
         this.pendingStart.clientRequestId,
         this.pendingStart.consentVersion,
         this.pendingStart.providerRevision,
+        ...(this.pendingStart.replacement ? [this.pendingStart.replacement] : []),
       )
       this.pendingStart = null
       await this.applyTaskResponse(response)
@@ -1232,6 +1267,8 @@ Page({
 
   async retryTask() {
     if (this.data.generating || this.data.canceling) return
+    if (this.currentTask && this.currentTask.purpose === 'meal' && !isActiveTask(this.currentTask)
+      && this.currentTask.status !== 'succeeded') return this.returnToCurrentPlan()
     if (this.pendingStart) {
       if (this.data.aiStatus !== 'ready') {
         this.setData({ stepError: '生成服务尚未恢复，请先重试服务检查' })
@@ -1239,12 +1276,14 @@ Page({
       }
       this.setData({ generating: true, taskInterrupted: false, taskCanRetry: false })
       try {
+        if (this.pendingStart.replacement) this.assertReplacementStart(userStore.data, this.pendingStart.preferences)
         const response = await aiPlanner.start(
           this.pendingStart.preferences,
           this.pendingStart.expectedStateRevision,
           this.pendingStart.clientRequestId,
           this.pendingStart.consentVersion,
           this.pendingStart.providerRevision,
+          ...(this.pendingStart.replacement ? [this.pendingStart.replacement] : []),
         )
         this.pendingStart = null
         await this.applyTaskResponse(response)
@@ -1268,11 +1307,21 @@ Page({
 
   retryGenerate() { this.retryTask() },
 
+  assertReplacementStart(state, preferences) {
+    if (!this.pageActive || this.formNamespace !== userStore.namespace || userStore.state !== 'ready') {
+      const error = new Error('页面、登录身份或网络状态已变化，请重新进入后确认')
+      error.code = 'CACHE_NAMESPACE_CHANGED'
+      throw error
+    }
+    assertReplacementRequest(state, this.replacementContext.target, preferences)
+  },
+
   editConditions() {
     if (this.currentTask && isActiveTask(this.currentTask)) return
+    if (this.currentTask && this.currentTask.purpose === 'meal') return this.returnToCurrentPlan()
     if (this.currentTask) aiPlanner.clearCachedTask(this.currentTask.taskId)
     this.resetTaskPanel()
-    this.setData({ currentStep: 0, stepError: '', exerciseErrorsVisible: false })
+    this.setData({ currentStep: this.data.firstStep, stepError: '', exerciseErrorsVisible: false })
     this.renderPreferences(this.data.preferences)
     wx.pageScrollTo({ scrollTop: 0, duration: 180 })
   },

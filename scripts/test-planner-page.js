@@ -1437,8 +1437,10 @@ function testIntensityAndConsentPresentation() {
   assert(fs.readFileSync(plannerPath, 'utf8').includes("'确认信息'"),
     '第六步标题必须与确认页任务一致，不能回退为模糊的“确认生成”')
   assert(wxml.includes('第 {{stepNumber}} / {{stepCount}} 步')
-    && wxml.includes('{{stepTitle}}') && wxml.includes('class="step-track"'),
-  '确认页必须沿用六步共同的步骤编号、标题和进度条')
+    && wxml.includes('{{stepTitle}}') && wxml.includes('class="step-track {{replacementMode'),
+  '确认页必须保留共同的步骤编号、标题和进度条，支持整单六步与单餐四步')
+  assert(/\.step-track\s*\{[^}]*repeat\(6, 1fr\)/.test(wxss), '整单仍为六步')
+  assert(/\.step-track\.single\s*\{[^}]*repeat\(4, 1fr\)/.test(wxss), '单餐进度条必须显示四段')
 }
 
 function testNativeControlTheme() {
