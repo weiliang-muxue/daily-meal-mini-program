@@ -599,6 +599,7 @@ const testScripts = [
   'scripts/test-cooking-pipeline.js',
   'scripts/test-dietary-preferences.js',
   'scripts/test-recipe-library.js',
+  'scripts/test-recipe-catalog-import.js',
   'scripts/test-recipe-library-page.js',
   'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',

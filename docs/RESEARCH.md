@@ -32,6 +32,12 @@ GitHub 公开项目中可以找到数字输入框、加减步进器和表单校�
 
 本轮没有把任何候选仓库的源码、素材或依赖复制进项目。以后确需引入第三方实现时，必须同时记录上游 URL、固定 commit、原文件、修改内容和许可证，并新增 `THIRD_PARTY_NOTICES.md`；未声明许可证，或只有 README 声称开源但没有可核验许可证文件的仓库，一律只学习思路，不复制代码。
 
+### 2026-10-09：固定数据集导入前复核
+
+沿用户已选择的 Vibe Cook `dataset` 与 HowToCook 上游评估继续，不再次寻找或引入整套后端。复核范围为 [固定数据提交的 README](https://github.com/zkeq/vibe-cook-backend/blob/b227b896d650709aa345e639634ecd5c3358e607/README.md)、该提交 LICENSE，以及 [HowToCook 核验快照 LICENSE](https://github.com/Anduin2017/HowToCook/blob/c694a5c457d45e6e012ae6cd9a7724aab86e320b/LICENSE)。JSON 授权仍是 The Unlicense；不跟随最新分支，也不引入 BUSL 应用代码。两份 LICENSE 字节一致（1211 字节），SHA-256 固定在导入器来源清单，实际数据生成所用上游 commit 仍未知。
+
+只取索引、聚合详情和两份 LICENSE 到忽略的本地缓存。公开数据含部分重复来源、外部教程、生食提示和来源估计，因此许可通过不等于内容可直接发布。自行实现白名单、去图片、文本量保留、来源摘要和隔离报告；没有复制第三方程序。数据的最终公共搜索入口、逐项内容核验及仓库 NOTICE 仍待后续完成；当前只提交构建工具和虚构测试，不把待审菜谱打包。
+
 ## 微信官方文档核对
 
 - 2026-08-26 复核 [wx.login](https://developers.weixin.qq.com/miniprogram/dev/api/open-api/login/wx.login.html)：登录凭证 `code` 有效期五分钟；传统后端用它换取 openid、满足条件时的 unionid 和 session_key，身份交换与密钥均不能放在小程序前端。
