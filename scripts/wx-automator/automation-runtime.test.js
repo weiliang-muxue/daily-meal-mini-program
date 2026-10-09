@@ -25,6 +25,7 @@ const {
   finalizeRunReport,
   getAutomatorEndpoint,
   isFatalSessionError,
+  launchAutomator,
   mergeAutomatorCleanupReport,
   navigateAndAcquire,
   readAutomatorViewport,
@@ -33,6 +34,7 @@ const {
   sanitizeRoute,
   sanitizeText,
   validateAutomatorEndpoint,
+  waitForAutomatorPage,
   withAutomatorResponseTimeout,
 } = require('./automation-runtime')
 
@@ -87,7 +89,10 @@ test('exclusive lock recovers a dead owner', async (t) => {
 test('connect wrapper serializes the session and safely releases on sync disconnect', async (t) => {
   const lockPath = path.join(temporaryDirectory(t), 'session.lock')
   let disconnected = 0
-  const fakeMiniProgram = { disconnect() { disconnected += 1 } }
+  const fakeMiniProgram = {
+    async pageStack() { return [{ id: 1, path: 'pages/access/access' }] },
+    disconnect() { disconnected += 1 },
+  }
   const fakeAutomator = { async connect(options) {
     assert.equal(options.wsEndpoint, DEFAULT_AUTOMATOR_ENDPOINT)
     return fakeMiniProgram
@@ -96,6 +101,87 @@ test('connect wrapper serializes the session and safely releases on sync disconn
   assert.equal(await safeDisconnect(connected), true)
   assert.equal(await safeDisconnect(connected), true)
   assert.equal(disconnected, 1)
+  assert.equal(fs.existsSync(lockPath), false)
+})
+
+test('page readiness waits for compiled stack metadata without querying currentPage', async () => {
+  let stackCalls = 0
+  const readyPage = { id: 4, path: 'pages/access/access' }
+  const miniProgram = {
+    async pageStack() {
+      stackCalls += 1
+      return [[], [{ id: 4 }], [{ path: readyPage.path }], [readyPage]][Math.min(stackCalls - 1, 3)]
+    },
+    async currentPage() { throw new Error('must not query current webview before ready') },
+  }
+  assert.equal(await waitForAutomatorPage(miniProgram, { timeoutMs: 1000, pollMs: 1 }), readyPage)
+  assert.equal(stackCalls, 4)
+})
+
+test('page readiness uses the top page and accepts page ID zero', async () => {
+  const first = { id: 3, path: 'pages/access/access' }
+  const current = { id: 0, path: 'pages/plan/plan' }
+  const page = await waitForAutomatorPage({ async pageStack() { return [first, current] } })
+  assert.equal(page, current)
+})
+
+test('page readiness fails closed for missing or malformed stack support', async () => {
+  await assert.rejects(waitForAutomatorPage({}), { code: 'AUTOMATOR_PAGE_STACK_UNAVAILABLE' })
+  await assert.rejects(waitForAutomatorPage({ async pageStack() { return null } }), {
+    code: 'AUTOMATOR_PAGE_STACK_INVALID',
+  })
+})
+
+test('page readiness does not turn a protocol failure into an empty-page retry', async () => {
+  const failure = new Error('unexpected application failure')
+  let calls = 0
+  await assert.rejects(waitForAutomatorPage({
+    async pageStack() { calls += 1; throw failure },
+  }), (error) => error === failure)
+  assert.equal(calls, 1)
+})
+
+test('page readiness bounds never-resolving protocol responses', async () => {
+  await assert.rejects(waitForAutomatorPage({
+    pageStack() { return new Promise(() => {}) },
+  }, { timeoutMs: 20 }), (error) => {
+    assert.equal(error.code, 'AUTOMATOR_RESPONSE_TIMEOUT')
+    assert.equal(error.stage, 'WAIT_FOR_INITIAL_PAGE_STACK')
+    return true
+  })
+})
+
+test('connect and launch both reject empty pages and release the socket and lock', async (t) => {
+  for (const method of ['connect', 'launch']) {
+    const lockPath = path.join(temporaryDirectory(t), 'session.lock')
+    let disconnected = 0
+    let currentPageCalls = 0
+    const miniProgram = {
+      async pageStack() { return [] },
+      currentPage() { currentPageCalls += 1 },
+      disconnect() { disconnected += 1 },
+    }
+    const wrapper = method === 'connect' ? connectAutomator : launchAutomator
+    await assert.rejects(wrapper({ async [method]() { return miniProgram } }, {}, {
+      lockPath, timeoutMs: 0, pageReady: { timeoutMs: 20, pollMs: 1 },
+    }), { code: 'AUTOMATOR_PAGE_NOT_READY' })
+    assert.equal(disconnected, 1)
+    assert.equal(currentPageCalls, 0)
+    assert.equal(fs.existsSync(lockPath), false)
+  }
+})
+
+test('launch returns only after the compiled page is available', async (t) => {
+  const lockPath = path.join(temporaryDirectory(t), 'session.lock')
+  let checked = false
+  const miniProgram = {
+    async pageStack() { checked = true; return [{ id: 1, path: 'pages/access/access' }] },
+    disconnect() {},
+  }
+  const connected = await launchAutomator({ async launch() { return miniProgram } }, {}, { lockPath })
+  assert.equal(checked, true)
+  assert.equal(connected, miniProgram)
+  await connected.disconnect()
   assert.equal(fs.existsSync(lockPath), false)
 })
 

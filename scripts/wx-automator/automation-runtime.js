@@ -270,10 +270,13 @@ function bindSessionDisconnect(miniProgram, release) {
 
 async function connectAutomator(automator, options = {}, runtimeOptions = {}) {
   const release = await acquireExclusiveLock(runtimeOptions)
+  let miniProgram = null
   try {
-    const miniProgram = await automator.connect({ ...options, wsEndpoint: validateAutomatorEndpoint(options.wsEndpoint || getAutomatorEndpoint()) })
+    miniProgram = await automator.connect({ ...options, wsEndpoint: validateAutomatorEndpoint(options.wsEndpoint || getAutomatorEndpoint()) })
+    await waitForAutomatorPage(miniProgram, runtimeOptions.pageReady)
     return bindSessionDisconnect(miniProgram, release)
   } catch (error) {
+    await safeDisconnect(miniProgram)
     await release().catch(() => {})
     throw error
   }
@@ -281,13 +284,43 @@ async function connectAutomator(automator, options = {}, runtimeOptions = {}) {
 
 async function launchAutomator(automator, options = {}, runtimeOptions = {}) {
   const release = await acquireExclusiveLock(runtimeOptions)
+  let miniProgram = null
   try {
-    const miniProgram = await automator.launch(options)
+    miniProgram = await automator.launch(options)
+    await waitForAutomatorPage(miniProgram, runtimeOptions.pageReady)
     return bindSessionDisconnect(miniProgram, release)
   } catch (error) {
+    await safeDisconnect(miniProgram)
     await release().catch(() => {})
     throw error
   }
+}
+
+// A connected socket is not proof that compilation has produced a page.
+// In particular, DevTools can throw MPPage.getCurrent/rawPath while its
+// current webview has no page metadata. Wait on the documented stack API
+// before handing the session to callers (or the SDK's navigation helpers).
+async function waitForAutomatorPage(miniProgram, options = {}) {
+  if (!miniProgram || typeof miniProgram.pageStack !== 'function') {
+    throw runtimeError('AUTOMATOR_PAGE_STACK_UNAVAILABLE', 'Automation session cannot verify page readiness')
+  }
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(1, options.timeoutMs) : 20000
+  const pollMs = Number.isFinite(options.pollMs) ? Math.max(1, options.pollMs) : 150
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const stack = await withAutomatorResponseTimeout(() => miniProgram.pageStack(), {
+      stage: 'WAIT_FOR_INITIAL_PAGE_STACK',
+      timeoutMs: Math.min(DEFAULT_RESPONSE_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
+    })
+    if (!Array.isArray(stack)) {
+      throw runtimeError('AUTOMATOR_PAGE_STACK_INVALID', 'Developer Tools returned an invalid page stack')
+    }
+    const page = stack[stack.length - 1]
+    if (page && typeof page.path === 'string' && page.path.trim()
+      && page.id != null && String(page.id).trim()) return page
+    await sleep(Math.min(pollMs, Math.max(1, deadline - Date.now())))
+  }
+  throw runtimeError('AUTOMATOR_PAGE_NOT_READY', 'No compiled page is ready; verify the imported project directory and compilation result')
 }
 
 async function safeDisconnect(miniProgram) {
@@ -856,5 +889,6 @@ module.exports = {
   sanitizeRoute,
   sanitizeText,
   validateAutomatorEndpoint,
+  waitForAutomatorPage,
   withAutomatorResponseTimeout,
 }
