@@ -81,7 +81,7 @@
       <text class="section-description">至少选择一个目标或风格，也可以填写这次特别想吃什么。</text>
       <view class="field-block">
         <text class="field-label">这次想吃什么（可选）</text>
-        <textarea maxlength="160" value="{{preferences.customGoal}}" bindinput="inputCustomGoal" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：想吃番茄牛腩、面条；家里有鸡蛋和西兰花，希望清淡一点" aria-label="这次想吃什么，也可填写现有食材和补充目标，最多160字" auto-height="false" />
+        <textarea maxlength="160" value="{{preferences.customGoal}}" bindinput="inputCustomGoal" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：想吃番茄牛腩、面条；家里有鸡蛋和西兰花，希望清淡一点" aria-label="这次想吃什么，也可填写现有食材和补充目标，最多160字" auto-height="{{false}}" />
         <text class="field-counter">可填菜名或补充目标，最多 160 字；要扣减采购量，请在下方填写已有食材的数量和单位。过敏与忌口请在下一步填写。</text>
       </view>
       <view class="cooking-section">
@@ -152,17 +152,17 @@
       <text class="section-description">不喜欢和必须避开分开填写，可随时修改；不会从收藏自动推断。AI 结果仅供餐单参考，食材仍需自己核对。</text>
       <view class="field-block">
         <text class="field-label">不喜欢 · 尽量少用（选填）</text>
-        <textarea maxlength="240" value="{{preferences.dislikes}}" bindinput="inputDislikes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" aria-label="不喜欢或尽量少用的食物，选填，最多240字" placeholder="例如：不太喜欢苦瓜；希望少安排粥" auto-height="false" />
+        <textarea maxlength="240" value="{{preferences.dislikes}}" bindinput="inputDislikes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" aria-label="不喜欢或尽量少用的食物，选填，最多240字" placeholder="例如：不太喜欢苦瓜；希望少安排粥" auto-height="{{false}}" />
         <text class="field-counter">最多 240 字。仅作为口味偏好；过敏或不能吃的食物请填在下方。</text>
       </view>
       <view class="field-block">
         <text class="field-label">过敏与忌口 · 必须避开</text>
-        <textarea maxlength="240" value="{{preferences.restrictions}}" bindinput="inputRestrictions" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" aria-label="过敏与忌口，必须避开的食物，最多240字" placeholder="例如：花生过敏；不吃猪肉；乳糖不耐" auto-height="false" />
+        <textarea maxlength="240" value="{{preferences.restrictions}}" bindinput="inputRestrictions" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" aria-label="过敏与忌口，必须避开的食物，最多240字" placeholder="例如：花生过敏；不吃猪肉；乳糖不耐" auto-height="{{false}}" />
         <text class="field-counter">最多 240 字</text>
       </view>
       <view class="field-block">
         <text class="field-label">健康相关饮食约束</text>
-        <textarea maxlength="240" value="{{preferences.healthNotes}}" bindinput="inputHealthNotes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="只填写与本次餐单相关、你愿意主动提供的信息" auto-height="false" />
+        <textarea maxlength="240" value="{{preferences.healthNotes}}" bindinput="inputHealthNotes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="只填写与本次餐单相关、你愿意主动提供的信息" auto-height="{{false}}" />
         <text class="field-counter">不用于诊断、处方或调整用药</text>
       </view>
     </view>
@@ -219,7 +219,7 @@
       </view>
       <view wx:if="{{preferences.exerciseIntent === 'daily'}}" class="field-block">
         <text class="field-label">运动补充说明</text>
-        <textarea maxlength="160" value="{{preferences.exerciseNotes}}" bindinput="inputExerciseNotes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：训练通常在晚餐前进行" auto-height="false" />
+        <textarea maxlength="160" value="{{preferences.exerciseNotes}}" bindinput="inputExerciseNotes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：训练通常在晚餐前进行" auto-height="{{false}}" />
       </view>
     </view>
 
