@@ -1,9 +1,9 @@
 {
-  "version": "2026-10-09.1",
+  "version": "2026-10-09.2",
   "datasetCommit": "b227b896d650709aa345e639634ecd5c3358e607",
   "importerVersion": "1",
   "reviewedAt": "2026-10-09T00:00:00.000Z",
-  "reviewScope": "First batch: complete retained text of 22 breakfast and 16 vegetable-category records. Assistant editorial/code review, not cooking validation or clinical approval. Other candidates remain pending.",
+  "reviewScope": "Two batches: complete retained text of all 22 breakfast and 30 vegetable-category candidates. Assistant editorial/code review, not cooking validation or clinical approval. Generic source cooking/nutrition remarks remain attributed reference text, not verified dietary advice. Other candidates remain pending.",
   "sourceVerification": "Every candidate path exists as a blob in the untruncated HowToCook tree at c694a5c457d45e6e012ae6cd9a7724aab86e320b. This is not the unknown upstream commit used to produce the dataset.",
   "approved": [
     {
@@ -69,6 +69,46 @@
       "sourcePath": "dishes/vegetable_dish/凉拌豆腐.md",
       "sourceBlob": "fcc6d5a55244c21e4bc54bca18f55c8a079d57db",
       "reason": "Reviewed tofu blanching and fresh assembly. No extended room-temperature storage advice or health claims. Hygiene, ingredient label and personal restrictions remain user checks."
+    },
+    {
+      "id": "vegetable_dish_qing-chao-hua-cai",
+      "sourceHash": "2db5ca2bbacae0ef97b8b43cfb9b99c635101d6b265c2fe53a76ce1e06ccfa35",
+      "recordHash": "989f7adf728af292cd8b22f2248ba4b09a3e52c1f1c6108f68deb59d88fddcdd",
+      "sourcePath": "dishes/vegetable_dish/清炒花菜.md",
+      "sourceBlob": "4ab91b2c89cf0ef299377e643dba34f8012c98b6",
+      "reason": "Reviewed washing, blanching, stir-frying and covered cooking. The listed 50ml water is for braising; the separate 1000ml blanching water remains visible in steps. Preserve text quantities without estimating intake or shopping totals."
+    },
+    {
+      "id": "vegetable_dish_qing-zheng-nan-gua",
+      "sourceHash": "5e3a7d285d037d452228e0987647881174ec6fa7b216aa4f3deb7a73f5c57853",
+      "recordHash": "4e6b3f10fa8ad3f7872dcb2b3b980681ae9edb7342b7cf5652e7c38eaea46855",
+      "sourcePath": "dishes/vegetable_dish/清蒸南瓜.md",
+      "sourceBlob": "a969be9c575ad16ee6f0330e20b98dca3b0428f8",
+      "reason": "Reviewed washing, even slicing, steaming, softness check and burn warning. Water is for the steamer, not intake; appliance capacity takes precedence. Generic source nutrition wording is not clinical evidence or a recommendation for a medical condition."
+    },
+    {
+      "id": "vegetable_dish_suan-la-tu-dou-si",
+      "sourceHash": "4e2e3ff5f576fda6f28f1683e924540b468ecf1f068a3ee6bb3d091a04e01a30",
+      "recordHash": "b4c4d5dd16fdf9b1605d905c0f82ddd687739aa61509274e8277b18c9a35e7ca",
+      "sourcePath": "dishes/vegetable_dish/酸辣土豆丝.md",
+      "sourceBlob": "f93bb62fdb625738e7414c6374df97e94864fde6",
+      "reason": "Reviewed complete ingredient and cooking text. Ten-second blanching is followed by stir-frying, not presented as the whole cooking process. Fractional peppers and oil ranges remain textual; source timings and colour are not a guaranteed doneness test."
+    },
+    {
+      "id": "vegetable_dish_suan-rong-xi-lan-hua",
+      "sourceHash": "b63f8f4c31b403c9ed24a78fe6b1b7b10030cd5418742f4fce95bcc6c5771224",
+      "recordHash": "b3411b2fc328ef6b551352273c3902f45f2c029df5e0a51374e8eed339a21e6f",
+      "sourcePath": "dishes/vegetable_dish/蒜蓉西兰花.md",
+      "sourceBlob": "1ee282e1c472bff777b82885e0e0779bdcef6375",
+      "reason": "Reviewed washed florets, blanching and separately boiled garlic sauce. Water splits explicitly into 1000ml and 30ml; optional blanching seasoning remains a source tip, not an inferred shopping amount. Oyster sauce is visible; category and generic nutrient wording are not dietary or allergy certification."
+    },
+    {
+      "id": "vegetable_dish_yin-du-tu-dou-hua-cai--aloo-gobi",
+      "sourceHash": "907d3b38af174b5002b8ac8abae41ae67c75093d4c69cebc7a08631fe6d0cdf7",
+      "recordHash": "0e3eb7e8d5d109e7a4bfd49872b3c5611e0c2f8afb849b7fe7f0173cc1073fb9",
+      "sourcePath": "dishes/vegetable_dish/印度土豆花菜.md",
+      "sourceBlob": "84efe5374aa74aba989d767aca1b2a8b8707d645",
+      "reason": "Reviewed all ingredients, spice additions, covered cooking and potato softness check. Small optional water additions and the full source batch remain text; source serving/time estimates and cultural notes are not independently verified, and no personalised portion is inferred."
     }
   ],
   "deferred": [
@@ -101,6 +141,15 @@
     { "id": "vegetable_dish_liang-ban-huang-gua", "reason": "Preparation omits initial washing and handling of bitter cucumber needs clarification." },
     { "id": "vegetable_dish_liang-ban-jin-zhen-gu", "reason": "Cook-to-softness endpoint alone needs food-safety review." },
     { "id": "vegetable_dish_liang-ban-you-mai-cai", "reason": "Two whole garlic heads in one source serving and raw-leaf suitability need review." },
-    { "id": "vegetable_dish_pi-dan-dou-fu", "reason": "Named external recipe attribution requires source-rights clarification before use." }
+    { "id": "vegetable_dish_pi-dan-dou-fu", "reason": "Named external recipe attribution requires source-rights clarification before use." },
+    { "id": "vegetable_dish_pu-shao-qie-zi", "reason": "Peel-removal step conflicts with the later instruction to retain the bottom skin layer; clarify the cut before publishing unchanged text." },
+    { "id": "vegetable_dish_qie-zi-dun-tu-dou", "reason": "Oil-smoke cue and final meat doneness inferred from remaining liquid need clarification; vegetable category also includes pork." },
+    { "id": "vegetable_dish_shan-bei-ao-dou-jiao", "reason": "Oil omitted from ingredient list, per-serving versus two-person basis unclear, smoke cue and bean completion judged by potatoes require review." },
+    { "id": "vegetable_dish_shui-you-men-shu-cai", "reason": "Unspecified leafy vegetables share a fixed one-minute finish and a conflicting 90-second metadata duration; clarify scope and final cooking check." },
+    { "id": "vegetable_dish_song-ren-yu-mi", "reason": "Specific carotene-absorption advantage from frying carrots first is unverified and needs a reviewed edit or evidence before inclusion." },
+    { "id": "vegetable_dish_su-chao-dou-jiao", "reason": "Oil-smoke cue conflicts with lower-temperature advice, water missing from ingredients, and per-serving seasoning basis need clarification." },
+    { "id": "vegetable_dish_xi-hong-shi-chao-ji-dan", "reason": "Repeated half-cooked egg wording has no explicit final fully cooked check; optional additions are outside the main ingredient list." },
+    { "id": "vegetable_dish_yin-du-hu-lu-wan-zi", "reason": "One-person batch quantities, missing ingredient preparation and 40-minute total versus longer retained step durations need clarification." },
+    { "id": "vegetable_dish_you-cu-bao-dan", "reason": "Brand/zero-additive endorsement and one-person metadata versus two-person serving tip conflict; review before including unchanged content." }
   ]
 }

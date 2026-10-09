@@ -1077,5 +1077,760 @@ module.exports = [
       "如果喜欢更清淡的口感，可以省略醋和辣椒油。",
       "酱汁的比例可以根据个人口味进行调整。"
     ]
+  },
+  {
+    "id": "vegetable_dish_qing-chao-hua-cai",
+    "title": "清炒花菜",
+    "category": "素菜",
+    "durationMinutes": 15,
+    "servings": 1,
+    "ingredients": [
+      {
+        "name": "花菜",
+        "amount": "300g (约1/2中等大小)",
+        "note": "选择花球紧实、色泽洁白且无黑斑的花菜",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "大蒜",
+        "amount": "2-3 瓣",
+        "note": "选择蒜瓣饱满、无发芽的",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "盐",
+        "amount": "3g",
+        "note": "",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "食用油",
+        "amount": "15ml",
+        "note": "",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "饮用水",
+        "amount": "50ml",
+        "note": "用于炒制过程中的焖煮",
+        "optional": false,
+        "perServing": true
+      }
+    ],
+    "tools": [
+      "炒锅",
+      "菜刀",
+      "砧板",
+      "漏勺"
+    ],
+    "steps": [
+      {
+        "title": "食材预处理",
+        "instruction": "将花菜洗净，用刀或手掰成小朵，粗茎部分可以切片，备用。",
+        "durationSeconds": 120,
+        "tips": [
+          "花菜掰成小朵更容易入味和熟透"
+        ]
+      },
+      {
+        "title": "准备辅料",
+        "instruction": "将大蒜去皮，切成蒜片，备用。",
+        "durationSeconds": 60,
+        "tips": []
+      },
+      {
+        "title": "烧水",
+        "instruction": "锅中加入 1000 ml 饮用水，大火烧开。",
+        "durationSeconds": 300,
+        "tips": []
+      },
+      {
+        "title": "焯水",
+        "instruction": "放入花菜朵，煮 2-3 分钟，至花菜颜色变浅，口感稍微软化。",
+        "durationSeconds": 180,
+        "tips": [
+          "焯水可以缩短后续炒制时间"
+        ]
+      },
+      {
+        "title": "沥水",
+        "instruction": "将煮好的花菜捞出，沥干水分，备用。",
+        "durationSeconds": 30,
+        "tips": [
+          "沥干水分防止炒制时溅油"
+        ]
+      },
+      {
+        "title": "热油",
+        "instruction": "热锅，加入 15 ml 食用油，大火烧热。",
+        "durationSeconds": 60,
+        "tips": []
+      },
+      {
+        "title": "爆香",
+        "instruction": "放入蒜片，快速煸炒出香味。",
+        "durationSeconds": 20,
+        "tips": [
+          "注意不要炒焦蒜片"
+        ]
+      },
+      {
+        "title": "翻炒",
+        "instruction": "放入焯好水的花菜朵，转中大火，快速翻炒约 2 分钟，使花菜均匀受热。",
+        "durationSeconds": 120,
+        "tips": [
+          "保持大火快炒以维持脆嫩口感"
+        ]
+      },
+      {
+        "title": "调味",
+        "instruction": "加入 3 g 盐，继续翻炒均匀。",
+        "durationSeconds": 20,
+        "tips": []
+      },
+      {
+        "title": "焖煮",
+        "instruction": "沿锅边淋入 50 ml 饮用水，盖上锅盖，焖 1 分钟，帮助花菜完全熟透入味。",
+        "durationSeconds": 60,
+        "tips": [
+          "沿锅边淋水可以产生蒸汽，受热更均匀"
+        ]
+      },
+      {
+        "title": "出锅",
+        "instruction": "开盖，快速翻炒均匀，即可出锅。",
+        "durationSeconds": 30,
+        "tips": []
+      }
+    ],
+    "tips": [
+      "提前将花菜焯水可以缩短炒制时间，并使花菜更容易熟透。",
+      "炒制时间可以根据个人喜欢的花菜软硬程度调整。喜欢脆一些可以缩短时间。"
+    ]
+  },
+  {
+    "id": "vegetable_dish_qing-zheng-nan-gua",
+    "title": "清蒸南瓜",
+    "category": "素菜",
+    "durationMinutes": 20,
+    "servings": 1,
+    "ingredients": [
+      {
+        "name": "南瓜",
+        "amount": "300g",
+        "note": "老南瓜通常更甜更面，适合清蒸",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "饮用水",
+        "amount": "1000ml",
+        "note": "用于蒸锅产生蒸汽",
+        "optional": false,
+        "perServing": true
+      }
+    ],
+    "tools": [
+      "蒸锅",
+      "菜刀",
+      "砧板",
+      "盘子",
+      "筷子"
+    ],
+    "steps": [
+      {
+        "title": "预处理南瓜",
+        "instruction": "将南瓜外皮洗净，去除瓜瓤和籽。",
+        "durationSeconds": 120,
+        "tips": [
+          "南瓜皮含有营养，如果喜欢也可以不去皮蒸，但需要彻底洗净"
+        ]
+      },
+      {
+        "title": "切片备用",
+        "instruction": "将南瓜切成厚度大约 2 cm 的片。",
+        "durationSeconds": 180,
+        "tips": [
+          "切片厚度要均匀，保证受热同步"
+        ]
+      },
+      {
+        "title": "蒸锅准备",
+        "instruction": "在蒸锅的锅中加入 1000 ml 饮用水。",
+        "durationSeconds": 30,
+        "tips": [
+          "水量要充足防止干烧"
+        ]
+      },
+      {
+        "title": "摆盘",
+        "instruction": "将切好的南瓜片均匀摆放在盘中。",
+        "durationSeconds": 60,
+        "tips": [
+          "尽量不要重叠太多，方便蒸透"
+        ]
+      },
+      {
+        "title": "入锅",
+        "instruction": "待蒸锅中的水烧开后，将装有南瓜的盘子放入蒸锅中。",
+        "durationSeconds": 30,
+        "tips": [
+          "水开后再入锅效果更好"
+        ]
+      },
+      {
+        "title": "大火蒸煮",
+        "instruction": "盖上锅盖，保持大火蒸 15-20 分钟，直至南瓜变软。",
+        "durationSeconds": 1200,
+        "tips": [
+          "用筷子测试是判断是否蒸熟的好方法，能轻松穿透即为熟了"
+        ]
+      },
+      {
+        "title": "出锅",
+        "instruction": "关火，小心取出盘子。",
+        "durationSeconds": 60,
+        "tips": [
+          "注意防烫"
+        ]
+      }
+    ],
+    "tips": [
+      "南瓜的品种不同，甜度和口感会有差异。老南瓜通常更甜更面。",
+      "南瓜皮含有营养，如果喜欢也可以不去皮蒸，但需要彻底洗净。",
+      "蒸的时间取决于南瓜块的大小和厚度，以及南瓜的品种。用筷子测试是判断是否蒸熟的好方法。"
+    ]
+  },
+  {
+    "id": "vegetable_dish_suan-la-tu-dou-si",
+    "title": "酸辣土豆丝",
+    "category": "素菜",
+    "durationMinutes": 20,
+    "servings": 1,
+    "ingredients": [
+      {
+        "name": "土豆",
+        "amount": "240g",
+        "note": "选择表面平整、越细越长的土豆更好切丝",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "大蒜",
+        "amount": "4 瓣",
+        "note": "选择饱满、无发芽的蒜瓣",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "青椒",
+        "amount": "0.5 个",
+        "note": "选择皮薄清脆的青椒",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "红椒",
+        "amount": "0.5 个",
+        "note": "选择色泽红亮的红椒，用于点缀",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "干辣椒",
+        "amount": "3 个",
+        "note": "根据个人嗜辣程度选择品种",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "葱",
+        "amount": "1 根",
+        "note": "选用小葱，香味更浓",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "生抽",
+        "amount": "5ml",
+        "note": "普通生抽即可",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "陈醋",
+        "amount": "10ml",
+        "note": "陈醋酸味浓郁，更适合酸辣口",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "盐",
+        "amount": "2g",
+        "note": "细盐更易炒匀",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "食用油",
+        "amount": "10-15ml",
+        "note": "普通植物油",
+        "optional": false,
+        "perServing": true
+      }
+    ],
+    "tools": [
+      "刨丝器",
+      "菜刀",
+      "砧板",
+      "炒锅",
+      "漏勺"
+    ],
+    "steps": [
+      {
+        "title": "食材预处理",
+        "instruction": "土豆去皮、切丝（或用刨丝器）。",
+        "durationSeconds": 300,
+        "tips": [
+          "土豆丝尽量粗细均匀，保证受热同步"
+        ]
+      },
+      {
+        "title": "清洗与焯水",
+        "instruction": "切好的土豆丝用清水清洗，去除多余的淀粉，然后对土豆丝焯水 10 秒。沥干，备用。",
+        "durationSeconds": 180,
+        "tips": [
+          "清洗淀粉是脆爽的关键",
+          "焯水时间极短，不可久煮"
+        ]
+      },
+      {
+        "title": "配料准备",
+        "instruction": "葱切成葱花；大蒜拍碎切成蒜末（分为两等份备用）；干辣椒切小段；青红椒切丝。",
+        "durationSeconds": 120,
+        "tips": [
+          "蒜末分两份是为了先后入锅，层次分明"
+        ]
+      },
+      {
+        "title": "爆香底料",
+        "instruction": "热锅，小火热油，下入一半的葱花（葱白部分）、一半的蒜末和干辣椒爆香。",
+        "durationSeconds": 60,
+        "tips": [
+          "小火慢炸干辣椒，避免炸糊"
+        ]
+      },
+      {
+        "title": "主料翻炒",
+        "instruction": "加入青红椒翻炒几下，加入土豆丝翻炒至变色。",
+        "durationSeconds": 120,
+        "tips": [
+          "火力转大，快速翻炒"
+        ]
+      },
+      {
+        "title": "调味",
+        "instruction": "加 5ml 生抽，10ml 陈醋，倒入剩下的一半蒜末和 2g 盐快速翻炒均匀。",
+        "durationSeconds": 60,
+        "tips": [
+          "醋沿锅边淋入更香"
+        ]
+      },
+      {
+        "title": "出锅",
+        "instruction": "出锅前撒上剩余的葱花，翻匀即可装盘。",
+        "durationSeconds": 30,
+        "tips": [
+          "最后加葱花增加色彩和生葱香"
+        ]
+      }
+    ],
+    "tips": [
+      "清洗土豆丝淀粉一定要去干净，不然会全黏在一起",
+      "加入蒜末、盐后应尽快出锅，保留蒜香以及避免破坏口感。"
+    ]
+  },
+  {
+    "id": "vegetable_dish_suan-rong-xi-lan-hua",
+    "title": "蒜蓉西兰花",
+    "category": "素菜",
+    "durationMinutes": 15,
+    "servings": 1,
+    "ingredients": [
+      {
+        "name": "西兰花",
+        "amount": "200g (约1/2个)",
+        "note": "选择花球紧实、颜色翠绿且无发黄迹象的西兰花。",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "大蒜",
+        "amount": "3-4 瓣",
+        "note": "挑选蒜瓣饱满、外皮干燥的大蒜。",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "生抽",
+        "amount": "10ml",
+        "note": "建议使用高品质生抽以保证鲜味。",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "蚝油",
+        "amount": "5ml",
+        "note": "蚝油可增加酱汁的浓稠度和鲜甜感。",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "白糖",
+        "amount": "2g",
+        "note": "普通的白砂糖即可。",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "食用油",
+        "amount": "10ml",
+        "note": "使用烟点较高的植物油。",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "饮用水",
+        "amount": "1030ml",
+        "note": "用于焯水和调制蒜蓉汁。",
+        "optional": false,
+        "perServing": true
+      }
+    ],
+    "tools": [
+      "炒锅",
+      "菜刀",
+      "砧板",
+      "漏勺",
+      "盘子"
+    ],
+    "steps": [
+      {
+        "title": "处理西兰花",
+        "instruction": "将 西兰花 切成小朵，清洗干净。",
+        "durationSeconds": 120,
+        "tips": [
+          "切成大小均匀的小朵有助于同步熟透"
+        ]
+      },
+      {
+        "title": "准备蒜末",
+        "instruction": "将 大蒜 去皮，切成蒜末，备用。",
+        "durationSeconds": 60,
+        "tips": [
+          "蒜末尽量切细，香味更浓郁"
+        ]
+      },
+      {
+        "title": "烧水",
+        "instruction": "锅中加入 1000 ml 饮用水，大火烧开。",
+        "durationSeconds": 300,
+        "tips": [
+          "水量要足，确保能完全没过西兰花"
+        ]
+      },
+      {
+        "title": "焯水",
+        "instruction": "放入 西兰花，保持大火 煮 2-3 分钟，至 西兰花 颜色变翠绿，口感变软。",
+        "durationSeconds": 150,
+        "tips": [
+          "水中加少许盐和油可以保持西兰花色泽翠绿"
+        ]
+      },
+      {
+        "title": "摆盘",
+        "instruction": "将 煮好的 西兰花 捞出，沥干水分，摆入盘中，备用。",
+        "durationSeconds": 60,
+        "tips": [
+          "尽量沥干，避免盘底水分过多稀释酱汁"
+        ]
+      },
+      {
+        "title": "爆香蒜末",
+        "instruction": "热锅，加入 10 ml 食用油。油温升高后，放入 大蒜末，小火煸炒出香味。",
+        "durationSeconds": 60,
+        "tips": [
+          "务必使用小火，防止蒜末炒焦变苦"
+        ]
+      },
+      {
+        "title": "调味",
+        "instruction": "加入 10 ml 生抽，5 ml 蚝油，2 g 白糖，加入 30 ml 饮用水。",
+        "durationSeconds": 30,
+        "tips": [
+          "先混合均匀再加热"
+        ]
+      },
+      {
+        "title": "煮开汤汁",
+        "instruction": "将锅中汤汁烧开。",
+        "durationSeconds": 60,
+        "tips": [
+          "煮至微沸即可"
+        ]
+      },
+      {
+        "title": "淋汁",
+        "instruction": "将烧好的蒜蓉汁 均匀淋在盘中的 西兰花 上。",
+        "durationSeconds": 30,
+        "tips": [
+          "确保每一朵西兰花都能沾上酱汁"
+        ]
+      }
+    ],
+    "tips": [
+      "焯水时间不宜超过推荐时长，以免影响西兰花的口感和营养。",
+      "如果想保留西兰花更脆的口感，可以缩短焯水时间。"
+    ]
+  },
+  {
+    "id": "vegetable_dish_yin-du-tu-dou-hua-cai--aloo-gobi",
+    "title": "印度土豆花菜 (Aloo Gobi)",
+    "category": "素菜",
+    "durationMinutes": 25,
+    "servings": 1,
+    "ingredients": [
+      {
+        "name": "土豆",
+        "amount": "2个(约250g)",
+        "note": "选择质地较绵软的品种",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "花菜",
+        "amount": "1个(约300g)",
+        "note": "选择花簇紧凑、无黑斑的新鲜花菜",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "洋葱",
+        "amount": "1个(约100g)",
+        "note": "中等大小，红洋葱或黄洋葱均可",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "番茄",
+        "amount": "1个(约100g)",
+        "note": "选择熟透多汁的番茄",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "生姜",
+        "amount": "8g",
+        "note": "新鲜老姜风味更佳",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "大蒜",
+        "amount": "3瓣(约9g)",
+        "note": "饱满无发芽的大蒜",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "青辣椒",
+        "amount": "1根",
+        "note": "根据个人吃辣程度选择",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "食用油",
+        "amount": "30ml",
+        "note": "普通植物油即可",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "孜然籽",
+        "amount": "3g",
+        "note": "整颗孜然籽，不要用孜然粉代替",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "姜黄粉",
+        "amount": "3g",
+        "note": "印度料理核心香料",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "红辣椒粉",
+        "amount": "3g",
+        "note": "可选克什米尔辣椒粉，色泽红润且不至于过辣",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "香菜粉",
+        "amount": "5g",
+        "note": "Coriander powder，提供特殊香气",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "印度综合香料粉",
+        "amount": "3g",
+        "note": "Garam Masala，超市或网店有售",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "盐",
+        "amount": "5g",
+        "note": "普通食用盐",
+        "optional": false,
+        "perServing": true
+      },
+      {
+        "name": "香菜叶",
+        "amount": "15g",
+        "note": "最后点缀增色",
+        "optional": true,
+        "perServing": true
+      }
+    ],
+    "tools": [
+      "炒锅（带盖）",
+      "菜刀",
+      "砧板",
+      "擦丝器（用于生姜）"
+    ],
+    "steps": [
+      {
+        "title": "处理土豆",
+        "instruction": "将土豆去皮切成约 2cm 的块状",
+        "durationSeconds": 120,
+        "tips": [
+          "土豆块不要切太小，否则容易炒散"
+        ]
+      },
+      {
+        "title": "处理花菜",
+        "instruction": "将花菜掰成均匀的小朵，大朵可用刀切小",
+        "durationSeconds": 180,
+        "tips": [
+          "保持大小均匀，确保受热一致"
+        ]
+      },
+      {
+        "title": "热油",
+        "instruction": "在炒锅中倒入 30ml 食用油，中火加热",
+        "durationSeconds": 60,
+        "tips": []
+      },
+      {
+        "title": "炸香孜然",
+        "instruction": "油热后放入孜然籽 3g，炸至变深色且散发香味",
+        "durationSeconds": 10,
+        "tips": [
+          "约 10 秒，注意不要炸糊"
+        ]
+      },
+      {
+        "title": "炒洋葱",
+        "instruction": "放入切碎的洋葱，翻炒至变透明微黄",
+        "durationSeconds": 240,
+        "tips": [
+          "约 3-4 分钟，洋葱焦糖化会增加甜味"
+        ]
+      },
+      {
+        "title": "加入姜蒜辣",
+        "instruction": "加入生姜、大蒜和青辣椒，翻炒 1 分钟",
+        "durationSeconds": 60,
+        "tips": []
+      },
+      {
+        "title": "炒番茄",
+        "instruction": "加入切碎的番茄，翻炒至番茄软烂",
+        "durationSeconds": 180,
+        "tips": [
+          "约 2-3 分钟，番茄会形成浓郁的底汁"
+        ]
+      },
+      {
+        "title": "添加粉末香料",
+        "instruction": "加入姜黄粉 3g、红辣椒粉 3g、香菜粉 5g、盐 5g",
+        "durationSeconds": 30,
+        "tips": []
+      },
+      {
+        "title": "融合香料",
+        "instruction": "翻炒 1 分钟，使香料与蔬菜融合",
+        "durationSeconds": 60,
+        "tips": []
+      },
+      {
+        "title": "炒土豆",
+        "instruction": "放入土豆块，翻炒 2 分钟使土豆表面裹上香料",
+        "durationSeconds": 120,
+        "tips": []
+      },
+      {
+        "title": "加入花菜",
+        "instruction": "放入花菜朵，轻轻翻拌均匀",
+        "durationSeconds": 60,
+        "tips": [
+          "动作轻柔，避免弄碎花菜"
+        ]
+      },
+      {
+        "title": "焖煮",
+        "instruction": "盖上锅盖，转中小火，焖 12-15 分钟",
+        "durationSeconds": 900,
+        "tips": [
+          "期间每 3-4 分钟打开翻炒一次防止粘锅",
+          "如果太干可加入极少量水"
+        ]
+      },
+      {
+        "title": "最后的调味",
+        "instruction": "当土豆用筷子可轻松戳透、花菜略有焦边时，撒入印度综合香料粉 3g",
+        "durationSeconds": 30,
+        "tips": [
+          "花菜边缘略微焦黄是风味的来源"
+        ]
+      },
+      {
+        "title": "最后翻炒",
+        "instruction": "翻炒 1 分钟",
+        "durationSeconds": 60,
+        "tips": []
+      },
+      {
+        "title": "出锅",
+        "instruction": "关火，撒上香菜叶，盛盘",
+        "durationSeconds": 30,
+        "tips": []
+      }
+    ],
+    "tips": [
+      "这道菜是干炒风格(Dry)，不需要加水。如果觉得太干容易粘锅，可以加入极少量水（约 15-30ml），但不宜过多。",
+      "土豆块不要切太小，否则容易炒散。",
+      "花菜的边缘略微焦黄是正常的，反而会增添风味。",
+      "可以搭配印度烤饼(Naan)、印度薄饼(Roti)或米饭食用。",
+      "Aloo Gobi 因 2001 年的电影《像贝克汉姆一样踢球》而在西方世界广为人知。"
+    ]
   }
 ]

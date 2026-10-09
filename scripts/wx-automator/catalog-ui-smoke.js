@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict')
 const path = require('node:path')
 const { KIND, contents } = require('../build-catalog-ui-fixture')
+const { PAGE_SIZE } = require('../../miniprogram/services/recipe-catalog')
 const { createRun, finalizeRunReport, withAutomatorResponseTimeout, navigateAndAcquire,
   readAutomatorViewport, captureScreenshotWithRetry, sanitizeCode, sanitizeText, safeDisconnect } = require('./automation-runtime')
 const LIST = '/pages/recipe-catalog/recipe-catalog'
@@ -40,6 +41,17 @@ async function waitForNativePage(miniProgram, page) {
     throw Object.assign(new Error('Page changed before capture'), { code: 'FIXTURE_CAPTURE_ROUTE_CHANGED' })
   }
 }
+async function assertPaginationState(page, records, visibleCount) {
+  const ids = records.slice(0, visibleCount).map(item => item.id)
+  const state = await call('PAGINATION_STATE', () => page.data())
+  assert.equal(state.total, records.length)
+  assert.equal(state.hasMore, visibleCount < records.length)
+  assert.deepEqual(state.rows.map(item => item.id), ids)
+  const nodes = await call('PAGINATION_NODES', () => page.$$('.catalog-row'))
+  const renderedIds = []
+  for (const node of nodes) renderedIds.push(await call('PAGINATION_NODE_ID', () => node.attribute('data-id')))
+  assert.deepEqual(renderedIds, ids, 'rendered pagination must not omit, duplicate or reorder recipes')
+}
 async function runScenario(miniProgram, outputDir, record) {
   await assertFixture(miniProgram)
   const expected = require('../../miniprogram/data/recipe-catalog')
@@ -62,6 +74,15 @@ async function runScenario(miniProgram, outputDir, record) {
     return item
   }
   async function tap(page, selector) { await call('TAP_CONTROL', async () => (await element(page, selector)).tap()) }
+  async function tapAction(page, label) {
+    const actions = await call('FIND_ACTIONS', () => page.$$('.catalog-action'))
+    const matches = []
+    for (const action of actions) {
+      if ((await call('ACTION_LABEL', () => action.text())).trim() === label) matches.push(action)
+    }
+    assert.equal(matches.length, 1, 'one action with label ' + label)
+    await call('TAP_NAMED_ACTION', () => matches[0].tap())
+  }
   async function input(page, text) { await call('SEARCH_INPUT', async () => (await element(page, '#catalog-search')).input(text)) }
   async function data(page, key) { return call('PUBLIC_PAGE_DATA', () => page.data(key)) }
   async function settled(name, predicate) {
@@ -101,11 +122,32 @@ async function runScenario(miniProgram, outputDir, record) {
   await navigateAndAcquire(miniProgram, LIST)
   let page = await current(LIST)
   assert.equal(await data(page, 'error'), '')
-  assert.equal(await data(page, 'total'), expected.length)
-  assert.equal((await call('RENDERED_ROWS', () => page.$$('.catalog-row'))).length, expected.length)
-  record('initial-public-catalog', { count: expected.length })
+  let visibleCount = Math.min(PAGE_SIZE, expected.length)
+  await settled('initial batch rendering', async () => (await call('RENDERED_ROWS', () => page.$$('.catalog-row'))).length === visibleCount)
+  await assertPaginationState(page, expected, visibleCount)
+  record('initial-public-catalog', { count: expected.length, visibleCount })
   await checkLayout(page, 'catalog-layout', ['.catalog-back', '#catalog-search', '.catalog-picker', '.catalog-row'])
   await capture(page, 'catalog-initial')
+
+  let pagesLoaded = 1
+  while (visibleCount < expected.length) {
+    await tapAction(page, '查看更多菜谱')
+    visibleCount = Math.min(visibleCount + PAGE_SIZE, expected.length)
+    await settled('next batch rendering', async () => (await call('RENDERED_ROWS', () => page.$$('.catalog-row'))).length === visibleCount)
+    await assertPaginationState(page, expected, visibleCount)
+    pagesLoaded++
+  }
+  record('pagination-complete-without-duplicates', { pagesLoaded, visibleCount })
+  // Open the final row, including a recipe that was not in the first batch.
+  const finalRow = (await call('FINAL_ROWS', () => page.$$('.catalog-row'))).at(-1)
+  assert(finalRow)
+  await call('OPEN_FINAL_ROW', () => finalRow.tap())
+  page = await current(DETAIL)
+  assert.deepEqual(await data(page, 'recipe'), expected.at(-1))
+  await tap(page, '.catalog-back')
+  page = await current(LIST)
+  await assertPaginationState(page, expected, expected.length)
+  record('final-row-detail-and-return-preserve-pagination', {})
 
   await input(page, '豆腐 葱')
   await settled('AND query state', async () => await data(page, 'query') === '豆腐 葱')
@@ -134,9 +176,10 @@ async function runScenario(miniProgram, outputDir, record) {
   await settled('empty rendered rows', async () => (await call('EMPTY_ROWS', () => page.$$('.catalog-row'))).length === 0)
   await capture(page, 'catalog-empty')
   record('no-results', {})
-  await tap(page, '.catalog-action')
+  await tapAction(page, '清除搜索与筛选')
   await settled('clear search state', async () => await data(page, 'total') === expected.length)
-  await settled('clear search control removal', async () => (await call('ACTION_COUNT', () => page.$$('.catalog-action'))).length === 1)
+  await settled('clear search batch rendering', async () => (await call('RENDERED_ROWS', () => page.$$('.catalog-row'))).length === Math.min(PAGE_SIZE, expected.length))
+  await assertPaginationState(page, expected, Math.min(PAGE_SIZE, expected.length))
   assert.equal(await data(page, 'query'), '')
   assert.equal(await data(page, 'categoryIndex'), 0)
   assert.equal(await data(page, 'total'), expected.length)
@@ -150,11 +193,12 @@ async function runScenario(miniProgram, outputDir, record) {
   assert((await data(page, 'rows')).every(row => row.category === '早餐'))
   assert.equal(await data(page, 'total'), expected.filter(row => row.category === '早餐').length)
   record('category-change-event', { nativePickerGestureTested: false })
-  await settled('category clear control', async () => (await call('ACTION_COUNT', () => page.$$('.catalog-action'))).length === 2)
-  await tap(page, '.catalog-action')
+  await settled('category rows rendering', async () => (await call('CATEGORY_ROWS', () => page.$$('.catalog-row'))).length === Math.min(PAGE_SIZE, expected.filter(row => row.category === '早餐').length))
+  await tapAction(page, '清除搜索与筛选')
   await settled('category clear state', async () => await data(page, 'categoryIndex') === 0 && await data(page, 'total') === expected.length)
-  await settled('category clear control removal', async () => (await call('ACTION_COUNT', () => page.$$('.catalog-action'))).length === 1)
-  await tap(page, '.catalog-action')
+  await settled('category clear batch rendering', async () => (await call('RENDERED_ROWS', () => page.$$('.catalog-row'))).length === Math.min(PAGE_SIZE, expected.length))
+  await assertPaginationState(page, expected, Math.min(PAGE_SIZE, expected.length))
+  await tapAction(page, '开源与数据来源')
   page = await current(SOURCES)
   const meta = await data(page, 'meta')
   assert.equal(meta.count, expected.length)
@@ -204,4 +248,4 @@ async function main() {
   if (errorCode) process.exitCode = 1
 }
 if (require.main === module) main().catch(() => { console.error('CATALOG_NATIVE_RUN_FAILED'); process.exitCode = 1 })
-module.exports = { assertFixture, waitForNativePage, runScenario }
+module.exports = { assertFixture, waitForNativePage, assertPaginationState, runScenario }

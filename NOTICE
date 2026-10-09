@@ -1,6 +1,6 @@
 # Third-party recipe data notices
 
-Catalog 2026-10-09.1: 8 reviewed reference recipes; remaining candidates are not included.
+Catalog 2026-10-09.2: 13 reviewed reference recipes; remaining candidates are not included.
 
 Structured JSON: [zkeq/vibe-cook-backend, dataset](https://github.com/zkeq/vibe-cook-backend/tree/b227b896d650709aa345e639634ecd5c3358e607), commit `b227b896d650709aa345e639634ecd5c3358e607`, under **The Unlicense**. Only json/index.json and json/recipes.json were used. No BUSL application code, images, SQLite, LFS or online service is included.
 
