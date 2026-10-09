@@ -349,6 +349,10 @@ async function testPlanPageRecovery() {
   const previewMarkup = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'plan-preview', 'plan-preview.wxml'), 'utf8')
   const previewSource = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'plan-preview', 'plan-preview.js'), 'utf8')
   const styles = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'plan', 'plan.wxss'), 'utf8')
+  assert(/<button\b[^>]*bindtap="openFavorites"[^>]*>[\s\S]*?<\/button>\s*<block\s+wx:if="\{\{hasPlan\}\}">/.test(markup),
+    '收藏入口始终可见，其后的餐单区域必须独立判断 hasPlan，不能把 wx:else 接到普通按钮后')
+  assert(!/<button\b[^>]*bindtap="openFavorites"[^>]*>[\s\S]*?<\/button>\s*<block\s+wx:else\b/.test(markup),
+    '收藏按钮不能打断空状态与餐单区域的条件分支')
   assert(!markup.includes('scroll-into-view='), 'selected dates must not scroll Monday out of view')
   assert(markup.includes('wx:for="{{weeks}}"'))
   assert(markup.includes('wx:for="{{displayedDays}}"'))

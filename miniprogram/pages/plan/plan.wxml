@@ -54,7 +54,7 @@
 
     <button class="secondary-button" bindtap="openFavorites" hover-class="button-hover">我的收藏 · 再次安排餐食</button>
 
-    <block wx:else>
+    <block wx:if="{{hasPlan}}">
       <view class="plan-period" aria-label="选择餐单周和日期">
         <view wx:if="{{weeks.length > 1}}" class="week-selector" aria-role="group" aria-label="选择餐单周">
           <view wx:for="{{weeks}}" wx:key="index" class="week-button touch-target {{item.index === selectedWeekIndex ? 'active' : ''}}" data-index="{{item.index}}" bindtap="selectWeek" hover-class="segment-hover" aria-role="button" aria-pressed="{{item.index === selectedWeekIndex}}">
