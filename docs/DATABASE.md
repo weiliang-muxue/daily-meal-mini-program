@@ -1,6 +1,10 @@
 # 数据库设计与升级
 
-当前开发 schema v11（尚未部署）：v9 增加 `mealOverrides[mealId].ingredientItems` 结构化食材，v10 增加单餐候选范围；v11 增加 `generationPreferences.servings`（1–12）、`maxCookingMinutes`（5–180）与 `pantryItems`（最多 30 项名称/数量/单位）。AI contract v3 已接入这些条件并升级发送同意；本地测试不代表实际模型或云端已验收。下述 v8 内容保留为历史说明，最新部署约束见 `NEXT_ITERATION.md`。
+当前开发 schema v12（尚未部署）：v9 增加 `mealOverrides[mealId].ingredientItems` 结构化食材，v10 增加单餐候选范围；v11 增加 `generationPreferences.servings`（1–12）、`maxCookingMinutes`（5–180）与 `pantryItems`（最多 30 项名称/数量/单位）；v12 增加 `favoriteRecipes`，缺失时为独立空数组，不从历史餐单自动推断喜欢。AI contract v3 已接入做饭条件并升级发送同意，但不发送私人收藏。本地测试不代表实际模型或云端已验收。下述 v8 内容保留为历史说明，最新部署约束见 `NEXT_ITERATION.md`。
+
+`favoriteRecipes` 位于当前身份的 `meal_user_states` 文档，无新增集合/索引：最多 30 项且序列化 UTF-8 最多 128 KiB，仍受整体 900 KiB 上限约束；满时拒绝新收藏，不静默删除旧条目。每项为服务端随机 `fav_` 标识、UTC `createdAt`、来源类型和白名单 `recipe` 快照（标题、食材文字、做法、提示、可选结构化食材及总人数/耗时）。不保存图片地址、其他成员标识或供应商配置。复制的内容与原餐单不共享引用，改原餐或升级不改收藏。
+
+普通 `saveState` 不允许改收藏。`addFavorite` 由服务器读取当前餐食及个人覆盖；`removeFavorite` 仅移除指定副本；`applyFavorite` 从存储副本生成个人覆盖并重算净采购。三者均在事务内检查有效成员、未删除身份代际和准确 revision，采用服务端可信身份，不接收外部用户身份。再次安排还校验原餐快照/日期/晚餐模式，保留未变化勾选。移除收藏不移除已安排的餐食；清空私人数据沿用删除整个用户文档与私有缓存的流程。收藏不代表过敏安全，不更改 `restrictions`；不喜欢的独立软偏好尚待接入。
 
 新餐单的 `generationBasis` 可记录同样三项快照；旧餐单不补造。餐食及个人覆盖可记录 `servings`、`quantityBasis: total` 和 `estimatedCookingMinutes`；手动修改后的覆盖允许时间为 `null`（未知），不是 0 分钟。份量为总量，不再次按人数放大。采购缺口和已备齐项由共享逻辑计算，不建立独立库存账本、不消耗库存；客户端不能通过保存状态改写可信基础餐单快照。服务器重新计算受影响勾选，旧 schema 客户端保存失败关闭。v8–v10 增量升级保留餐单、历史、提醒和原有勾选，不重建集合或回写基础食谱。
 

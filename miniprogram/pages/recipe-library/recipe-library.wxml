@@ -1,0 +1,68 @@
+<view class="screen library-page">
+  <button class="page-navigation" bindtap="navigateFromPage" disabled="{{busy}}" hover-class="page-navigation-pressed" aria-label="{{pageNavigationLabel}}">
+    <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
+  </button>
+  <text class="page-title">我的收藏</text>
+  <text class="section-copy">只为你保存餐食副本，不自动发送给 AI，也不改变不喜欢或过敏忌口设置。</text>
+  <view wx:if="{{loading}}" class="status-panel" aria-label="正在加载收藏">正在同步你的收藏…</view>
+  <view wx:if="{{error}}" class="error-message" aria-role="alert">{{error}}</view>
+  <text wx:if="{{notice}}" class="notice">{{notice}}</text>
+  <button wx:if="{{error || offline}}" class="secondary-button" bindtap="load" loading="{{loading}}" disabled="{{busy || loading}}" hover-class="button-hover">刷新核对</button>
+  <text wx:if="{{offline}}" class="section-copy">当前只读本机缓存；联网并刷新后才能收藏、移除或安排。</text>
+  <block wx:if="{{!loading}}">
+    <view wx:if="{{capture}}" class="surface recipe-panel">
+      <text class="section-title">收藏当前这一餐</text>
+      <text class="recipe-title">{{capture.title}}</text>
+      <text class="recipe-copy">{{capture.displayIngredients}}</text>
+      <text class="recipe-copy">{{capture.method}}</text>
+      <text class="section-copy">保留当前已保存的个人调整。以后修改原餐单，不会修改这个副本。</text>
+      <button class="primary-button" bindtap="saveFavorite" loading="{{busy}}" disabled="{{offline || busy}}" hover-class="button-hover">确认收藏</button>
+    </view>
+    <text class="section-title">已收藏 {{count}} / {{capacity}} 餐</text>
+    <text wx:if="{{!count}}" class="section-copy">还没有收藏。在餐单里点击“收藏这餐”，喜欢的餐食就可以在这里再次安排。</text>
+    <block wx:else>
+      <label for="recipe-search" class="field-label">查找我的收藏</label>
+      <input id="recipe-search" class="search-input" value="{{query}}" bindinput="search" maxlength="50" placeholder="输入餐名或食材" aria-label="按餐名或食材查找收藏" />
+      <text wx:if="{{!filtered.length}}" class="section-copy">没有匹配的收藏，试试其他餐名或食材。</text>
+      <button wx:for="{{filtered}}" wx:key="id" class="recipe-row {{selected.id === item.id ? 'selected' : ''}}" bindtap="select" data-id="{{item.id}}" disabled="{{busy}}" hover-class="button-hover" aria-pressed="{{selected.id === item.id}}">
+        <text>{{selected.id === item.id ? '已选 · ' : ''}}{{item.recipe.title}}</text>
+        <text class="section-copy">{{item.recipe.quantityBasis === 'total' ? item.recipe.servings + ' 人总用量' : '旧餐食 · 人数未记录'}} · {{item.source === 'ai' ? '来自 AI 餐单' : '个人保存'}}</text>
+      </button>
+    </block>
+    <view wx:if="{{selected}}" class="surface recipe-panel">
+      <text class="section-title">{{selected.recipe.title}}</text>
+      <text class="recipe-copy">{{selected.recipe.displayIngredients}}</text>
+      <text class="recipe-copy">{{selected.recipe.method}}</text>
+      <text wx:if="{{selected.recipe.quantityBasis === 'total'}}" class="section-copy">{{selected.recipe.estimatedCookingMinutes ? '原做法预计 ' + selected.recipe.estimatedCookingMinutes + ' 分钟（含备料）' : '做饭耗时待核对'}}</text>
+      <text wx:if="{{selected.recipe.tag}}" class="section-copy">{{selected.recipe.tag}}</text>
+      <text class="section-copy">{{selected.source === 'ai' ? '来自 AI 生成餐食及你的调整。' : ''}}收藏不代表适合当前饮食限制，请自行核对食材与过敏忌口。</text>
+      <block wx:if="{{selected.reusable && targets.length}}">
+        <text class="field-label">再次安排到</text>
+        <picker range="{{targets}}" range-key="label" value="{{targetIndex}}" bindchange="selectTarget" disabled="{{busy || offline}}" aria-label="选择要替换的日期和餐次">
+          <view class="target-picker">{{targets[targetIndex].label}} · 点击选择</view>
+        </picker>
+        <text class="section-copy">保留收藏的 {{selected.recipe.servings}} 人总用量，不自动按当前人数缩放；不改变运动打卡或整单库存。已有的这餐个人调整将被替换。</text>
+        <button wx:if="{{!preview}}" class="primary-button" bindtap="previewFavorite" disabled="{{busy || offline}}" hover-class="button-hover">预览餐食与采购变化</button>
+      </block>
+      <text wx:elif="{{!selected.reusable}}" class="section-copy">此收藏缺少完整食材份量或人数，目前可查看，不能自动安排采购。可收藏新版份量完整的餐食后再安排。</text>
+      <text wx:else class="section-copy">请先确认一份餐单，才能选择安排的日期与餐次。</text>
+      <view wx:if="{{preview}}" class="preview-panel">
+        <text class="section-title">确认后只替换这一餐</text>
+        <text class="recipe-copy">{{preview.targetLabel}} → {{selected.recipe.title}}</text>
+        <text class="section-copy">当前已保存的忌口：{{preview.restrictions}}</text>
+        <text class="section-copy">原餐单生成时的忌口：{{preview.planRestrictions}}</text>
+        <text wx:if="{{!preview.changes.length}}" class="section-copy">采购用量没有变化，现有勾选保留。</text>
+        <view wx:for="{{preview.changes}}" wx:key="name" class="change-row">
+          <text>{{item.name}}</text><text>{{item.before || '无'}} → {{item.after || '无需采购'}}</text>
+        </view>
+        <text class="section-copy">{{preview.checkedReset}} 项已勾选采购需要重新核对，其他勾选保留。</text>
+        <checkbox-group bindchange="review">
+          <label class="review-label"><checkbox value="reviewed" checked="{{reviewed}}" disabled="{{busy}}" /><text>已核对人数、食材及当前过敏忌口，确认适合这次安排</text></label>
+        </checkbox-group>
+        <button class="primary-button" bindtap="confirmFavorite" loading="{{busy}}" disabled="{{!reviewed || busy || offline}}" hover-class="button-hover">确认替换这一餐</button>
+        <button class="secondary-button" bindtap="cancelPreview" disabled="{{busy}}" hover-class="button-hover">取消，保留原餐</button>
+      </view>
+      <button class="remove-button" bindtap="removeFavorite" disabled="{{busy || offline}}" hover-class="button-hover">移除这条收藏</button>
+    </view>
+  </block>
+</view>

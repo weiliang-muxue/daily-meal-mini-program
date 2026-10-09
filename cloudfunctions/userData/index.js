@@ -5,6 +5,8 @@ const { CURRENT_SCHEMA, MAX_HISTORY, defaults, migrate, sanitizeState, confirmDr
 const { catalog, plans, shoppingGroups } = require('./legacy-plan')
 const { notFound } = require('./not-found')
 const { reconcileChecks } = require('./meal-shopping')
+const recipeLibrary = require('./recipe-library')
+const crypto = require('crypto')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -12,6 +14,7 @@ const states = db.collection('meal_user_states')
 const members = db.collection('meal_members')
 
 const STATE_FIELDS = [
+  'favoriteRecipes',
   'schemaVersion', 'stateRevision', 'activePlan', 'draftPlan', 'planHistory', 'generationPreferences',
   'activePlanId', 'selectedDayId', 'selectedDay', 'defaultDinnerMode', 'dinnerModeByDay',
   'planUiStateByPlan', 'mealOverrides', 'checkedShoppingIds', 'customReminders', 'settings', 'waterReminder',
@@ -26,6 +29,7 @@ const BUSINESS_ERROR_CODES = new Set([
   'PLAN_TOO_LARGE', 'STATE_TOO_LARGE', 'STATE_HISTORY_LIMIT', 'STALE_DATA_GENERATION',
   'MEAL_REPLACEMENT_INVALID', 'MEAL_REPLACEMENT_CONFLICT', 'MEAL_REPLACEMENT_CONFIRM_REQUIRED',
   'MEAL_CONDITIONS_INVALID',
+  'RECIPE_LIBRARY_INVALID', 'RECIPE_LIBRARY_FULL', 'RECIPE_LIBRARY_CONFLICT',
 ])
 const CACHE_NAMESPACE_PATTERN = /^[a-f0-9]{32}$/
 const MAX_LEGACY_PLAN_INJECTION_SCHEMA = 5
@@ -200,6 +204,31 @@ async function changePlan(openid, action, payload) {
   })
 }
 
+async function changeFavorite(openid, action, payload) {
+  return db.runTransaction(async transaction => {
+    const member = await requireActiveMemberInTransaction(transaction, openid)
+    assertExpectedCacheNamespace(member, payload.expectedCacheNamespace)
+    const reference = transaction.collection('meal_user_states').doc(openid)
+    const raw = (await reference.get()).data || {}
+    const current = migrateStored(raw)
+    assertExpectedRevision(current, payload.expectedStateRevision)
+    const now = new Date().toISOString()
+    let next
+    if (action === 'addFavorite') {
+      if (!current.activePlan || payload.expectedPlanId !== current.activePlan.id) {
+        const error = new Error('当前餐单已变化，请重新选择'); error.code = 'RECIPE_LIBRARY_CONFLICT'; throw error
+      }
+      next = recipeLibrary.add(current, payload.mealId, `fav_${crypto.randomBytes(16).toString('hex')}`, now)
+    } else if (action === 'removeFavorite') next = recipeLibrary.remove(current, payload.favoriteId)
+    else if (action === 'applyFavorite') next = recipeLibrary.proposal(current, payload.favoriteId, payload.target, now)
+    else throw new Error('不支持的收藏操作')
+    if (next === current) return publicState(current, raw.updatedAt)
+    next = sanitizeState({ ...next, stateRevision: current.stateRevision + 1 }, { preserveUnknownFrom: current })
+    await reference.update({ data: { ...atomicStateFields(next), updatedAt: db.serverDate() } })
+    return publicState(next, now)
+  })
+}
+
 function publicError(error) {
   const code = error && error.code || 'USER_DATA_FAILED'
   if (code === 'STALE_DATA_GENERATION') {
@@ -237,6 +266,10 @@ exports.main = async (event = {}) => {
     if (['confirmDraft', 'confirmMealReplacement', 'restoreHistory', 'discardDraft'].includes(event.action)) {
       return { success: true, data: await changePlan(OPENID, event.action, event) }
     }
+    if (['addFavorite', 'removeFavorite', 'applyFavorite'].includes(event.action)) {
+      if (event.clientSchemaVersion !== CURRENT_SCHEMA) return { success: false, code: 'STATE_SCHEMA_UNSUPPORTED', message: '请更新小程序后再使用收藏，原有数据不会丢失' }
+      return { success: true, data: await changeFavorite(OPENID, event.action, event) }
+    }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的数据操作' }
   } catch (error) {
     console.error('userData failed', { code: error && error.code, name: error && error.name })
@@ -246,6 +279,7 @@ exports.main = async (event = {}) => {
 }
 
 exports._test = {
+  changeFavorite,
   bootstrap, saveState, changePlan, migrateStored, constrainUiState, stateFields, atomicStateFields,
   assertExpectedCacheNamespace, assertExpectedDraftPlan, publicError, publicErrorMessage,
 }

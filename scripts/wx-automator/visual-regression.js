@@ -59,6 +59,7 @@ const ROUTES = [
   ['planner', '/pages/planner/planner', ['.planner-screen', '.step-head']],
   ['plan-preview', '/pages/plan-preview/plan-preview', ['.preview-page']],
   ['plan-history', '/pages/plan-history/plan-history', ['.history-page']],
+  ['recipe-library', '/pages/recipe-library/recipe-library', ['.library-page']],
   ['health', '/pages/health/health', ['.health-screen']],
   ['shopping', '/pages/shopping/shopping', ['.shopping-screen']],
   ['guide', '/pages/guide/guide', ['.screen']],

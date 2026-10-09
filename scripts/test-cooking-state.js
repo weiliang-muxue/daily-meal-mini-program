@@ -89,7 +89,7 @@ for (const version of [8, 9, 10]) {
   legacy.waterReminder = { ...legacy.waterReminder, enabled: true, scheduleVersion: 8 }
   legacy.customReminders = [{ id: 'fictional-reminder', text: '测试提醒', done: true }]
   const migrated = stateCore.migrate(legacy)
-  assert.strictEqual(migrated.schemaVersion, 11)
+  assert.strictEqual(migrated.schemaVersion, 12)
   assert.strictEqual(migrated.generationPreferences.servings, 1)
   assert.strictEqual(migrated.generationPreferences.maxCookingMinutes, 30)
   assert.deepStrictEqual(migrated.generationPreferences.pantryItems, [])

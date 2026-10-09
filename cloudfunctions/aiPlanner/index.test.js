@@ -473,7 +473,7 @@ test('single-meal task binds scope, replays safely and finalizes only a candidat
   for (const field of ['activePlan', 'planHistory', 'mealOverrides', 'generationPreferences', 'customReminders', 'checkedShoppingIds']) {
     assert.deepStrictEqual(result[field], state[field], `${field} must not be replaced by a single-meal draft`)
   }
-  assert.strictEqual(result.schemaVersion, 11)
+  assert.strictEqual(result.schemaVersion, 12)
   assert.strictEqual(result.stateRevision, 6)
   assert.strictEqual(result.draftPlan.days.length, 1)
   assert.strictEqual(result.draftPlan.replacementTarget.mealId, target.mealId)
@@ -596,7 +596,7 @@ test('planner reads schema v7 in memory while older and future schemas fail clos
   delete legacy.waterReminder
   const before = clone(legacy)
   const migrated = planner._test.currentStateForPlanning(legacy, { preserveUnknownFrom: legacy })
-  assert.strictEqual(migrated.schemaVersion, 11)
+  assert.strictEqual(migrated.schemaVersion, 12)
   assert.strictEqual(migrated.waterReminder.enabled, false)
   assert.deepStrictEqual(migrated.customReminders, legacy.customReminders)
   assert.deepStrictEqual(legacy, before, '兼容读取只能在内存迁移，不能改写原始 v7 对象')
@@ -605,7 +605,7 @@ test('planner reads schema v7 in memory while older and future schemas fail clos
     (error) => error.code === 'STATE_SCHEMA_UPGRADE_REQUIRED',
   )
   assert.throws(
-    () => planner._test.currentStateForPlanning({ ...legacy, schemaVersion: 12 }),
+    () => planner._test.currentStateForPlanning({ ...legacy, schemaVersion: 13 }),
     (error) => error.code === 'STATE_SCHEMA_UNSUPPORTED',
   )
 })
@@ -1572,7 +1572,7 @@ test('schema v7 remains usable across start, claim, finalize, and status without
 
 test('future user-state schemas fail closed before start or finalize can write', async () => {
   reset()
-  const futureStartState = { ...get('meal_user_states', owner), schemaVersion: 12 }
+  const futureStartState = { ...get('meal_user_states', owner), schemaVersion: 13 }
   put('meal_user_states', owner, futureStartState)
   collectionStore('meal_ai_controls')
   const beforeStart = storesSnapshot()
@@ -1584,7 +1584,7 @@ test('future user-state schemas fail closed before start or finalize can write',
 
   reset()
   const final = finalClaimTask(109, 42)
-  const futureFinalizeState = { ...stateWithPlans({ stateRevision: 4 }), schemaVersion: 12 }
+  const futureFinalizeState = { ...stateWithPlans({ stateRevision: 4 }), schemaVersion: 13 }
   put('meal_user_states', owner, futureFinalizeState)
   put('meal_ai_tasks', final.task._id, planner._test.taskData(final.task))
   put('meal_ai_controls', owner, { owner, activeTaskId: final.task._id, generationEpoch: 42 })

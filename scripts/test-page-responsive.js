@@ -26,6 +26,7 @@ const pageSources = {
   planner: read('miniprogram/pages/planner/planner.wxss'),
   profile: read('miniprogram/pages/profile/profile.wxss'),
   water: read('miniprogram/pages/water-reminder/water-reminder.wxss'),
+  library: read('miniprogram/pages/recipe-library/recipe-library.wxss'),
 }
 const pageRules = Object.fromEntries(Object.entries(pageSources).map(([name, source]) => [name, parseWxss(source)]))
 const globalRules = parseWxss(globalStyles)
@@ -33,6 +34,7 @@ const mealCardRules = parseWxss(read('miniprogram/components/meal-card/meal-card
 const mealEditSource = read('miniprogram/pages/meal-edit/meal-edit.js')
 const mealEditMarkup = read('miniprogram/pages/meal-edit/meal-edit.wxml')
 const secondaryNavigationPages = [
+  ['library', 'miniprogram/pages/recipe-library/recipe-library.js', 'miniprogram/pages/recipe-library/recipe-library.wxml', 'miniprogram/pages/recipe-library/recipe-library.wxss'],
   ['planner', 'miniprogram/pages/planner/planner.js', 'miniprogram/pages/planner/planner.wxml', 'miniprogram/pages/planner/planner.wxss'],
   ['preview', 'miniprogram/pages/plan-preview/plan-preview.js', 'miniprogram/pages/plan-preview/plan-preview.wxml', 'miniprogram/pages/plan-preview/plan-preview.wxss'],
   ['history', 'miniprogram/pages/plan-history/plan-history.js', 'miniprogram/pages/plan-history/plan-history.wxml', 'miniprogram/pages/plan-history/plan-history.wxss'],
@@ -330,4 +332,12 @@ for (const viewport of [...portraitViewports, landscapeViewport]) {
   assert.strictEqual(computedStyle(pageRules.preview, '.comparison-title', viewport)['overflow-wrap'], 'anywhere')
 }
 
+for (const viewport of [...portraitViewports, landscapeViewport]) {
+  for (const selector of ['.library-page button', '.target-picker', '.review-label', '.search-input']) {
+    assert(lengthToPx(computedStyle(pageRules.library, selector, viewport)['min-height'], viewport.width) >= 48,
+      `${selector} 收藏控件至少 48px`)
+  }
+  assert.strictEqual(computedStyle(pageRules.library, '.change-row', viewport)['flex-wrap'], 'wrap')
+  assert.strictEqual(computedStyle(pageRules.library, '.recipe-copy', viewport)['overflow-wrap'], 'anywhere')
+}
 console.log('page responsive container tests passed')

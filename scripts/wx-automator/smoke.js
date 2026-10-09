@@ -32,6 +32,7 @@ const ROUTES = [
   'pages/planner/planner',
   'pages/plan-preview/plan-preview',
   'pages/plan-history/plan-history',
+  'pages/recipe-library/recipe-library',
   'pages/health/health',
   'pages/shopping/shopping',
   'pages/guide/guide',

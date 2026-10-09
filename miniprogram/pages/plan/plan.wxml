@@ -52,6 +52,8 @@
       </view>
     </view>
 
+    <button class="secondary-button" bindtap="openFavorites" hover-class="button-hover">我的收藏 · 再次安排餐食</button>
+
     <block wx:else>
       <view class="plan-period" aria-label="选择餐单周和日期">
         <view wx:if="{{weeks.length > 1}}" class="week-selector" aria-role="group" aria-label="选择餐单周">
@@ -101,7 +103,7 @@
           <text class="meal-count">{{selectedDay.mealCount}} 餐</text>
         </view>
         <view wx:if="{{selectedDay.meals.length}}" class="meal-list">
-          <meal-card wx:for="{{selectedDay.meals}}" wx:key="mealId" meal="{{item}}" tone="{{item.scenario === 'workout' ? 'workout' : (item.scenario === 'rest' ? 'rest' : item.type)}}" editable replaceable bind:edit="editMeal" bind:replace="replaceMeal" data-id="{{item.mealId}}"></meal-card>
+          <meal-card wx:for="{{selectedDay.meals}}" wx:key="mealId" meal="{{item}}" tone="{{item.scenario === 'workout' ? 'workout' : (item.scenario === 'rest' ? 'rest' : item.type)}}" editable replaceable favoritable bind:edit="editMeal" bind:replace="replaceMeal" bind:favorite="openFavorites" data-id="{{item.mealId}}"></meal-card>
         </view>
         <view wx:else class="status-panel compact">
           <text class="status-title">当天暂无餐次</text>

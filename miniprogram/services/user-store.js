@@ -407,7 +407,7 @@ class UserStore {
       .catch((error) => {
         if (!this.isCurrentNamespace(namespace)) throw error
         if (initEpoch !== this.initEpoch) return this.data
-        const canRestoreCache = Boolean(this.data.activePlan || this.data.draftPlan
+        const canRestoreCache = Boolean(this.data.activePlan || this.data.draftPlan || this.data.favoriteRecipes.length
           || hasPending(this.pending) || this.hasCachedGenerationPreferences)
         this.state = canRestoreCache ? 'offline' : 'error'
         this.error = error.message || '云端数据加载失败'
@@ -604,6 +604,20 @@ class UserStore {
   }
 
   savePreferences(preferences) { return this.patch({ generationPreferences: preferences }, { immediate: true }) }
+
+  async changeFavorite(action, payload, expectedStateRevision) {
+    if (!['addFavorite', 'removeFavorite', 'applyFavorite'].includes(action)) throw new Error('不支持的收藏操作')
+    const namespace = this.requireNamespace()
+    await this.flush()
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    if (!Number.isSafeInteger(expectedStateRevision) || this.data.stateRevision !== expectedStateRevision) {
+      const error = new Error('餐单或收藏已变化，请刷新后重新确认'); error.code = 'STATE_REVISION_CONFLICT'; throw error
+    }
+    const data = await callFunction('userData', action, {
+      ...payload, expectedStateRevision, expectedCacheNamespace: namespace, clientSchemaVersion: CURRENT_SCHEMA,
+    })
+    return this.replaceFromCloud(data, namespace)
+  }
 
   setMealOverride(mealId, value, options = { immediate: true }) {
     if (!validMealOverrideId(mealId)) return Promise.reject(new Error('餐食标识无效'))

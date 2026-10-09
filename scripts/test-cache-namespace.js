@@ -1588,7 +1588,7 @@ async function testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits() {
   assert.strictEqual(storage.get(pendingKey).mealOverrideOperations[mealId].value.ingredientItems[0].quantity, 3)
   cloudHandler = async (_name, action, payload) => {
     assert.strictEqual(action, 'saveState')
-    assert.strictEqual(payload.clientSchemaVersion, 11)
+    assert.strictEqual(payload.clientSchemaVersion, 12)
     return { ...restarted.data, ...payload.state, stateRevision: 1 }
   }
   await restarted.flush()
@@ -1649,7 +1649,7 @@ async function testCookingPreferencesOfflineRecoveryAndIsolation() {
   assert.deepStrictEqual(restored.data, beforeInvalid, 'invalid input must not clear cached meals or preferences')
   cloudHandler = async (_name, action, payload) => {
     assert.strictEqual(action, 'saveState')
-    assert.strictEqual(payload.clientSchemaVersion, 11)
+    assert.strictEqual(payload.clientSchemaVersion, 12)
     assert.deepStrictEqual(payload.state.generationPreferences, preferences)
     return { ...restored.data, ...payload.state, stateRevision: 1 }
   }
@@ -1665,7 +1665,39 @@ async function testCookingPreferencesOfflineRecoveryAndIsolation() {
 }
 function copyForCooking(value) { return JSON.parse(JSON.stringify(value)) }
 
+async function testFavoritesCacheAndLateIdentityResponses() {
+  const { fixture } = require('./test-recipe-library')
+  const key = `meal_user_state_v3_${namespaceA}`
+  storage.set(key, fixture(1)); storage.delete(`meal_user_pending_v1_${namespaceA}`)
+  const member = new FakeMembershipStore(namespaceA), store = new UserStore(member)
+  store.bindNamespace()
+  let finish
+  cloudHandler = (name, action, payload) => {
+    assert.strictEqual(name, 'userData'); assert.strictEqual(action, 'addFavorite')
+    assert.strictEqual(payload.expectedCacheNamespace, namespaceA)
+    assert.strictEqual(payload.clientSchemaVersion, 12)
+    return new Promise(resolve => { finish = resolve })
+  }
+  const request = store.changeFavorite('addFavorite', { mealId: 'meal-0-breakfast', expectedPlanId: 'test-library-plan' }, 3)
+  await new Promise(resolve => setImmediate(resolve))
+  member.switchTo(namespaceB)
+  finish({ ...fixture(1), stateRevision: 4 })
+  await assert.rejects(request, /身份已变化/)
+  assert.deepStrictEqual(store.data.favoriteRecipes, [])
+  const favorite = require('../shared/recipe-library').add(fixture(1), 'meal-0-breakfast', 'fav_' + 'd'.repeat(32), '2026-10-09T00:00:00.000Z')
+  storage.set(key, { ...favorite, activePlan: null, activePlanId: '', planUiStateByPlan: {} })
+  const restored = new UserStore(new FakeMembershipStore(namespaceA))
+  cloudHandler = async () => { throw new Error('offline') }
+  await restored.init()
+  assert.strictEqual(restored.state, 'offline')
+  assert.deepStrictEqual(restored.data.favoriteRecipes, favorite.favoriteRecipes)
+  await assert.rejects(restored.changeFavorite('removeFavorite', { favoriteId: favorite.favoriteRecipes[0].id }, 2), /重新确认/)
+  assert.strictEqual(restored.data.favoriteRecipes.length, 1)
+  assert.deepStrictEqual(storage.get(key).favoriteRecipes, favorite.favoriteRecipes)
+}
+
 async function main() {
+  await testFavoritesCacheAndLateIdentityResponses()
   await testCookingPreferencesOfflineRecoveryAndIsolation()
   await testSingleMealConfirmationNamespaceAndRevision()
   await testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits()

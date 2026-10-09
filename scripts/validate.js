@@ -186,7 +186,7 @@ validateReleaseGate({
   },
   versionTag: versionTag(releaseManifest.workingVersion),
 })
-assert.strictEqual(releaseManifest.stateSchemaVersion, 11, '当前发布清单必须使用 schema v11')
+assert.strictEqual(releaseManifest.stateSchemaVersion, 12, '当前发布清单必须使用 schema v12')
 assert.strictEqual(stateSchema.CURRENT_SCHEMA, releaseManifest.stateSchemaVersion, '共享 schema 与版本清单不一致')
 assert.strictEqual(aiPlanner.CONTRACT_VERSION, releaseManifest.aiContractVersion, 'AI 契约与版本清单不一致')
 assert.strictEqual(aiPlanner.PLANNER_VERSION, releaseManifest.aiPlannerVersion, 'AI 生成器与版本清单不一致')
@@ -242,10 +242,12 @@ const sharedSource = read('shared/user-state.js')
   .forEach(file => assert.strictEqual(read(file), read('shared/meal-conditions.js'), `${file} 未与条件共享逻辑同步`))
 ;['miniprogram/services/meal-replacement.js', 'cloudfunctions/userData/meal-replacement.js', 'cloudfunctions/aiPlanner/meal-replacement.js']
   .forEach(file => assert.strictEqual(read(file), read('shared/meal-replacement.js'), `${file} 未与单餐替换共享逻辑同步`))
+;['miniprogram/services/recipe-library.js', 'cloudfunctions/userData/recipe-library.js', 'cloudfunctions/aiPlanner/recipe-library.js']
+  .forEach(file => assert.strictEqual(read(file), read('shared/recipe-library.js'), `${file} 未与收藏共享逻辑同步`))
 assert.strictEqual(read('cloudfunctions/privacy/membership-core.js'), read('cloudfunctions/membership/core.js'), 'privacy 成员控制逻辑未同步')
 
 const fresh = stateSchema.defaults()
-assert.strictEqual(fresh.schemaVersion, 11)
+assert.strictEqual(fresh.schemaVersion, 12)
 assert.strictEqual(fresh.waterReminder.enabled, false, '新用户喝水提醒必须默认关闭')
 assert.strictEqual(fresh.activePlan, null, '新用户不能自动获得静态计划')
 assert.strictEqual(fresh.draftPlan, null, '新用户默认不应存在候选计划')
@@ -595,6 +597,8 @@ const testScripts = [
   'scripts/test-meal-shopping.js',
   'scripts/test-cooking-state.js',
   'scripts/test-cooking-pipeline.js',
+  'scripts/test-recipe-library.js',
+  'scripts/test-recipe-library-page.js',
   'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',

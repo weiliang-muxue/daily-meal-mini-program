@@ -1,6 +1,7 @@
 'use strict'
 
-const CURRENT_SCHEMA = 11
+const CURRENT_SCHEMA = 12
+const recipeLibrary = require('./recipe-library')
 const mealShopping = require('./meal-shopping')
 const mealReplacement = require('./meal-replacement')
 const mealConditions = require('./meal-conditions')
@@ -238,6 +239,7 @@ function defaults() {
     dinnerModeByDay: {},
     planUiStateByPlan: {},
     mealOverrides: {},
+    favoriteRecipes: [],
     checkedShoppingIds: [],
     customReminders: [],
     settings: { calciumAnchorReminder: false, vitaminDReminder: false },
@@ -754,6 +756,7 @@ function sanitizeState(raw, options = {}) {
     dinnerModeByDay: activeUi.dinnerModeByDay,
     planUiStateByPlan,
     mealOverrides,
+    favoriteRecipes: recipeLibrary.sanitizeFavorites(value.favoriteRecipes),
     checkedShoppingIds: activeUi.checkedShoppingIds,
     customReminders: sanitizeReminders(value.customReminders),
     settings: {

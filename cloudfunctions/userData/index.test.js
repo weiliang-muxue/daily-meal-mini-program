@@ -377,20 +377,20 @@ async function testMigrations() {
     raw.settings.futureServerSetting = { fromSchema: schemaVersion }
     raw.generationPreferences.futureServerPreference = { fromSchema: schemaVersion }
     const migrated = userData._test.migrateStored(raw)
-    assert.strictEqual(migrated.schemaVersion, 11)
+    assert.strictEqual(migrated.schemaVersion, 12)
     assert.strictEqual(migrated.waterReminder.enabled, false)
     assert.deepStrictEqual(migrated.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(migrated.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     reset(raw)
     const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
     const stored = get('meal_user_states', owner)
-    assert.strictEqual(bootstrapped.schemaVersion, 11)
+    assert.strictEqual(bootstrapped.schemaVersion, 12)
     assert.strictEqual(bootstrapped.waterReminder.enabled, false)
     assert.deepStrictEqual(stored.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
   }
-  const unsupported = { ...currentState(), schemaVersion: 12 }
+  const unsupported = { ...currentState(), schemaVersion: 13 }
   reset(unsupported)
   await assert.rejects(
     userData._test.bootstrap(owner, cacheNamespace),
@@ -425,7 +425,7 @@ function testStateWritesUseTopLevelAtomicReplacement() {
   const replacement = userData._test.atomicStateFields(state)
   assert.deepStrictEqual(Object.keys(replacement).sort(), [
     'activePlan', 'activePlanId', 'checkedShoppingIds', 'customReminders', 'defaultDinnerMode',
-    'dinnerModeByDay', 'draftPlan', 'generationPreferences', 'mealOverrides', 'planHistory',
+    'dinnerModeByDay', 'draftPlan', 'favoriteRecipes', 'generationPreferences', 'mealOverrides', 'planHistory',
     'planUiStateByPlan', 'schemaVersion', 'selectedDay', 'selectedDayId', 'settings', 'stateRevision',
     'waterReminder',
   ])
@@ -499,12 +499,12 @@ async function testStructuredMealShoppingSave() {
   const originalContext = cloudStub.getWXContext
   cloudStub.getWXContext = () => ({ OPENID: owner })
   try {
-    for (const clientSchemaVersion of [undefined, 8, 9, 10, 12]) {
+    for (const clientSchemaVersion of [undefined, 8, 9, 10, 11, 13]) {
       const reply = await userData.main({ action: 'saveState', clientSchemaVersion, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
       assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED')
       assert.deepStrictEqual(get('meal_user_states', owner), beforeInvalid)
     }
-    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 11, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
+    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 12, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
     assert.strictEqual(reply.success, true)
     assert.deepStrictEqual(reply.data.checkedShoppingIds, ['eggs'])
   } finally { cloudStub.getWXContext = originalContext }
@@ -573,7 +573,7 @@ async function testCookingConditionsAndPantryTransactions() {
   reset(source)
   const before = get('meal_user_states', owner)
   const upgraded = await userData._test.bootstrap(owner, cacheNamespace)
-  assert.strictEqual(upgraded.schemaVersion, 11)
+  assert.strictEqual(upgraded.schemaVersion, 12)
   assert.deepStrictEqual(upgraded.activePlan, userData._test.migrateStored(before).activePlan)
   assert.strictEqual(upgraded.stateRevision, 4)
   const persisted = get('meal_user_states', owner)
@@ -603,7 +603,56 @@ async function testCookingConditionsAndPantryTransactions() {
   assert.deepStrictEqual(changed.planHistory, upgraded.planHistory)
 }
 
+async function testPrivateFavoritesTransactions() {
+  const { fixture } = require('../../scripts/test-recipe-library')
+  const replacement = require('./meal-replacement')
+  reset(fixture(7))
+  const other = { ...defaults(), stateRevision: 20 }
+  put('meal_members', 'test-other-member', { status: 'active', cacheNamespace: rotatedCacheNamespace })
+  put('meal_user_states', 'test-other-member', other)
+  const payload = { expectedCacheNamespace: cacheNamespace, expectedStateRevision: 3,
+    expectedPlanId: 'test-library-plan', mealId: 'meal-0-breakfast', recipe: { title: 'client-forged-content' } }
+  const before = get('meal_user_states', owner)
+  const added = await userData._test.changeFavorite(owner, 'addFavorite', payload)
+  assert.strictEqual(added.favoriteRecipes.length, 1)
+  assert.strictEqual(added.favoriteRecipes[0].recipe.title, '虚构breakfast', 'server captures stored content, not client recipe')
+  assert.strictEqual(added.stateRevision, 4)
+  assert.deepStrictEqual(added.activePlan, before.activePlan)
+  assert.deepStrictEqual(get('meal_user_states', 'test-other-member'), other)
+  await assert.rejects(userData._test.changeFavorite(owner, 'addFavorite', payload), error => error.code === 'STATE_REVISION_CONFLICT')
+  const duplicate = await userData._test.changeFavorite(owner, 'addFavorite', { ...payload, expectedStateRevision: 4 })
+  assert.strictEqual(duplicate.favoriteRecipes.length, 1)
+  assert.strictEqual(duplicate.stateRevision, 4)
+  const forged = await userData._test.saveState(owner, { favoriteRecipes: [] }, 4, cacheNamespace)
+  assert.deepStrictEqual(forged.favoriteRecipes, added.favoriteRecipes, 'generic save cannot replace or delete private snapshots')
+  const favoriteId = added.favoriteRecipes[0].id, target = replacement.createTarget(forged, 'meal-0-rest')
+  const snapshot = get('meal_user_states', owner)
+  const apply = { favoriteId, target, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace }
+  await assert.rejects(userData._test.changeFavorite(owner, 'applyFavorite', { ...apply, expectedCacheNamespace: rotatedCacheNamespace }), error => error.code === 'STALE_DATA_GENERATION')
+  await assert.rejects(userData._test.changeFavorite('test-other-member', 'applyFavorite', { ...apply, expectedStateRevision: 20, expectedCacheNamespace: rotatedCacheNamespace }), error => error.code === 'RECIPE_LIBRARY_CONFLICT')
+  assert.deepStrictEqual(get('meal_user_states', owner), snapshot)
+  put('meal_members', owner, { status: 'deleting', cacheNamespace })
+  await assert.rejects(userData._test.changeFavorite(owner, 'applyFavorite', apply), error => error.code === 'ACCOUNT_DELETION_IN_PROGRESS')
+  assert.deepStrictEqual(get('meal_user_states', owner), snapshot)
+  put('meal_members', owner, { status: 'active', cacheNamespace })
+  const applied = await userData._test.changeFavorite(owner, 'applyFavorite', apply)
+  assert.strictEqual(applied.mealOverrides['meal-0-rest'].title, '虚构breakfast')
+  assert.deepStrictEqual(applied.checkedShoppingIds, [])
+  assert.deepStrictEqual(applied.activePlan, before.activePlan)
+  const removed = await userData._test.changeFavorite(owner, 'removeFavorite', { favoriteId, expectedStateRevision: 6, expectedCacheNamespace: cacheNamespace })
+  assert.deepStrictEqual(removed.favoriteRecipes, [])
+  assert.deepStrictEqual(removed.mealOverrides, applied.mealOverrides)
+  assert.deepStrictEqual(get('meal_user_states', 'test-other-member'), other)
+  const originalContext = cloudStub.getWXContext
+  cloudStub.getWXContext = () => ({ OPENID: owner })
+  try {
+    const reply = await userData.main({ action: 'addFavorite', ...payload, clientSchemaVersion: 11, expectedStateRevision: 7 })
+    assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED')
+  } finally { cloudStub.getWXContext = originalContext }
+}
+
 ;(async () => {
+  await testPrivateFavoritesTransactions()
   await testCookingConditionsAndPantryTransactions()
   await testSingleMealConfirmation()
   await testStructuredMealShoppingSave()

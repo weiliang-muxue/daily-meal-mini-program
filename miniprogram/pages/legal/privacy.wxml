@@ -19,7 +19,7 @@
       <text class="legal-section-title">一、收集的数据</text>
       <text class="legal-item">微信登录提供的身份信息仅用于确认成员资格和隔离每个人的数据；小程序前端不保存登录密钥或展示微信身份标识。</text>
       <text class="legal-item">用户主动填写的昵称、饮食目标、风格、忌口、健康约束、运动安排、备注和提醒设置。</text>
-      <text class="legal-item">候选、当前及历史餐单，采购勾选和个人餐食调整。</text>
+      <text class="legal-item">候选、当前及历史餐单，采购勾选、个人餐食调整和你主动保存的收藏副本。收藏仅供当前微信身份查看、移除及再次安排，不自动发送给 AI；清空私人数据时一并删除。</text>
       <text class="legal-item">用户主动记录的体重、运动情况，以及主动选择的头像和健康照片。</text>
       <text class="legal-item">用户主动点击绑定手机号后，只保存是否绑定、后四位掩码和绑定时间。</text>
       <text class="legal-paragraph">当前功能不读取微信运动、医疗检查结果、通讯录、位置或相册列表，也不会自动获取完整微信资料或保存完整手机号。</text>

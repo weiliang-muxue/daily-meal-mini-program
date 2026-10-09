@@ -176,6 +176,10 @@ Page({
   },
 
   openPlanner() { wx.navigateTo({ url: '/pages/planner/planner' }) },
+  openFavorites(event) {
+    const mealId = event && event.detail && event.detail.mealId
+    wx.navigateTo({ url: '/pages/recipe-library/recipe-library' + (mealId ? `?mealId=${encodeURIComponent(mealId)}` : '') })
+  },
   openDraft() { wx.navigateTo({ url: '/pages/plan-preview/plan-preview' }) },
   openHistory() { wx.navigateTo({ url: '/pages/plan-history/plan-history' }) },
   openBasis() { wx.navigateTo({ url: '/pages/guide/guide' }) },

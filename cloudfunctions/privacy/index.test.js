@@ -923,7 +923,7 @@ async function soleOwnerClearRetainsMinimalAdministrator() {
       schemaVersion: 2, nickname: 'private nickname', avatarFileId: oldAvatar,
       phoneBound: true, maskedPhone: '****8000', phoneBoundAt: 999,
     } },
-    meal_user_states: { owner: { schemaVersion: 6, activePlan: { title: 'private meal' } } },
+    meal_user_states: { owner: { schemaVersion: 12, activePlan: { title: 'private meal' }, favoriteRecipes: [{ id: 'fictional-favorite', recipe: { title: 'private saved meal' } }] } },
     health_daily: { health: {
       owner: 'owner', date: '2026-08-28', photoFileId: oldPhoto,
       weight: 60, exercise: { completed: true }, note: 'private note',

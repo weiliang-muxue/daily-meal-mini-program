@@ -1,0 +1,30 @@
+.library-page { font-size: 16px; line-height: 1.6; }
+.page-title { display: block; margin: 24px 0 8px; font-size: var(--type-page-title); font-weight: 750; }
+.library-page button, .target-picker, .review-label, .search-input { min-height: 48px; }
+.library-page button { width: 100%; margin: 12px 0; padding: 12px 16px; font-size: 16px; overflow-wrap: anywhere; }
+.recipe-panel { margin-top: 24px; padding: 16px; min-width: 0; }
+.recipe-panel .section-title { margin-top: 0; }
+.recipe-title { display: block; font-size: 18px; font-weight: 700; }
+.recipe-copy, .section-copy, .field-label, .notice { display: block; margin: 12px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.field-label { font-weight: 650; }
+.search-input { width: 100%; background: var(--input-surface); padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); font-size: 16px; }
+.recipe-row { display: flex; flex-direction: column; align-items: flex-start; text-align: left; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); color: var(--ink); }
+.recipe-row .section-copy { margin: 4px 0 0; font-size: 14px; }
+.recipe-row.selected { border: 2px solid var(--primary); background: var(--primary-soft); }
+.target-picker { padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); color: var(--primary); overflow-wrap: anywhere; }
+.preview-panel { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.change-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.review-label { display: flex; align-items: center; gap: 12px; padding: 16px 0; }
+.review-label text { min-width: 0; flex: 1; }
+.remove-button { color: var(--danger); background: var(--surface); border: 1px solid var(--danger-line); border-radius: var(--radius-control); }
+.error-message { color: var(--danger); margin: 16px 0; overflow-wrap: anywhere; }
+.notice { color: var(--primary); }
+.button-hover { background: var(--pressed); }
+.library-page .page-navigation { box-sizing: border-box; width: 48px; min-width: 48px; max-width: 48px; height: 48px; min-height: 48px; margin: 0 0 12rpx; padding: 0; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--primary); }
+.page-navigation::after { border: 0; }
+.page-navigation-pressed { background: var(--pressed); opacity: .78; }
+.page-navigation-icon { position: relative; width: 24px; height: 24px; color: inherit; }
+.page-navigation-icon.back::before { content: ""; position: absolute; left: 5px; top: 6px; width: 10px; height: 10px; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; transform: rotate(45deg); }
+.page-navigation-icon.back::after { content: ""; position: absolute; left: 6px; top: 11px; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
+.page-navigation-icon.home::before { content: ""; position: absolute; left: 6px; top: 3px; width: 11px; height: 11px; border-top: 2px solid currentColor; border-left: 2px solid currentColor; transform: rotate(45deg); }
+.page-navigation-icon.home::after { content: ""; position: absolute; left: 5px; bottom: 3px; width: 14px; height: 11px; border: 2px solid currentColor; border-top: 0; border-radius: 0 0 2px 2px; }
