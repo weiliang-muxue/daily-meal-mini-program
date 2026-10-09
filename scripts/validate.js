@@ -604,6 +604,7 @@ const testScripts = [
   'scripts/test-recipe-catalog-page.js',
   'scripts/test-catalog-ui-fixture.js',
   'scripts/test-meal-edit-ui-fixture.js',
+  'scripts/test-meal-edit-dialogs.js',
   'scripts/test-recipe-library-page.js',
   'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',

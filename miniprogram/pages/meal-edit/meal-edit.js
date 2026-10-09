@@ -188,8 +188,10 @@ Page({
     return formDirty
   },
   async confirmDiscardChanges() {
+    if (this.unloaded || this.resetPromptPending) return false
     if (!this.refreshDirtyState()) return true
     if (this.discardPromptPending) return false
+    const namespace = membershipStore.cacheNamespace
     this.discardPromptPending = true
     const confirmed = await new Promise((resolve) => {
       try {
@@ -205,12 +207,15 @@ Page({
       } catch (_) { resolve(false) }
     })
     this.discardPromptPending = false
+    if (this.unloaded || namespace !== membershipStore.cacheNamespace) return false
     if (confirmed) this.setUnloadAlert(false)
     return confirmed
   },
   async navigateFromPage() {
-    if (this.data.saving || this.data.resetting) return false
+    if (this.unloaded || this.resetPromptPending || this.data.saving || this.data.resetting) return false
+    const namespace = membershipStore.cacheNamespace
     if (!await this.confirmDiscardChanges()) return false
+    if (this.unloaded || namespace !== membershipStore.cacheNamespace) return false
     return returnFromSecondaryPage()
   },
 
@@ -362,9 +367,20 @@ Page({
   },
 
   reset() {
-    if (this.data.saving || this.data.resetting || this.data.previewing) return
-    wx.showModal({ title: '恢复原计划内容？', content: '只恢复这一餐；采购清单将按原食材重新计算，受影响项需重新勾选，其他勾选保留。', confirmText: '恢复', success: async ({ confirm }) => {
-      if (!confirm) return
+    if (this.unloaded || this.resetPromptPending || this.discardPromptPending || this.data.saving || this.data.resetting || this.data.previewing) return
+    this.resetPromptPending = true
+    let handled = false
+    const closePrompt = () => {
+      if (handled) return false
+      handled = true
+      this.resetPromptPending = false
+      return true
+    }
+    const fail = () => {
+      if (closePrompt() && this.currentContext()) this.setData({ inlineError: '暂时无法打开确认，请重试' })
+    }
+    try { wx.showModal({ title: '恢复原计划内容？', content: '只恢复这一餐；采购清单将按原食材重新计算，受影响项需重新勾选，其他勾选保留。', confirmText: '恢复', fail, success: async ({ confirm }) => {
+      if (!closePrompt() || !confirm || this.unloaded) return
       if (!this.currentContext() || JSON.stringify(userStore.data.mealOverrides[this.data.mealId] || null) !== this.loadedOverrideSignature) { this.setData({ inlineError: '餐食已变化，请重新读取后再恢复' }); return }
       this.setData({ resetting: true })
       try {
@@ -380,6 +396,6 @@ Page({
         this.setData({ resetting: false, inlineError: userStore.state === 'offline'
           ? '恢复操作尚未同步到云端，本机已保留；联网后可重试。' : error.message || '恢复失败，请重试' }, () => this.refreshDirtyState())
       }
-    } })
+    } }) } catch (_) { fail() }
   },
 })

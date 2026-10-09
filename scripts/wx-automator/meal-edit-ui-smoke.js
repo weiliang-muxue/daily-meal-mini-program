@@ -21,6 +21,19 @@ async function guard(miniProgram) {
   }
   throw Object.assign(Error('Fixture not initialized'), { code: 'FIXTURE_NOT_READY' })
 }
+async function waitDiscardCancelled(miniProgram, { timeoutMs = 10000 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  do {
+    const finished = await call('DISCARD_CALLBACK_FINISHED', () => miniProgram.evaluate(() => {
+      const page = getCurrentPages().slice(-1)[0]
+      return Boolean(page && page.route === 'pages/meal-edit/meal-edit' && page.discardPromptPending === false)
+    }))
+    if (finished === true) return
+    if (Date.now() >= deadline) break
+    await new Promise(resolve => setTimeout(resolve, 100))
+  } while (Date.now() <= deadline)
+  throw Object.assign(Error('Native cancel returned without a verified discard callback'), { code: 'NATIVE_MODAL_NO_EFFECT' })
+}
 async function runScenario(miniProgram, directory, record) {
   await guard(miniProgram)
   // These controls exist only in the generated memory fixture. Never load a real store.
@@ -133,6 +146,67 @@ async function runScenario(miniProgram, directory, record) {
   await current(HOME)
   assert.deepEqual(await snapshot(), after)
   record('reopen-restores-saved-edit-and-clean-back', {})
+
+  // Exercise actual native dialogs; never mock showModal or its callbacks here.
+  async function modal(confirmed) {
+    await call('SETTLE_NATIVE_MODAL', () => page.waitFor(500))
+    await call(confirmed ? 'CONFIRM_NATIVE_MODAL' : 'CANCEL_NATIVE_MODAL', () => confirmed
+      ? miniProgram.native().confirmModal() : miniProgram.native().cancelModal())
+  }
+  page = await openMeal()
+  const draftTitle = '尚未保存的虚构餐名'
+  await input(page, '#meal-title-input', draftTitle)
+  await settled('dirty title', async () => await data(page, 'formDirty') === true)
+  await tap(page, '.page-navigation')
+  await modal(false)
+  await waitDiscardCancelled(miniProgram)
+  await current(EDIT)
+  assert.equal((await data(page, 'form')).title, draftTitle)
+  assert.equal(await data(page, 'formDirty'), true)
+  assert.deepEqual(await snapshot(), after)
+  record('native-discard-cancel-keeps-draft-and-saved-override', {})
+  await tap(page, '.page-navigation')
+  await modal(true)
+  await current(HOME)
+  assert.deepEqual(await snapshot(), after)
+  page = await openMeal()
+  assert.notEqual((await data(page, 'form')).title, draftTitle)
+  assert.equal((await data(page, 'ingredientRows'))[0].quantity, 80)
+  assert.equal(await data(page, 'formDirty'), false)
+  record('native-discard-confirm-drops-only-unsaved-draft', {})
+  await tap(page, '.reset')
+  await modal(false)
+  await current(EDIT)
+  assert.equal(await data(page, 'hasOverride'), true)
+  assert.deepEqual(await snapshot(), after)
+  record('native-reset-cancel-keeps-saved-override', {})
+  await call('FAIL_FICTIONAL_RESET', () => miniProgram.evaluate(() => getApp().mealEditUiTest.failSave(true)))
+  await tap(page, '.reset')
+  await modal(true)
+  await settled('reset failure', async () => !await data(page, 'resetting') && Boolean(await data(page, 'inlineError')))
+  assert.equal(await data(page, 'hasOverride'), true)
+  assert.equal((await data(page, 'ingredientRows'))[0].quantity, 80)
+  assert.deepEqual(await snapshot(), after)
+  record('native-reset-failure-keeps-saved-override', {})
+  await capture(page, 'meal-edit-reset-error', true)
+  await call('ALLOW_FICTIONAL_RESET', () => miniProgram.evaluate(() => getApp().mealEditUiTest.failSave(false)))
+  await tap(page, '.reset')
+  await modal(true)
+  await current(HOME)
+  const restored = await snapshot()
+  assert.equal(restored.writes, 2)
+  assert.deepEqual(restored.data.activePlan, before.data.activePlan)
+  assert.deepEqual(restored.data.mealOverrides, {})
+  assert.deepEqual(restored.data.checkedShoppingIds, ['fixture-eggs'])
+  record('native-reset-confirm-restores-target-and-keeps-unrelated-state', {})
+  page = await openMeal()
+  assert.equal(await data(page, 'hasOverride'), false)
+  assert.equal((await data(page, 'ingredientRows'))[0].quantity, 40)
+  assert.equal(await data(page, 'formDirty'), false)
+  await tap(page, '.page-navigation')
+  await current(HOME)
+  assert.deepEqual(await snapshot(), restored)
+  record('reopen-restored-base-with-no-spurious-dirty-state', {})
 }
 async function main() {
   if (process.argv.length !== 2) throw Error('No arguments accepted')
@@ -146,11 +220,14 @@ async function main() {
   } catch (error) { errorCode = sanitizeCode(error.code || 'NATIVE_CHECK_FAILED'); errorMessage = sanitizeText(error.message, 700) }
   finally { if (!await safeDisconnect(miniProgram)) errorCode = 'DISCONNECT_FAILED' }
   const { reportPath } = finalizeRunReport(run, { fixtureHash: contents().manifest.fixtureHash, fixtureOnly: true,
-    status: errorCode ? 'failed' : 'scenario-passed', errorCode, errorMessage, checks,
+    status: errorCode === 'NATIVE_MODAL_NO_EFFECT' ? 'needs-native-interaction' : errorCode ? 'failed' : 'scenario-passed', errorCode, errorMessage, checks,
     cloudTested: false, persistenceTested: false, realIdentityTested: false, androidIosTested: false,
-    nativeKeyboardGestureTested: false, discardModalTested: false, productionStoreTested: false })
+    nativeKeyboardGestureTested: false,
+    discardModalTested: checks.some(item => item.name === 'native-discard-confirm-drops-only-unsaved-draft'),
+    resetModalTested: checks.some(item => item.name === 'native-reset-confirm-restores-target-and-keeps-unrelated-state'),
+    productionStoreTested: false })
   console.log(JSON.stringify({ reportPath, errorCode, errorMessage, checks: checks.length }))
   if (errorCode) process.exitCode = 1
 }
 if (require.main === module) main().catch(() => { console.error('MEAL_EDIT_UI_RUN_FAILED'); process.exitCode = 1 })
-module.exports = { guard, runScenario }
+module.exports = { guard, runScenario, waitDiscardCancelled }
