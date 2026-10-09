@@ -1,8 +1,9 @@
 'use strict'
 
-const CURRENT_SCHEMA = 10
+const CURRENT_SCHEMA = 11
 const mealShopping = require('./meal-shopping')
 const mealReplacement = require('./meal-replacement')
+const mealConditions = require('./meal-conditions')
 const CURRENT_AI_CONTRACT = 2
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
@@ -91,6 +92,13 @@ function mergeTrustedUnknown(sanitized, trusted, depth = 0, path = []) {
         result[key] = cloneTrustedValue(trusted[key], depth + 1)
       }
     })
+  }
+  // Older editing clients may omit newly introduced metadata. Keep their
+  // serving basis, but do not reattach a trusted old AI time estimate to a
+  // manually changed recipe merely because unknown fields are preserved.
+  if (path.length === 2 && path[0] === 'mealOverrides' && !sanitized.quantityBasis && result.quantityBasis === 'total'
+    && (result.method !== trusted.method || JSON.stringify(result.ingredientItems) !== JSON.stringify(trusted.ingredientItems))) {
+    result.estimatedCookingMinutes = null
   }
   return result
 }
@@ -185,6 +193,7 @@ function assertStateSize(state) {
 
 function defaultGenerationPreferences() {
   return {
+    ...mealConditions.normalizeConditions({}),
     contractVersion: CURRENT_AI_CONTRACT,
     durationDays: MIN_DAYS,
     startDate: '',
@@ -316,6 +325,7 @@ function sanitizeGenerationPreferences(raw) {
     return sanitizeExercise(item, `generationPreferences.exerciseByDay[${index}]`, dayIndex)
   }).sort((left, right) => left.dayIndex - right.dayIndex)
   return {
+    ...mealConditions.normalizeConditions(value),
     contractVersion: CURRENT_AI_CONTRACT,
     durationDays,
     startDate: optionalDate(value.startDate, 'generationPreferences.startDate'),
@@ -341,6 +351,7 @@ function sanitizeGenerationBasis(raw, field) {
   if (!Array.isArray(exerciseInput)) fail(`${field}.exerciseByDay must be an array`)
   if (exerciseInput.length > MAX_DAYS) fail(`${field}.exerciseByDay has too many items`)
   return {
+    ...mealConditions.storedConditions(value),
     mealTypes,
     doubleDinner: mealTypes.includes('dinner') && Boolean(value.doubleDinner),
     goals: uniqueTextArray(value.goals, `${field}.goals`, { maxItems: 10, maxLength: 40 }),
@@ -382,6 +393,7 @@ function sanitizeMeal(raw, field, options = {}) {
     fail(`${field}.ingredients must be a structured array`)
   }
   return {
+    ...mealConditions.storedMealConditions(raw),
     id: cleanText(raw.id, `${field}.id`, 120, { required: true }),
     type,
     scenario,
@@ -633,6 +645,7 @@ function sanitizeMealOverrides(raw, plans) {
     const id = cleanText(key, `mealOverrides key ${index}`, 120, { required: true })
     if (!isObject(item)) fail(`mealOverrides.${id} must be an object`)
     const result = {
+      ...mealConditions.storedMealConditions(item, { allowUnknownTime: true }),
       title: cleanText(item.title, `mealOverrides.${id}.title`, 50),
       ingredients: cleanText(item.ingredients, `mealOverrides.${id}.ingredients`, 500),
       method: cleanText(item.method, `mealOverrides.${id}.method`, 500),

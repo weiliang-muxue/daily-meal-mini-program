@@ -33,6 +33,7 @@ const {
   defaults,
   migrate,
   sanitizeState,
+  sanitizeGenerationPreferences,
   confirmDraft,
   restoreHistory,
 } = require('../shared/user-state')
@@ -196,7 +197,7 @@ async function runPipeline(options) {
   const reloadedStore = new UserStore(members)
   reloadedStore.bindNamespace()
   assert.strictEqual(reloadedStore.data.draftPlan.id, planId)
-  assert.deepStrictEqual(reloadedStore.data.generationPreferences, normalized)
+  assert.deepStrictEqual(reloadedStore.data.generationPreferences, sanitizeGenerationPreferences(normalized))
 
   const confirmed = confirmDraft(reloadedStore.data, response.stateRevision)
   reloadedStore.replaceFromCloud(confirmed, namespace)
@@ -205,7 +206,7 @@ async function runPipeline(options) {
   assert.strictEqual(confirmedReload.data.activePlan.id, planId)
   assert.strictEqual(confirmedReload.data.activePlan.durationDays, options.durationDays)
   assert.deepStrictEqual(confirmedReload.data.activePlan.generationBasis, response.draftPlan.generationBasis)
-  assert.deepStrictEqual(confirmedReload.data.generationPreferences, normalized)
+  assert.deepStrictEqual(confirmedReload.data.generationPreferences, sanitizeGenerationPreferences(normalized))
   return confirmedReload.data.activePlan
 }
 

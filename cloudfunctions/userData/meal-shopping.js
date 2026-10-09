@@ -1,6 +1,7 @@
 'use strict'
 
 // Pure shared projection: no API, account data, storage or third-party code.
+const mealConditions = require('./meal-conditions')
 const text = value => typeof value === 'string' ? value.trim() : ''
 const identity = value => {
   const source = text(value)
@@ -93,6 +94,15 @@ function selectedMeals(plan, state) {
     return alternatives ? meals.filter(meal => meal.type !== 'dinner' || !meal.scenario || meal.scenario === 'default' || meal.scenario === mode) : meals
   })
 }
+function purchases(plan, meals, overrides = {}, allowNew = true) {
+  const groups = inventory(plan, meals, overrides, allowNew)
+  if (!groups) return null
+  const conditions = mealConditions.storedConditions(plan.generationBasis)
+  // Legacy plans have no pantry snapshot. Do not infer one from newer saved
+  // preferences, otherwise an upgrade could change an existing shopping list.
+  if (!conditions.pantryItems) return { groups, coveredGroups: [], unusedPantry: [] }
+  return mealConditions.applyPantry(groups, conditions.pantryItems)
+}
 function shoppingIds(plan, overrides = {}) {
   const ids = new Set(descriptors(plan).map(d => d.item.id))
   if (!allMeals(plan).some(meal => overrides[meal.id] && Array.isArray(overrides[meal.id].ingredientItems))) return ids
@@ -124,12 +134,12 @@ function reconcileChecks(before, after) {
     const selectionChanged = oldMeals.length !== newMeals.length || oldMeals.some((meal, index) => meal.id !== newMeals[index].id)
     // Avoid rebuilding every historical shopping list on each checkbox save.
     if (!selectionChanged && !ingredientTotalsChanged(plan, before.mealOverrides, after.mealOverrides)) continue
-    const left = inventory(plan, oldMeals, before.mealOverrides)
-    const right = inventory(plan, newMeals, after.mealOverrides)
+    const left = purchases(plan, oldMeals, before.mealOverrides)
+    const right = purchases(plan, newMeals, after.mealOverrides)
     // Text-only legacy plans cannot be recomputed reliably; retain their checks.
     if (!left || !right) continue
     const flatten = groups => groups.flatMap(g => g.items.map(i => ({ ...i, category: g.name })))
-    const leftItems = flatten(left), rightItems = flatten(right)
+    const leftItems = flatten(left.groups), rightItems = flatten(right.groups)
     const leftTotals = totalsFor(leftItems), rightTotals = totalsFor(rightItems)
     const removed = new Set()
     ;[...leftItems, ...rightItems].forEach(item => {
@@ -141,4 +151,4 @@ function reconcileChecks(before, after) {
   }
   return { ...after, planUiStateByPlan: byPlan, checkedShoppingIds: activeChecked }
 }
-module.exports = { identity, keyOf, inventory, ingredientsFor, allMeals, selectedDinnerMode, shoppingIds, reconcileChecks }
+module.exports = { identity, keyOf, inventory, purchases, ingredientsFor, allMeals, selectedDinnerMode, shoppingIds, reconcileChecks }

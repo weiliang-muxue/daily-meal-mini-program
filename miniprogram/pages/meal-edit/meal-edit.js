@@ -3,6 +3,7 @@
 const { userStore } = require('../../services/user-store')
 const { membershipStore } = require('../../services/membership-store')
 const editor = require('../../services/meal-editor')
+const { storedMealConditions } = require('../../services/meal-conditions')
 
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 const SCENARIO_LABELS = { default: '', rest: '不运动备选', workout: '运动备选' }
@@ -87,6 +88,7 @@ function findPlanMeal(plan, mealId) {
 
 function baseForm(meal) {
   return {
+    ...storedMealConditions(meal),
     title: cleanText(meal && meal.title, 50),
     ingredients: displayIngredients(meal && meal.ingredients),
     method: cleanText(meal && meal.method, 500),

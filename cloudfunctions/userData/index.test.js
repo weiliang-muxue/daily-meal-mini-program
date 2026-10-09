@@ -377,20 +377,20 @@ async function testMigrations() {
     raw.settings.futureServerSetting = { fromSchema: schemaVersion }
     raw.generationPreferences.futureServerPreference = { fromSchema: schemaVersion }
     const migrated = userData._test.migrateStored(raw)
-    assert.strictEqual(migrated.schemaVersion, 10)
+    assert.strictEqual(migrated.schemaVersion, 11)
     assert.strictEqual(migrated.waterReminder.enabled, false)
     assert.deepStrictEqual(migrated.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(migrated.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     reset(raw)
     const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
     const stored = get('meal_user_states', owner)
-    assert.strictEqual(bootstrapped.schemaVersion, 10)
+    assert.strictEqual(bootstrapped.schemaVersion, 11)
     assert.strictEqual(bootstrapped.waterReminder.enabled, false)
     assert.deepStrictEqual(stored.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
   }
-  const unsupported = { ...currentState(), schemaVersion: 11 }
+  const unsupported = { ...currentState(), schemaVersion: 12 }
   reset(unsupported)
   await assert.rejects(
     userData._test.bootstrap(owner, cacheNamespace),
@@ -499,12 +499,12 @@ async function testStructuredMealShoppingSave() {
   const originalContext = cloudStub.getWXContext
   cloudStub.getWXContext = () => ({ OPENID: owner })
   try {
-    for (const clientSchemaVersion of [undefined, 8, 9, 11]) {
+    for (const clientSchemaVersion of [undefined, 8, 9, 10, 12]) {
       const reply = await userData.main({ action: 'saveState', clientSchemaVersion, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
       assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED')
       assert.deepStrictEqual(get('meal_user_states', owner), beforeInvalid)
     }
-    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 10, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
+    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 11, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
     assert.strictEqual(reply.success, true)
     assert.deepStrictEqual(reply.data.checkedShoppingIds, ['eggs'])
   } finally { cloudStub.getWXContext = originalContext }
@@ -563,7 +563,48 @@ async function testSingleMealConfirmation() {
   await assert.rejects(userData._test.changePlan(owner, 'confirmMealReplacement', payload), error => error.code === 'DRAFT_EXPIRED')
 }
 
+async function testCookingConditionsAndPantryTransactions() {
+  const source = currentState(4)
+  const conditions = { servings: 2, maxCookingMinutes: 25, pantryItems: [{ name: 'Oats', quantity: 300, unit: 'g' }] }
+  source.activePlan.generationBasis = { ...source.activePlan.generationBasis, ...conditions }
+  source.activePlan.shoppingGroups = [{ id: 'food', name: '其他', items: [{ id: 'oats', name: 'Oats', amount: '280 g' }] }]
+  source.checkedShoppingIds = ['oats']
+  source.schemaVersion = 10
+  reset(source)
+  const before = get('meal_user_states', owner)
+  const upgraded = await userData._test.bootstrap(owner, cacheNamespace)
+  assert.strictEqual(upgraded.schemaVersion, 11)
+  assert.deepStrictEqual(upgraded.activePlan, userData._test.migrateStored(before).activePlan)
+  assert.strictEqual(upgraded.stateRevision, 4)
+  const persisted = get('meal_user_states', owner)
+  await userData._test.bootstrap(owner, cacheNamespace)
+  assert.deepStrictEqual(get('meal_user_states', owner), persisted, 'second bootstrap must not write or remigrate')
+  const saved = await userData._test.saveState(owner, {
+    generationPreferences: { ...upgraded.generationPreferences, ...conditions, servings: 5, pantryItems: [] },
+    activePlan: { ...upgraded.activePlan, generationBasis: { ...conditions, pantryItems: [] } },
+    mealOverrides: { 'active-meal-0': { title: '测试调整', method: 'Cook', ingredients: 'Oats',
+      ingredientItems: [{ name: 'Oats', quantity: 50, unit: 'g', category: '其他' }],
+      servings: 2, quantityBasis: 'total', estimatedCookingMinutes: null } },
+    checkedShoppingIds: ['oats'],
+  }, 4, cacheNamespace)
+  assert.strictEqual(saved.generationPreferences.servings, 5)
+  assert.deepStrictEqual(saved.generationPreferences.pantryItems, [])
+  assert.deepStrictEqual(saved.activePlan.generationBasis.pantryItems, conditions.pantryItems, 'client cannot change a trusted plan snapshot')
+  assert.deepStrictEqual(saved.checkedShoppingIds, ['oats'], 'no purchase needed before or after; retain untouched check state')
+  const changed = await userData._test.saveState(owner, { mealOverrides: { 'active-meal-0': {
+    ...saved.mealOverrides['active-meal-0'], ingredientItems: [{ name: 'Oats', quantity: 80, unit: 'g', category: '其他' }],
+  } }, checkedShoppingIds: ['oats'] }, 5, cacheNamespace)
+  assert.deepStrictEqual(changed.checkedShoppingIds, [], 'server recomputes stock once and independently invalidates the new shortage')
+  const snapshot = get('meal_user_states', owner)
+  await assert.rejects(userData._test.saveState(owner, { generationPreferences: { ...saved.generationPreferences, servings: 0 } }, 6, cacheNamespace), error => error.code === 'MEAL_CONDITIONS_INVALID')
+  assert.deepStrictEqual(get('meal_user_states', owner), snapshot)
+  await assert.rejects(userData._test.saveState(owner, { generationPreferences: conditions }, 6, rotatedCacheNamespace), error => error.code === 'STALE_DATA_GENERATION')
+  assert.deepStrictEqual(get('meal_user_states', owner), snapshot)
+  assert.deepStrictEqual(changed.planHistory, upgraded.planHistory)
+}
+
 ;(async () => {
+  await testCookingConditionsAndPantryTransactions()
   await testSingleMealConfirmation()
   await testStructuredMealShoppingSave()
   await testBootstrapAndSave()

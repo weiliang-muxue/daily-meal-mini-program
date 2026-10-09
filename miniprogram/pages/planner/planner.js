@@ -4,6 +4,7 @@ const { membershipStore } = require('../../services/membership-store')
 const { userStore } = require('../../services/user-store')
 const replacementView = require('../../services/meal-replacement-view')
 const { assertRequest: assertReplacementRequest } = require('../../services/meal-replacement')
+const { normalizeConditions } = require('../../services/meal-conditions')
 const {
   aiPlanner,
   createClientRequestId,
@@ -82,6 +83,7 @@ function addDays(value, offset) {
 
 function defaultPreferences(startDate) {
   return {
+    ...normalizeConditions({}),
     contractVersion: CONTRACT_VERSION,
     durationDays: MIN_DURATION_DAYS,
     startDate,
@@ -127,6 +129,7 @@ function normalizePreferences(value) {
     }
   })
   return {
+    ...normalizeConditions(source),
     contractVersion: CONTRACT_VERSION,
     durationDays,
     startDate,

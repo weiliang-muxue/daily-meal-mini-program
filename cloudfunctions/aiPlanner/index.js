@@ -1061,7 +1061,7 @@ async function settleSuccess(
       return { task: publicProgress(task, now, openid), result: null }
     }
     const cleanGenerationPreferences = task.purpose === 'meal'
-      ? state.generationPreferences : sanitizeGenerationPreferences(task.input)
+      ? state.generationPreferences : sanitizeGenerationPreferences({ ...state.generationPreferences, ...task.input })
     const stateRevision = state.stateRevision + 1
     const nextState = sanitizeState({
       ...state, draftPlan, generationPreferences: cleanGenerationPreferences, stateRevision,

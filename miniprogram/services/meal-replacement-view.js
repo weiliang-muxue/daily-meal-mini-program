@@ -4,6 +4,7 @@
 const replacement = require('./meal-replacement')
 const { buildPlanView } = require('./plan-view')
 const { shoppingChanges } = require('./meal-editor')
+const conditions = require('./meal-conditions')
 const LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 function fail(message) { throw new Error(message) }
 function routeScope(options = {}) {
@@ -23,7 +24,10 @@ function createContext(state, scope) {
   if (!state.activePlan || state.activePlan.id !== scope.planId) fail('当前餐单已变化，请返回重新选择')
   const target = replacement.createTarget(state, scope.mealId, scope)
   const current = replacement.assertTargetCurrent(state, target)
+  const planConditions = conditions.storedConditions(current.plan.generationBasis)
+  const meal = { ...current.meal, ...(state.mealOverrides || {})[current.meal.id] }
   return { target, date: current.day.date, mealType: current.meal.type,
+    conditions: { ...conditions.normalizeConditions(planConditions), ...(meal.servings ? { servings: meal.servings } : {}) },
     label: `${current.day.date} · ${LABELS[current.meal.type]}`,
     dinnerLocked: current.meal.type === 'dinner',
     mode: target.dinnerMode || target.originalDinnerMode,
@@ -38,11 +42,12 @@ function lockPreferences(preferences, context) {
     if (!exercise.planned) Object.assign(exercise, { type: '', durationMinutes: 0, intensity: 'medium' })
   }
   return { ...preferences, durationDays: 1, startDate: context.date, mealTypes: [context.mealType], doubleDinner: false,
+    pantryItems: context.conditions.pantryItems.map(item => ({ ...item })),
     exerciseNotes: (context.dinnerLocked ? !exercise.planned : preferences.exerciseIntent === 'none') ? '' : preferences.exerciseNotes,
     exerciseIntent: context.dinnerLocked ? (exercise.planned ? 'daily' : 'none') : preferences.exerciseIntent, exerciseByDay: [exercise] }
 }
 function initialPreferences(state, context) {
-  return lockPreferences({ ...(state.generationPreferences || {}), exerciseIntent: context.exercise.planned ? 'daily' : 'none',
+  return lockPreferences({ ...(state.generationPreferences || {}), ...context.conditions, exerciseIntent: context.exercise.planned ? 'daily' : 'none',
     exerciseByDay: [{ ...context.exercise, dayIndex: 0 }] }, context)
 }
 function preview(state, draft) {

@@ -7,6 +7,7 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 const SCENARIOS = ['default', 'rest', 'workout']
 const mealShopping = require('./meal-shopping')
+const mealConditions = require('./meal-conditions')
 
 function text(value, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -48,8 +49,14 @@ function displayMeal(plan, dayId, meal, index, state) {
   const overrides = state && state.mealOverrides && typeof state.mealOverrides === 'object'
     ? state.mealOverrides : {}
   const override = overrides[mealId] && typeof overrides[mealId] === 'object' ? overrides[mealId] : null
+  const savedConditions = mealConditions.storedMealConditions(override, { allowUnknownTime: true })
+  if (!savedConditions.quantityBasis && meal && meal.quantityBasis && override
+    && (Array.isArray(override.ingredientItems) || (text(override.method) && override.method !== meal.method))) {
+    Object.assign(savedConditions, mealConditions.storedMealConditions(meal), { estimatedCookingMinutes: null })
+  }
   return {
     ...(meal && typeof meal === 'object' ? meal : {}),
+    ...savedConditions,
     mealId,
     id: text(meal && meal.id, mealId),
     type,
@@ -109,12 +116,13 @@ function selectedShoppingGroups(plan, state) {
   if (!plan || !Array.isArray(plan.days) || !Array.isArray(plan.shoppingGroups)) return null
   const selectedMeals = plan.days.flatMap((day, dayIndex) => buildDay(plan, day, dayIndex, state).meals)
   const allowNew = mealShopping.allMeals(plan).some(meal => state && state.mealOverrides && state.mealOverrides[meal.id] && Array.isArray(state.mealOverrides[meal.id].ingredientItems))
-  return mealShopping.inventory(plan, selectedMeals.map(meal => ({ ...meal, ingredients: meal.ingredientItems })), {}, allowNew)
+  return mealShopping.purchases(plan, selectedMeals.map(meal => ({ ...meal, ingredients: meal.ingredientItems })), {}, allowNew)
 }
 
 function shoppingView(plan, state) {
   const checked = new Set(uniqueStrings(state && state.checkedShoppingIds))
-  const sourceGroups = selectedShoppingGroups(plan, state) || (Array.isArray(plan && plan.shoppingGroups) ? plan.shoppingGroups : [])
+  const projection = selectedShoppingGroups(plan, state)
+  const sourceGroups = projection ? projection.groups : (Array.isArray(plan && plan.shoppingGroups) ? plan.shoppingGroups : [])
   const groups = sourceGroups.map((group, groupIndex) => {
     const groupId = text(group && group.id, `${text(plan && plan.id, 'plan')}:shopping:g${groupIndex + 1}`)
     const items = Array.isArray(group && group.items) ? group.items.map((item, itemIndex) => {
@@ -135,6 +143,8 @@ function shoppingView(plan, state) {
   const checkedCount = groups.reduce((sum, group) => sum + group.checkedCount, 0)
   return {
     groups,
+    coveredGroups: projection ? projection.coveredGroups : [],
+    unusedPantry: projection ? projection.unusedPantry : [],
     checkedIds: groups.flatMap((group) => group.items.filter((item) => item.checked).map((item) => item.itemId)),
     checkedCount,
     totalCount,

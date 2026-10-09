@@ -2,6 +2,7 @@
 
 // Single-meal replacement invariants. Pure, account-local, no network or storage.
 const shopping = require('./meal-shopping')
+const conditions = require('./meal-conditions')
 const TARGET_VERSION = 1
 const MAX_SNAPSHOT_LENGTH = 16000
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
@@ -31,9 +32,12 @@ function sourceSnapshot(state, found) {
   const meal = found.meal, override = (state.mealOverrides || {})[meal.id]
   const ingredients = items => Array.isArray(items)
     ? items.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit, category: item.category })) : items
-  const fields = value => ({ title: value.title || '', ingredients: ingredients(value.ingredients || ''), method: value.method || '', tag: value.tag || '' })
+  const fields = value => ({ ...conditions.storedMealConditions(value, { allowUnknownTime: true }),
+    title: value.title || '', ingredients: ingredients(value.ingredients || ''), method: value.method || '', tag: value.tag || '' })
   const projected = override ? { ...fields(override), ingredientItems: ingredients(override.ingredientItems || null), updatedAt: override.updatedAt || '' } : null
-  return canonical({ meal: { ...fields(meal), type: meal.type, scenario: meal.scenario || 'default' }, override: projected })
+  const planConditions = conditions.storedConditions(found.plan.generationBasis)
+  return canonical({ ...(planConditions.pantryItems ? { planConditions } : {}),
+    meal: { ...fields(meal), type: meal.type, scenario: meal.scenario || 'default' }, override: projected })
 }
 function sanitizeTarget(raw) {
   if (!object(raw) || raw.version !== TARGET_VERSION) fail('单餐替换版本不受支持')
@@ -77,10 +81,17 @@ function assertRequest(state, rawTarget, input) {
   if (!input || input.durationDays !== 1 || !Array.isArray(input.mealTypes) || input.mealTypes.length !== 1
     || input.mealTypes[0] !== current.meal.type || input.doubleDinner !== false
     || input.startDate !== current.day.date) fail('只换一餐只能生成所选日期的一个餐次')
+  assertSamePantry(current.plan, input)
   const expectedMode = current.target.dinnerMode || current.target.originalDinnerMode
   if (current.meal.type === 'dinner' && (!Array.isArray(input.exerciseByDay) || input.exerciseByDay.length !== 1
     || Boolean(input.exerciseByDay[0].planned) !== (expectedMode === 'workout'))) fail('生成条件与所选晚餐运动模式不一致')
   return current.target
+}
+function assertSamePantry(plan, value) {
+  const project = pantry => conditions.normalizePantry(pantry || []).map(item => [conditions.pantryKey(item), item.quantity]).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)
+  if (canonical(project(plan.generationBasis && plan.generationBasis.pantryItems)) !== canonical(project(value && value.pantryItems))) {
+    fail('只换一餐不能修改整份餐单的已有食材，请沿用原餐单快照')
+  }
 }
 function assertSingleMealDraft(draft) {
   if (!draft || !draft.replacementTarget) fail('没有待确认的单餐候选')
@@ -99,12 +110,14 @@ function assertSingleMealDraft(draft) {
 function proposal(state, draft) {
   const generated = assertSingleMealDraft(draft)
   const current = assertTargetCurrent(state, generated.target)
+  assertSamePantry(current.plan, draft.generationBasis)
   if (generated.meal.type !== current.meal.type || generated.day.date !== current.day.date
     || draft.startDate !== current.day.date) fail('候选餐次或日期与原餐不一致')
   const expectedExercise = generated.target.dinnerMode || generated.target.originalDinnerMode
   if (current.meal.type === 'dinner' && Boolean(generated.day.exercise && generated.day.exercise.planned) !== (expectedExercise === 'workout')) fail('候选晚餐运动条件不一致')
   const newMeal = generated.meal
   const override = {
+    ...conditions.storedMealConditions(newMeal),
     title: newMeal.title, ingredients: newMeal.ingredients.map(item => `${item.name} ${item.quantity} ${item.unit}`).join(' · ').slice(0, 500),
     ingredientItems: copy(newMeal.ingredients), method: newMeal.method, tag: newMeal.tag || '', updatedAt: draft.generatedAt,
   }

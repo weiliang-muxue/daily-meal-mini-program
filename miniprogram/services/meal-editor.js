@@ -1,6 +1,7 @@
 'use strict'
 const { shoppingView } = require('./plan-view')
 const { reconcileChecks, shoppingIds } = require('./meal-shopping')
+const { storedMealConditions } = require('./meal-conditions')
 const FIELDS = ['name', 'quantity', 'unit', 'category']
 function rowSnapshot(rows = []) { return JSON.stringify(rows.map(row => FIELDS.map(field => String(row[field] === undefined ? '' : row[field]).trim()))) }
 function cleanRows(rows) {
@@ -25,8 +26,15 @@ function draftOverride(form, base, rows, baseRows, existing, rowsChanged) {
   const normalized = ingredients ? { ...form, ingredients: rowsText(ingredients) } : form
   const unchangedText = ['title', 'ingredients', 'method', 'tag'].every(key => normalized[key] === base[key])
   const originalRows = !ingredients || rowSnapshot(ingredients) === rowSnapshot(baseRows)
-  if (unchangedText && originalRows) return null
-  return { ...normalized, ...(ingredients ? { ingredientItems: ingredients } : {}), updatedAt: new Date().toISOString() }
+  const source = existing && existing.quantityBasis ? existing : base
+  const conditions = storedMealConditions(source, { allowUnknownTime: true })
+  const metadataMatchesBase = JSON.stringify(conditions) === JSON.stringify(storedMealConditions(base, { allowUnknownTime: true }))
+  if (unchangedText && originalRows && metadataMatchesBase) return null
+  if (conditions.quantityBasis && (rowsChanged || normalized.method !== (existing && existing.method || base.method)
+    || (!existing?.quantityBasis && (normalized.method !== base.method || !originalRows)))) {
+    conditions.estimatedCookingMinutes = null // A manually changed recipe has no verified duration estimate.
+  }
+  return { ...normalized, ...conditions, ...(ingredients ? { ingredientItems: ingredients } : {}), updatedAt: new Date().toISOString() }
 }
 function previewChange(state, mealId, override) {
   const overrides = { ...state.mealOverrides }

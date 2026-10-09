@@ -1,6 +1,8 @@
 # 数据库设计与升级
 
-当前开发 schema v9（尚未部署）：`meal_user_states.mealOverrides[mealId].ingredientItems` 为可选的结构化食材数组，每项包含 `name`、正数 `quantity`、`unit`、`category`。仅适用于完整结构化餐单。采购为共享逻辑派生，不改基础餐单；新采购 ID 按餐单与食材标识稳定生成，云端重新校验。v8 的提醒设置与已有数据原样向前迁移；下述 v8 内容保留为历史说明，最新部署约束见 `NEXT_ITERATION.md`。
+当前开发 schema v11（尚未部署）：v9 增加 `mealOverrides[mealId].ingredientItems` 结构化食材，v10 增加单餐候选范围；v11 增加 `generationPreferences.servings`（1–12）、`maxCookingMinutes`（5–180）与 `pantryItems`（最多 30 项名称/数量/单位）。实际生成契约仍待升级，不把保存设置等同于 AI 已采用。下述 v8 内容保留为历史说明，最新部署约束见 `NEXT_ITERATION.md`。
+
+新餐单的 `generationBasis` 可记录同样三项快照；旧餐单不补造。餐食及个人覆盖可记录 `servings`、`quantityBasis: total` 和 `estimatedCookingMinutes`；手动修改后的覆盖允许时间为 `null`（未知），不是 0 分钟。份量为总量，不再次按人数放大。采购缺口和已备齐项由共享逻辑计算，不建立独立库存账本、不消耗库存；客户端不能通过保存状态改写可信基础餐单快照。服务器重新计算受影响勾选，旧 schema 客户端保存失败关闭。v8–v10 增量升级保留餐单、历史、提醒和原有勾选，不重建集合或回写基础食谱。
 
 本项目采用微信云开发。客户端不直接访问数据库；所有业务读写均经过云函数，并以可信调用上下文中的 `OPENID` 确定当前用户。客户端传入的用户 ID 不作为授权依据。
 

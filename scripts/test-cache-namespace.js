@@ -1588,7 +1588,7 @@ async function testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits() {
   assert.strictEqual(storage.get(pendingKey).mealOverrideOperations[mealId].value.ingredientItems[0].quantity, 3)
   cloudHandler = async (_name, action, payload) => {
     assert.strictEqual(action, 'saveState')
-    assert.strictEqual(payload.clientSchemaVersion, 10)
+    assert.strictEqual(payload.clientSchemaVersion, 11)
     return { ...restarted.data, ...payload.state, stateRevision: 1 }
   }
   await restarted.flush()
@@ -1629,7 +1629,44 @@ async function testSingleMealConfirmationNamespaceAndRevision() {
   assert.strictEqual((await fresh.confirmMealReplacement('draft-single', 7)).stateRevision, 8)
 }
 
+async function testCookingPreferencesOfflineRecoveryAndIsolation() {
+  const key = `meal_user_state_v3_${namespaceA}`, pending = `meal_user_pending_v1_${namespaceA}`
+  storage.set(key, { ...defaults(), schemaVersion: 10 })
+  storage.delete(pending)
+  const member = new FakeMembershipStore(namespaceA)
+  const store = new UserStore(member)
+  store.bindNamespace()
+  const preferences = { ...store.data.generationPreferences, servings: 4, maxCookingMinutes: 45,
+    pantryItems: [{ name: '虚构燕麦', quantity: 125.5, unit: 'g' }] }
+  cloudHandler = async () => { throw new Error('offline') }
+  await assert.rejects(store.savePreferences(preferences), /offline/)
+  assert.strictEqual(storage.get(key).generationPreferences.servings, 4)
+  const restored = new UserStore(new FakeMembershipStore(namespaceA))
+  restored.bindNamespace()
+  assert.deepStrictEqual(restored.data.generationPreferences, preferences)
+  const beforeInvalid = copyForCooking(restored.data)
+  await assert.rejects(async () => restored.savePreferences({ ...preferences, maxCookingMinutes: 0 }), /做饭时间/)
+  assert.deepStrictEqual(restored.data, beforeInvalid, 'invalid input must not clear cached meals or preferences')
+  cloudHandler = async (_name, action, payload) => {
+    assert.strictEqual(action, 'saveState')
+    assert.strictEqual(payload.clientSchemaVersion, 11)
+    assert.deepStrictEqual(payload.state.generationPreferences, preferences)
+    return { ...restored.data, ...payload.state, stateRevision: 1 }
+  }
+  await restored.flush()
+  assert.deepStrictEqual(restored.data.generationPreferences.pantryItems, preferences.pantryItems)
+  const otherKey = `meal_user_state_v3_${namespaceB}`
+  storage.set(otherKey, { ...defaults(), generationPreferences: { ...defaults().generationPreferences, servings: 1 } })
+  const other = new UserStore(new FakeMembershipStore(namespaceB))
+  other.bindNamespace()
+  assert.deepStrictEqual(other.data.generationPreferences.pantryItems, [])
+  assert.strictEqual(other.data.generationPreferences.servings, 1)
+  assert.deepStrictEqual(storage.get(key).generationPreferences, preferences)
+}
+function copyForCooking(value) { return JSON.parse(JSON.stringify(value)) }
+
 async function main() {
+  await testCookingPreferencesOfflineRecoveryAndIsolation()
   await testSingleMealConfirmationNamespaceAndRevision()
   await testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits()
   await testColdStartRequiresOnlineStatus()

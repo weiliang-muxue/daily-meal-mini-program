@@ -160,7 +160,7 @@ test('rejects missing, invalid, reordered, duplicate, and unknown arguments', ()
 
 test('pins the release probe contract and carries the public provider revision into consent', () => {
   assert.deepEqual(RELEASE_COMPATIBILITY, {
-    stateSchemaVersion: 10,
+    stateSchemaVersion: 11,
     contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
     providerContractRevision: 10, taskSchemaVersion: 4,
   })
