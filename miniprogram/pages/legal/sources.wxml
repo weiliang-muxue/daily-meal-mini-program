@@ -1,0 +1,39 @@
+<view class="screen catalog-page">
+  <button class="catalog-back" bindtap="navigateFromPage" hover-class="catalog-pressed" aria-label="{{pageNavigationLabel}}">{{pageNavigationLabel}}</button>
+  <text class="catalog-title">开源与数据来源</text>
+  <view wx:if="{{error}}" class="catalog-panel">
+    <text class="catalog-error" aria-role="alert">{{error}}</text>
+    <button class="catalog-action" bindtap="load" hover-class="catalog-pressed">重新加载</button>
+  </view>
+  <block wx:elif="{{meta}}">
+    <text class="catalog-copy">本页是菜谱库公开数据的来源说明，不包含你的个人餐食或账号信息。链接仅在你点击后复制，不会自动联网访问。</text>
+    <view class="catalog-panel">
+      <text class="catalog-heading">本地菜谱库 · {{meta.version}}</text>
+      <text class="catalog-body">收录 {{meta.count}} 道。已查看 {{meta.reviewedCount}} 道的保留正文，其中 {{meta.deferredCount}} 道暂缓；另有 {{meta.pendingCount}} 道候选待审和 {{meta.quarantinedCount}} 道结构隔离条目，均未纳入本地库。</text>
+      <text class="catalog-copy">这是编辑性内容检查，不是实际烹饪或临床验证。没有无过敏原、减脂或治疗适用性保证。菜谱更新不会覆盖你的个人餐单、收藏、采购或健康记录。</text>
+    </view>
+    <view class="catalog-panel">
+      <text class="catalog-heading">结构化数据</text>
+      <text class="catalog-body">zkeq/vibe-cook-backend 的 dataset 分支；只采用固定版本的 json/index.json、json/recipes.json，许可证为 The Unlicense。</text>
+      <text selectable="true" class="catalog-code">{{meta.datasetRepository}}/tree/{{meta.datasetCommit}}</text>
+      <button class="catalog-action" bindtap="copySource" data-source="dataset" disabled="{{copying}}" hover-class="catalog-pressed">复制数据集来源链接</button>
+      <text class="catalog-copy">没有使用该项目的应用代码、在线 API、图片、SQLite 或 LFS 文件。移除图片、摘要、营养估算及份数公式；食材用量保留文字，不执行公式、不自动换算。</text>
+    </view>
+    <view class="catalog-panel">
+      <text class="catalog-heading">上游菜谱</text>
+      <text class="catalog-body">Anduin2017/HowToCook。结构化数据生成时采用的确切上游 commit 未知。下面是本项目核验许可证及文件路径的固定快照，不冒充原始生成版本。</text>
+      <text selectable="true" class="catalog-code">{{meta.sourceRepository}}/tree/{{meta.sourceVerificationCommit}}</text>
+      <button class="catalog-action" bindtap="copySource" data-source="upstream" disabled="{{copying}}" hover-class="catalog-pressed">复制上游核验快照链接</button>
+      <text class="catalog-label">已收录菜谱的上游路径</text>
+      <text wx:for="{{meta.records}}" wx:key="id" selectable="true" class="catalog-code">{{item.path}}</text>
+    </view>
+    <view class="catalog-panel">
+      <text class="catalog-heading">The Unlicense 原文</text>
+      <text class="catalog-copy">两份固定 LICENSE 的内容相同，下方完整展示；仓库同时保留各自快照、内容摘要与逐条来源记录。</text>
+      <text selectable="true" class="catalog-body">{{meta.licenseText}}</text>
+      <text class="catalog-label">许可证 SHA-256</text>
+      <text selectable="true" class="catalog-code">{{meta.licenseSha256}}</text>
+    </view>
+  </block>
+  <text wx:if="{{notice}}" class="catalog-body" aria-role="status">{{notice}}</text>
+</view>

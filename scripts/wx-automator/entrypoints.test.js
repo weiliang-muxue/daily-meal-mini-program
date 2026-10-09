@@ -111,6 +111,15 @@ test('planner visual gate validates exact button geometry and screenshot glyph p
   assert.match(source, /state\.durationAtMax !== \(durationDays === 14\)/)
 })
 
+test('catalog detail probes use a real bundled public recipe rather than an empty error page', () => {
+  const { catalogRoute } = require('./catalog-route')
+  const first = require('../../miniprogram/data/recipe-catalog')[0]
+  assert.equal(catalogRoute('/pages/recipe-detail/recipe-detail'), '/pages/recipe-detail/recipe-detail?id=' + encodeURIComponent(first.id))
+  assert.equal(catalogRoute('/pages/plan/plan'), '/pages/plan/plan')
+  assert.match(read('smoke.js'), /catalogRoute\(expected\)/)
+  assert.match(read('visual-regression.js'), /catalogRoute\(route\)/)
+})
+
 test('visual gate covers the complete water reminder page including its bottom actions', () => {
   const source = read('visual-regression.js')
   assert.match(source, /\['water-reminder', '\/pages\/water-reminder\/water-reminder'/)

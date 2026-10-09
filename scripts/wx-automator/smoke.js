@@ -3,6 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 const automator = require('./automator-client')
+const { catalogRoute } = require('./catalog-route')
 const {
   captureScreenshotWithRetry,
   categorizeError,
@@ -33,6 +34,9 @@ const ROUTES = [
   'pages/plan-preview/plan-preview',
   'pages/plan-history/plan-history',
   'pages/recipe-library/recipe-library',
+  'pages/recipe-catalog/recipe-catalog',
+  'pages/recipe-detail/recipe-detail',
+  'pages/legal/sources',
   'pages/health/health',
   'pages/shopping/shopping',
   'pages/guide/guide',
@@ -156,7 +160,7 @@ async function main() {
       report.routes.push(item)
       try {
         currentStage = item.stage
-        page = await navigateAndAcquire(miniProgram, expected, {
+        page = await navigateAndAcquire(miniProgram, catalogRoute(expected), {
           allowedRoutes,
           timeoutMs: 12000,
           responseTimeoutMs: RESPONSE_TIMEOUT_MS,

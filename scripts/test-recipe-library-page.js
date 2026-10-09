@@ -41,6 +41,14 @@ async function page(options = {}, withFavorite = true) {
 async function run() {
   let p = await page({}, false)
   assert.strictEqual(p.data.count, 0); assert.strictEqual(writes.length, 0)
+  let navigation, navigationCount = 0
+  wx.navigateTo = options => { navigation = options; navigationCount++ }
+  p.openCatalog(); p.openCatalog(); assert.strictEqual(navigationCount, 1)
+  assert.strictEqual(navigation.url, '/pages/recipe-catalog/recipe-catalog')
+  navigation.fail(); assert(p.data.error.includes('重试')); assert.strictEqual(p.catalogOpening, false)
+  p.openCatalog(); p.onUnload(); const message = p.data.error; navigation.fail()
+  assert.strictEqual(p.data.error, message, 'navigation callback does not update an unloaded library')
+  assert.strictEqual(writes.length, 0, 'opening public recipes does not change favorites')
   p = await page({ mealId: 'meal-0-breakfast' }, false)
   assert(p.data.capture); await p.saveFavorite()
   assert.strictEqual(p.data.count, 1); assert.strictEqual(p.data.capture, null)

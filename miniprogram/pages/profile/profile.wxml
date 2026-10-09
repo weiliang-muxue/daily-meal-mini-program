@@ -184,6 +184,10 @@
       <view class="legal-copy"><text class="legal-title">隐私保护指引</text><text class="legal-detail">了解资料和私人数据如何处理</text></view>
       <text class="legal-action">查看</text>
     </view>
+    <view class="legal-row touch-target" bindtap="openSources" hover-class="profile-control-hover" aria-role="button" aria-label="查看开源与数据来源">
+      <view class="legal-copy"><text class="legal-title">开源与数据来源</text><text class="legal-detail">菜谱来源、版本和许可证</text></view>
+      <text class="legal-action">查看</text>
+    </view>
   </view>
   <text wx:if="{{legalPrivacyError}}" class="legal-privacy-error" aria-role="alert">{{legalPrivacyError}}</text>
 

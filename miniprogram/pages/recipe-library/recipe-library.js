@@ -151,6 +151,13 @@ Page({
     try { canNavigateBack = typeof getCurrentPages === 'function' && getCurrentPages().length > 1 } catch (_) {}
     this.setData({ canNavigateBack, pageNavigationLabel: canNavigateBack ? '返回上一页' : '返回餐单首页' })
   },
+  openCatalog() {
+    if (this.data.busy || this.catalogOpening || !this.current()) return
+    this.catalogOpening = true
+    const done = () => { this.catalogOpening = false }
+    const fail = () => { if (this.current()) this.setData({ error: '菜谱库暂时无法打开，请稍后重试' }); done() }
+    try { wx.navigateTo({ url: '/pages/recipe-catalog/recipe-catalog', fail, complete: done }) } catch (_) { fail() }
+  },
   navigateFromPage() {
     if (this.data.busy) return
     const goHome = () => wx.switchTab({ url: PLAN_URL })

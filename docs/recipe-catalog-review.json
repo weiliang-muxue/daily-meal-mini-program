@@ -1,0 +1,106 @@
+{
+  "version": "2026-10-09.1",
+  "datasetCommit": "b227b896d650709aa345e639634ecd5c3358e607",
+  "importerVersion": "1",
+  "reviewedAt": "2026-10-09T00:00:00.000Z",
+  "reviewScope": "First batch: complete retained text of 22 breakfast and 16 vegetable-category records. Assistant editorial/code review, not cooking validation or clinical approval. Other candidates remain pending.",
+  "sourceVerification": "Every candidate path exists as a blob in the untruncated HowToCook tree at c694a5c457d45e6e012ae6cd9a7724aab86e320b. This is not the unknown upstream commit used to produce the dataset.",
+  "approved": [
+    {
+      "id": "breakfast_dan-jian-ci-ba",
+      "sourceHash": "ecb9d724a7100b71869ab523ac222bd3e7904e0aef9f29a3b7442ed29d7e8c23",
+      "recordHash": "019f83e5320fb12c9b0e2ae6a7bd4100d6bc56cca527d79014dca09763af21e1",
+      "sourcePath": "dishes/breakfast/蛋煎糍粑.md",
+      "sourceBlob": "a233da8af1a81de3be18aa931a945c4baea8a2d9",
+      "reason": "Retained ingredients and pan-frying steps reviewed; text quantities only, no nutrition claims or automated meal suitability. Egg must be cooked through; recipe timing is not a doneness guarantee."
+    },
+    {
+      "id": "breakfast_gui-yuan-hong-zao-zhou",
+      "sourceHash": "fce23888852ada5cd8726cdfd88624826e7ce1924064e045f1e4fe9c19758c3e",
+      "recordHash": "a88581b101dd00d3cf7b190b9f03149934ce37d631128d98a9908b4dab015967",
+      "sourcePath": "dishes/breakfast/桂圆红枣粥.md",
+      "sourceBlob": "63da5ca4cd6201583ab6fedeaece6d2fe5fe57da",
+      "reason": "Grain/fruit ingredient and cooking text reviewed as general reference. Preserve 2000ml source water amount; do not call source servings a recommended individual portion. Appliance instructions/capacity take precedence."
+    },
+    {
+      "id": "vegetable_dish_chao-qing-cai",
+      "sourceHash": "53858d068649d24627242b9fdf3b09b6555c3a390795c4250e5af498cee0c0df",
+      "recordHash": "7cdd6c5cdbd2be3582b0ce4529ac89b51610489d68670865ad40e328153a0c62",
+      "sourcePath": "dishes/vegetable_dish/炒青菜.md",
+      "sourceBlob": "3b0afc2ffcf75a9bd544f7cffdce05683f1022b4",
+      "reason": "Ingredients and wash/stir-fry/simmer sequence reviewed; retain original oil, sugar and salt, no low-fat or therapeutic suitability claim."
+    },
+    {
+      "id": "vegetable_dish_cong-jian-dou-fu",
+      "sourceHash": "7985ac2c836083bf4dc4e0b28ff443c6587829a92f89b3a6204d3c260244d6f8",
+      "recordHash": "0d88a281bfc10e65bd84acc6130ede25e8c499052b1af37a176f9dbeed823af7",
+      "sourcePath": "dishes/vegetable_dish/葱煎豆腐.md",
+      "sourceBlob": "17bf935f916ec6fe045de83d4e5b1124a86f4116",
+      "reason": "Tofu preparation and cooking steps reviewed; fractional blocks remain textual, do not derive grams. Original contribution tip refers to the upstream project shown in sources."
+    },
+    {
+      "id": "vegetable_dish_cui-pi-dou-fu",
+      "sourceHash": "7ab1333b38e97e3dcf5ad69650f3af2ce8fd068eb3e33c2b331f4c45635a86c1",
+      "recordHash": "9cbf94be7662647ebd6ed8815438b9d2c7c3e5cbe9a2bc1ce297275e71f8e902",
+      "sourcePath": "dishes/vegetable_dish/脆皮豆腐.md",
+      "sourceBlob": "18ca70d7ae187d6f2d05c6aca27fc69b44e5d411",
+      "reason": "Ingredients and fry/boil sequence reviewed; egg, soy and oyster sauce are visible. Source category is not a vegetarian/allergen guarantee; no personal plan or automatic quantity conversion."
+    },
+    {
+      "id": "vegetable_dish_jin-qian-dan",
+      "sourceHash": "edd1c967f55cc4865508142095205020f026ca02f88e38bf8ef32e3419fe9adc",
+      "recordHash": "d3edad825a5ff89a2b1ef107ddf424bb61aa268c0acfaefda29bbc648c06a387",
+      "sourcePath": "dishes/vegetable_dish/金钱蛋.md",
+      "sourceBlob": "15673bf12024b4c4e9bb1a8a37653ed2942c7876",
+      "reason": "Source explicitly calls for fully set cooked eggs before further frying. Five eggs remain a source batch amount, not recommended per-person intake; no nutrition calculation or allergy clearance."
+    },
+    {
+      "id": "vegetable_dish_jin-zhen-gu-ri-ben-dou-fu-bao",
+      "sourceHash": "e4fe33cd250013198a16d97bb33e2799304440eedc4d68bf291118245fd96beb",
+      "recordHash": "081ef65481d3033b7fd44c8132b044dfa0954cddb7cd0d138fb8145eee0e7c0a",
+      "sourcePath": "dishes/vegetable_dish/金针菇日本豆腐煲.md",
+      "sourceBlob": "cf295e24fd331c312b618e455bee1099a16d2571",
+      "reason": "Reviewed complete ingredients and stir-fry followed by covered cooking. Handful/bag quantities stay textual; all mushrooms and egg tofu require thorough cooking, not a timing guarantee."
+    },
+    {
+      "id": "vegetable_dish_liang-ban-dou-fu",
+      "sourceHash": "1cef883c807fc791a69299a5bc9c66b32dbc60fb114a923f234e3bdd0df6a819",
+      "recordHash": "31ef31a734bbd6ab5b2faa175c647e8b8c3606c4547ec36116d462516db61447",
+      "sourcePath": "dishes/vegetable_dish/凉拌豆腐.md",
+      "sourceBlob": "fcc6d5a55244c21e4bc54bca18f55c8a079d57db",
+      "reason": "Reviewed tofu blanching and fresh assembly. No extended room-temperature storage advice or health claims. Hygiene, ingredient label and personal restrictions remain user checks."
+    }
+  ],
+  "deferred": [
+    { "id": "breakfast_cha-ye-dan", "reason": "Two-day soaking guidance lacks temperature/storage conditions; serving basis also needs clarification." },
+    { "id": "breakfast_han-guo-ma-yao-ji-dan", "reason": "Undercooked eggs; not accepted in this reference batch." },
+    { "id": "breakfast_ji-dan-san-ming-zhi", "reason": "Unsupported healthier-butter statement and brand recommendations require reviewed edits." },
+    { "id": "breakfast_jian-jiao-de-zuo-fa", "reason": "Frozen filling doneness cannot rely only on crust colour or fixed time; needs product-specific instructions." },
+    { "id": "breakfast_jin-qiang-yu-jiang-san-ming-zhi", "reason": "One-week sauce storage claim and batch/application quantity difference need review." },
+    { "id": "breakfast_kong-qi-zha-guo-mian-bao-pian", "reason": "Unverified nutrition table remains in tips; appliance placement needs review." },
+    { "id": "breakfast_mei-shi-chao-dan", "reason": "Instructions explicitly discourage fully cooked eggs." },
+    { "id": "breakfast_niu-nai-yan-mai", "reason": "Twenty-second egg cooking and oat/appliance instructions need clarification." },
+    { "id": "breakfast_shou-zhua-bing", "reason": "Batch/serving and preparation-time basis inconsistent; topping preparation incomplete." },
+    { "id": "breakfast_tai-yang-dan", "reason": "Microwave whole-yolk technique needs appliance-specific safety review." },
+    { "id": "breakfast_tang-xin-dan", "reason": "Undercooked eggs; source grade does not prove pathogen-free food." },
+    { "id": "breakfast_tu-si-guo-jiang-de-zuo-fa", "reason": "Unverified hygiene, price and product-promotion statements require edits." },
+    { "id": "breakfast_wan-mei-shui-zhu-dan", "reason": "Unverified temperature-cycle safety and quantitative nutrition advantage claims." },
+    { "id": "breakfast_wei-bo-lu-dan-gao", "reason": "Scaling/repeating batter with a fixed microwave time does not establish doneness." },
+    { "id": "breakfast_wei-bo-lu-he-bao-dan", "reason": "Microwave whole-yolk/cover instructions need appliance-specific review." },
+    { "id": "breakfast_wei-bo-lu-zheng-dan", "reason": "Surface-set endpoint and covering material instructions need clarification." },
+    { "id": "breakfast_yan-mai-ji-dan-bing", "reason": "Milk volume/mass and partial serving allocation require review; low-fat suggestion not verified." },
+    { "id": "breakfast_yi-shi-xiang-chang-bei-fei-dan", "reason": "Undercooked eggs and named product reliance need review." },
+    { "id": "breakfast_zheng-hua-juan", "reason": "Touching hot food to infer internal doneness is not an acceptable checking instruction." },
+    { "id": "breakfast_zheng-shui-dan", "reason": "Water amount/ratio and step-time inconsistencies; needs reviewed correction." },
+    { "id": "vegetable_dish_chao-qie-zi", "reason": "High oil temperature and optional meat-cooking guidance require review." },
+    { "id": "vegetable_dish_hao-you-sheng-cai", "reason": "Soy sauce quantity conflict and unsupported health wording." },
+    { "id": "vegetable_dish_hong-shao-qie-zi", "reason": "Oil missing from ingredient list, smoke-point cue and serving arithmetic require review." },
+    { "id": "vegetable_dish_ji-dan-huo-tui-chao-huang-gua", "reason": "Source retains half-cooked egg wording without a clear final doneness check." },
+    { "id": "vegetable_dish_jia-chang-ri-ben-dou-fu", "reason": "Dried mushroom handling and optional seasoning application require clarification." },
+    { "id": "vegetable_dish_lei-jiao-pi-dan", "reason": "Unsupported healthier-preserved-egg wording requires edits." },
+    { "id": "vegetable_dish_liang-ban-huang-gua", "reason": "Preparation omits initial washing and handling of bitter cucumber needs clarification." },
+    { "id": "vegetable_dish_liang-ban-jin-zhen-gu", "reason": "Cook-to-softness endpoint alone needs food-safety review." },
+    { "id": "vegetable_dish_liang-ban-you-mai-cai", "reason": "Two whole garlic heads in one source serving and raw-leaf suitability need review." },
+    { "id": "vegetable_dish_pi-dan-dou-fu", "reason": "Named external recipe attribution requires source-rights clarification before use." }
+  ]
+}

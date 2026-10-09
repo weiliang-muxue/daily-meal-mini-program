@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { PNG } = require('pngjs')
 const automator = require('./automator-client')
+const { catalogRoute } = require('./catalog-route')
 const { assertPngStepperGlyphs, assertStepperButtonGeometry } = require('./visual-pixel-core')
 const {
   captureScreenshotWithRetry,
@@ -60,6 +61,9 @@ const ROUTES = [
   ['plan-preview', '/pages/plan-preview/plan-preview', ['.preview-page']],
   ['plan-history', '/pages/plan-history/plan-history', ['.history-page']],
   ['recipe-library', '/pages/recipe-library/recipe-library', ['.library-page']],
+  ['recipe-catalog', '/pages/recipe-catalog/recipe-catalog', ['.catalog-page', '.catalog-input', '.catalog-row']],
+  ['recipe-detail', '/pages/recipe-detail/recipe-detail', ['.catalog-page', '.catalog-ingredient', '.catalog-step']],
+  ['sources', '/pages/legal/sources', ['.catalog-page', '.catalog-code']],
   ['health', '/pages/health/health', ['.health-screen']],
   ['shopping', '/pages/shopping/shopping', ['.shopping-screen']],
   ['guide', '/pages/guide/guide', ['.screen']],
@@ -672,7 +676,7 @@ async function main() {
       const pageStartedAtMs = Date.now()
       try {
         currentStage = item.stage
-        let page = await navigateAndAcquire(miniProgram, route, {
+        let page = await navigateAndAcquire(miniProgram, catalogRoute(route), {
           allowedRoutes: item.allowedRoutes,
           timeoutMs: 12000,
           responseTimeoutMs: RESPONSE_TIMEOUT_MS,

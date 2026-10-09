@@ -1,0 +1,11 @@
+# Third-party recipe data notices
+
+Catalog 2026-10-09.1: 8 reviewed reference recipes; remaining candidates are not included.
+
+Structured JSON: [zkeq/vibe-cook-backend, dataset](https://github.com/zkeq/vibe-cook-backend/tree/b227b896d650709aa345e639634ecd5c3358e607), commit `b227b896d650709aa345e639634ecd5c3358e607`, under **The Unlicense**. Only json/index.json and json/recipes.json were used. No BUSL application code, images, SQLite, LFS or online service is included.
+
+Upstream: [HowToCook](https://github.com/Anduin2017/HowToCook). The actual upstream commit used to generate the dataset is **unknown**. License/path verification snapshot: `c694a5c457d45e6e012ae6cd9a7724aab86e320b`; this is not claimed as the generation commit.
+
+Both license texts are retained in docs/licenses. SHA-256: `6b0382b16279f26ff69014300541967a356a666eb0b91b422f6862f6b7dad17e`. Per-record paths, hashes, transformations and review limitations: [provenance](docs/recipe-catalog-provenance.json) and [review decisions](docs/recipe-catalog-review.json).
+
+Images, nutrition estimates, summaries and formulas are removed; quantities remain text. No clinical, allergy-safety or personal-diet endorsement is made. No personal meals, favorites, shopping or health records are replaced by catalog updates. Attribution is voluntary transparency; The Unlicense does not mandate it.

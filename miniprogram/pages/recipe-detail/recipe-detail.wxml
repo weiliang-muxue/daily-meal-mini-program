@@ -1,0 +1,48 @@
+<view class="screen catalog-page">
+  <button class="catalog-back" bindtap="navigateFromPage" disabled="{{navigating}}" hover-class="catalog-pressed" aria-label="{{pageNavigationLabel}}">{{pageNavigationLabel}}</button>
+  <view wx:if="{{loading}}" class="catalog-panel" aria-role="status">正在准备做法…</view>
+  <view wx:elif="{{error}}" class="catalog-panel">
+    <text class="catalog-error" aria-role="alert">{{error}}</text>
+    <button wx:if="{{!accessChanged}}" class="catalog-action" bindtap="load" hover-class="catalog-pressed">重新加载</button>
+  </view>
+  <block wx:elif="{{recipe}}">
+    <text class="catalog-title">{{recipe.title}}</text>
+    <text class="catalog-copy">来源分类：{{recipe.category}} · 原文份数标注：{{recipe.servings}}</text>
+    <text class="catalog-hint">来源预计 {{recipe.durationMinutes}} 分钟，备料和静置口径可能不同。份数与用量保留原文，未按你的就餐人数换算。</text>
+    <text class="catalog-copy">仅供烹饪参考，不是为你定制的营养方案。请核对全部食材、调味品与过敏忌口；分类不能作为素食或无过敏原保证。</text>
+    <view class="catalog-panel">
+      <text class="catalog-heading">食材与原文用量</text>
+      <view wx:for="{{recipe.ingredients}}" wx:key="name" class="catalog-ingredient">
+        <text class="catalog-label">{{item.name}}{{item.optional ? '（可选）' : ''}}</text>
+        <text class="catalog-body">{{item.amount}}</text>
+        <text class="catalog-hint">{{item.perServing ? '来源按每份标注，未自动计算总量' : '来源未标注为每份用量，请结合做法核对'}}</text>
+        <text wx:if="{{item.note}}" class="catalog-copy">原文备注：{{item.note}}</text>
+      </view>
+    </view>
+    <view wx:if="{{recipe.tools.length}}" class="catalog-panel">
+      <text class="catalog-heading">工具</text>
+      <text wx:for="{{recipe.tools}}" wx:key="*this" class="catalog-body">{{item}}</text>
+    </view>
+    <view class="catalog-panel">
+      <text class="catalog-heading">做法</text>
+      <view wx:for="{{recipe.steps}}" wx:key="title" class="catalog-step">
+        <text class="catalog-heading">{{index + 1}}. {{item.title}}</text>
+        <text class="catalog-body">{{item.instruction}}</text>
+        <text wx:for="{{item.tips}}" wx:for-item="tip" wx:key="*this" class="catalog-copy">{{tip}}</text>
+      </view>
+    </view>
+    <view wx:if="{{recipe.tips.length}}" class="catalog-panel">
+      <text class="catalog-heading">原文补充</text>
+      <text wx:for="{{recipe.tips}}" wx:key="*this" class="catalog-body">{{item}}</text>
+    </view>
+    <button class="catalog-action" bindtap="copyTitle" loading="{{copying}}" disabled="{{copying}}" hover-class="catalog-pressed">复制菜名</button>
+    <text class="catalog-hint">只复制菜名，不保存为私人收藏，也不加入采购。你可以自行填入生成前的“想吃什么”。</text>
+    <view class="catalog-panel">
+      <text class="catalog-heading">菜谱来源</text>
+      <text class="catalog-body">HowToCook → vibe-cook-backend 的 dataset 数据；The Unlicense。未使用应用代码或图片。</text>
+      <text selectable="true" class="catalog-code">{{sourcePath}}</text>
+      <button class="catalog-action" bindtap="openSources" disabled="{{navigating}}" hover-class="catalog-pressed">查看来源、版本与许可证</button>
+    </view>
+  </block>
+  <text wx:if="{{notice}}" class="catalog-body" aria-role="status">{{notice}}</text>
+</view>

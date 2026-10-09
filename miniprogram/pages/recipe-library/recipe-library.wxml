@@ -4,6 +4,7 @@
   </button>
   <text class="page-title">我的收藏</text>
   <text class="section-copy">只为你保存餐食副本，不自动发送给 AI，也不改变不喜欢或过敏忌口设置。</text>
+  <button class="secondary-button" bindtap="openCatalog" disabled="{{loading || busy}}" hover-class="button-hover">去菜谱库找灵感</button>
   <view wx:if="{{loading}}" class="status-panel" aria-label="正在加载收藏">正在同步你的收藏…</view>
   <view wx:if="{{error}}" class="error-message" aria-role="alert">{{error}}</view>
   <text wx:if="{{notice}}" class="notice">{{notice}}</text>

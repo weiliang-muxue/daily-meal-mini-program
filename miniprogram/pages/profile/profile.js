@@ -532,6 +532,14 @@ Page({
   },
 
   openUserAgreement() { return navigateToUserAgreement() },
+  openSources() {
+    if (this.memberManagementUnloaded || this.sourcesOpening) return
+    this.sourcesOpening = true
+    this.setData({ legalPrivacyError: '' })
+    const done = () => { this.sourcesOpening = false }
+    const fail = () => { if (!this.memberManagementUnloaded) this.setData({ legalPrivacyError: '来源说明暂时无法打开，请稍后重试' }); done() }
+    try { return wx.navigateTo({ url: '/pages/legal/sources', fail, complete: done }) } catch (_) { fail() }
+  },
   openWaterReminder() { return wx.navigateTo({ url: '/pages/water-reminder/water-reminder' }) },
   async openPrivacyGuide() {
     this.setData({ legalPrivacyError: '' })

@@ -6,6 +6,8 @@
     "pages/plan-preview/plan-preview",
     "pages/plan-history/plan-history",
     "pages/recipe-library/recipe-library",
+    "pages/recipe-catalog/recipe-catalog",
+    "pages/recipe-detail/recipe-detail",
     "pages/health/health",
     "pages/shopping/shopping",
     "pages/guide/guide",
@@ -13,7 +15,8 @@
     "pages/water-reminder/water-reminder",
     "pages/meal-edit/meal-edit",
     "pages/legal/user-agreement",
-    "pages/legal/privacy"
+    "pages/legal/privacy",
+    "pages/legal/sources"
   ],
   "window": {
     "navigationBarTitleText": "每天怎么吃",

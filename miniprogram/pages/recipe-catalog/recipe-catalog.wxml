@@ -1,0 +1,33 @@
+<view class="screen catalog-page">
+  <button class="catalog-back" bindtap="navigateFromPage" hover-class="catalog-pressed" disabled="{{navigating}}" aria-label="{{pageNavigationLabel}}">{{pageNavigationLabel}}</button>
+  <text class="catalog-title">菜谱库</text>
+  <text class="catalog-copy">按菜名或食材找灵感。搜索不调用 AI，不改变你的餐单。</text>
+  <view wx:if="{{loading}}" class="catalog-panel" aria-role="status">正在准备菜谱…</view>
+  <view wx:elif="{{error}}" class="catalog-panel">
+    <text class="catalog-error" aria-role="alert">{{error}}</text>
+    <button wx:if="{{!accessChanged}}" class="catalog-action" bindtap="load" hover-class="catalog-pressed">重新加载</button>
+  </view>
+  <block wx:else>
+    <view class="catalog-panel">
+      <label for="catalog-search" class="catalog-label">菜名或食材</label>
+      <input id="catalog-search" class="catalog-input" value="{{query}}" bindinput="search" maxlength="50" confirm-type="search" placeholder="例如：豆腐 葱" aria-label="按菜名或食材搜索菜谱" />
+      <text class="catalog-hint">多个词用空格分开，将同时匹配。</text>
+      <text class="catalog-label">分类</text>
+      <picker range="{{categories}}" value="{{categoryIndex}}" bindchange="selectCategory" aria-label="选择菜谱分类">
+        <view class="catalog-picker">{{categories[categoryIndex]}} · 点击选择</view>
+      </picker>
+      <button wx:if="{{query || categoryIndex}}" class="catalog-action" bindtap="clearSearch" hover-class="catalog-pressed">清除搜索与筛选</button>
+    </view>
+    <text class="catalog-label">找到 {{total}} 道菜</text>
+    <text wx:if="{{!total}}" class="catalog-copy">没有找到匹配的菜。可以只输入一种食材，或切换到全部分类。</text>
+    <button wx:for="{{rows}}" wx:key="id" class="catalog-row" data-id="{{item.id}}" bindtap="openRecipe" disabled="{{navigating}}" hover-class="catalog-pressed" aria-label="查看{{item.title}}的食材与做法">
+      <text class="catalog-heading">{{item.title}}</text>
+      <text class="catalog-copy">{{item.category}} · {{item.ingredientsText}}</text>
+      <text class="catalog-link">查看做法</text>
+    </button>
+    <button wx:if="{{hasMore}}" class="catalog-action" bindtap="showMore" hover-class="catalog-pressed">查看更多菜谱</button>
+    <text class="catalog-hint">当前收录 {{catalogCount}} 道参考菜谱，更多内容待核对后补充。分类沿用来源，不代表素食、无过敏原或适合特定饮食。</text>
+    <button class="catalog-action" bindtap="openSources" disabled="{{navigating}}" hover-class="catalog-pressed">开源与数据来源</button>
+  </block>
+  <text wx:if="{{notice}}" class="catalog-error" aria-role="alert">{{notice}}</text>
+</view>

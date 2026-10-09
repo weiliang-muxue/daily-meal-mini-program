@@ -271,6 +271,14 @@ async function main() {
   await phoneInFlight.saveProfile({ detail: { value: { nickname: '并发输入' } } })
   assert.strictEqual(updateCalls, 0, '手机号绑定期间不能并发更新资料')
 
+  const sources = makePage(); let navigation, navigationCount = 0
+  wx.navigateTo = options => { navigation = options; navigationCount++ }
+  sources.openSources(); sources.openSources(); assert.strictEqual(navigationCount, 1)
+  assert.strictEqual(navigation.url, '/pages/legal/sources')
+  navigation.fail(); assert(sources.data.legalPrivacyError.includes('重试')); assert.strictEqual(sources.sourcesOpening, false)
+  sources.openSources(); sources.memberManagementUnloaded = true; navigation.fail()
+  assert.strictEqual(sources.data.legalPrivacyError, '', 'late source navigation errors do not update an unloaded profile')
+
   console.log('profile native identity controls tests passed')
 }
 

@@ -600,6 +600,8 @@ const testScripts = [
   'scripts/test-dietary-preferences.js',
   'scripts/test-recipe-library.js',
   'scripts/test-recipe-catalog-import.js',
+  'scripts/test-recipe-catalog.js',
+  'scripts/test-recipe-catalog-page.js',
   'scripts/test-recipe-library-page.js',
   'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',

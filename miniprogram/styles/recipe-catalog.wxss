@@ -1,0 +1,22 @@
+.catalog-page { font-size: 16px; line-height: 1.65; color: var(--ink); }
+.catalog-title { display: block; font-size: var(--type-page-title); font-weight: 750; margin: 24px 0 8px; overflow-wrap: anywhere; }
+.catalog-page button { min-height: 48px; margin: 12px 0; padding: 12px 16px; font-size: 16px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+.catalog-page button::after { border: 0; }
+.catalog-back, .catalog-action { color: var(--primary); border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--surface); }
+.catalog-back { width: auto; display: inline-block; }
+.catalog-panel, .catalog-row { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 16px; margin: 24px 0; min-width: 0; }
+.catalog-page .catalog-row { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; color: var(--ink); }
+.catalog-heading, .catalog-label { display: block; font-weight: 650; overflow-wrap: anywhere; }
+.catalog-heading { font-size: 18px; }
+.catalog-label { margin: 16px 0 8px; }
+.catalog-copy, .catalog-hint, .catalog-error, .catalog-body { display: block; margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.catalog-copy, .catalog-hint { color: var(--muted); }
+.catalog-hint { font-size: 14px; }
+.catalog-error { color: var(--danger); }
+.catalog-link { color: var(--primary); }
+.catalog-input, .catalog-picker { min-height: 48px; width: 100%; padding: 10px 12px; background: var(--input-surface); border: 1px solid var(--line-strong); border-radius: var(--radius-control); font-size: 16px; color: var(--ink); }
+.catalog-picker { overflow-wrap: anywhere; }
+.catalog-pressed { background: var(--pressed); }
+.catalog-step, .catalog-ingredient { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.catalog-step:last-child, .catalog-ingredient:last-child { border-bottom: 0; }
+.catalog-code { display: block; font-family: monospace; font-size: 14px; word-break: break-all; white-space: pre-wrap; }
