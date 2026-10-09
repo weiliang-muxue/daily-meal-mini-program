@@ -1588,7 +1588,7 @@ async function testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits() {
   assert.strictEqual(storage.get(pendingKey).mealOverrideOperations[mealId].value.ingredientItems[0].quantity, 3)
   cloudHandler = async (_name, action, payload) => {
     assert.strictEqual(action, 'saveState')
-    assert.strictEqual(payload.clientSchemaVersion, 9)
+    assert.strictEqual(payload.clientSchemaVersion, 10)
     return { ...restarted.data, ...payload.state, stateRevision: 1 }
   }
   await restarted.flush()
@@ -1596,7 +1596,41 @@ async function testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits() {
   assert.strictEqual(restarted.data.mealOverrides[mealId].ingredientItems[0].quantity, 3)
 }
 
+async function testSingleMealConfirmationNamespaceAndRevision() {
+  const memberStore = new FakeMembershipStore(namespaceA)
+  const store = new UserStore(memberStore)
+  storage.set(`meal_user_state_v3_${namespaceA}`, { ...defaults(), stateRevision: 7 })
+  storage.delete(`meal_user_pending_v1_${namespaceA}`)
+  store.bindNamespace()
+  const calls = []
+  let resolveRequest
+  cloudHandler = (name, action, payload) => {
+    calls.push({ name, action, payload })
+    return new Promise(resolve => { resolveRequest = resolve })
+  }
+  await expectReject(store.confirmMealReplacement('draft-single', 6), /重新预览/)
+  await expectReject(store.confirmMealReplacement('draft-single'), /重新预览/)
+  assert.strictEqual(calls.length, 0, 'stale preview cannot send confirmation')
+  const pending = store.confirmMealReplacement('draft-single', 7)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepStrictEqual(calls, [{ name: 'userData', action: 'confirmMealReplacement', payload: {
+    expectedDraftPlanId: 'draft-single', expectedStateRevision: 7, expectedCacheNamespace: namespaceA,
+  } }])
+  memberStore.switchTo(namespaceB)
+  const nextIdentity = JSON.stringify(store.data)
+  resolveRequest({ ...defaults(), stateRevision: 8 })
+  await expectReject(pending, /身份已变化/)
+  assert.strictEqual(JSON.stringify(store.data), nextIdentity, 'late response cannot overwrite the second identity')
+
+  const newMember = new FakeMembershipStore(namespaceA)
+  const fresh = new UserStore(newMember)
+  fresh.bindNamespace()
+  cloudHandler = async () => ({ ...defaults(), stateRevision: 8 })
+  assert.strictEqual((await fresh.confirmMealReplacement('draft-single', 7)).stateRevision, 8)
+}
+
 async function main() {
+  await testSingleMealConfirmationNamespaceAndRevision()
   await testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits()
   await testColdStartRequiresOnlineStatus()
   await testVerifiedIdentityReconcilesOnlyStalePrivateCaches()

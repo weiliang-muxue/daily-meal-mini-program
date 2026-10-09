@@ -108,10 +108,10 @@ async function main() {
 
   const oldV8 = { ...checked, schemaVersion: 8, waterReminder: { ...defaults().waterReminder, enabled: true, cadence: 'weekdays', scheduleVersion: 3 }, customReminders: [{ id: 'fictional-reminder', text: '虚构提醒', done: true }] }
   const migrated = migrate(oldV8)
-  assert.strictEqual(migrated.schemaVersion, 9)
+  assert.strictEqual(migrated.schemaVersion, 10)
   assert.deepStrictEqual(migrated.waterReminder, oldV8.waterReminder)
   assert.deepStrictEqual(migrated.customReminders, oldV8.customReminders)
-  assert.deepStrictEqual(migrate(migrated), migrated, 'v8 to v9 migration is idempotent')
+  assert.deepStrictEqual(migrate(migrated), migrated, 'v8 to v10 migration is idempotent')
   const archived = sanitizeState({ ...checked, activePlan: plan('new'), activePlanId: 'new', planHistory: [checked.activePlan],
     checkedShoppingIds: [], planUiStateByPlan: { ...checked.planUiStateByPlan, fictional: { ...checked.planUiStateByPlan.fictional, checkedShoppingIds: checked.checkedShoppingIds } } })
   const reactivated = restoreHistory(archived, 'fictional', archived.stateRevision)

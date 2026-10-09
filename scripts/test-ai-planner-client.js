@@ -38,6 +38,7 @@ const normalized = normalizeTaskProgress({
 })
 assert.deepStrictEqual(normalized, {
   taskId,
+  purpose: 'plan',
   contractVersion: CONTRACT_VERSION,
   plannerVersion: PLANNER_VERSION,
   status: 'running',
@@ -173,6 +174,10 @@ assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'preferences'), 
 assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'healthNotes'), false)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'draftPlan'), false)
 assert.strictEqual(Object.prototype.hasOwnProperty.call(cached, 'output'), false)
+const singleCached = safeTaskCache({ ...normalized, purpose: 'meal', replacementTarget: { sourceSnapshot: 'private' } })
+assert.strictEqual(singleCached.purpose, 'meal')
+assert.strictEqual(Object.prototype.hasOwnProperty.call(singleCached, 'replacementTarget'), false)
+assert.throws(() => normalizeTaskProgress({ ...normalized, purpose: 'unknown' }), /用途无效/)
 
 const presentation = taskPresentation(normalized)
 assert.strictEqual(presentation.title, '正在搭配每餐食物')
@@ -316,6 +321,18 @@ const service = new AiPlannerService(memberStore, caller, storage)
   const emptyService = new AiPlannerService(memberStore, async () => null, storage)
   assert.strictEqual(await emptyService.currentTask(), null)
   assert.strictEqual(storageData.has(storedKey), true, '云端无活动任务时由页面决定是否保留成功态缓存')
+
+  const replacement = { planId: 'fictional-plan', mealId: 'fictional-meal', dinnerMode: 'rest' }
+  const singlePreferences = { durationDays: 1, mealTypes: ['dinner'], doubleDinner: false }
+  calls.length = 0
+  await service.start(singlePreferences, 7, requestId, AI_DATA_CONSENT_VERSION, providerRevision, replacement)
+  assert.deepStrictEqual(calls[0].payload.replacement, replacement)
+  assert(!Object.prototype.hasOwnProperty.call(calls[0].payload.preferences, 'replacement'))
+  for (const invalid of [{ ...replacement, owner: 'untrusted' }, { ...replacement, sourceSnapshot: 'private' }, { ...replacement, dinnerMode: 'bad' }]) {
+    const count = calls.length
+    await assert.rejects(service.start(singlePreferences, 7, requestId, AI_DATA_CONSENT_VERSION, providerRevision, invalid), /替换范围无效/)
+    assert.strictEqual(calls.length, count)
+  }
 
   memberStore.cacheNamespace = otherNamespace
   listeners.forEach((listener) => listener(otherNamespace, namespace))

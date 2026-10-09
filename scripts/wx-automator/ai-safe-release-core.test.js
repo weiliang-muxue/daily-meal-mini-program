@@ -160,26 +160,26 @@ test('rejects missing, invalid, reordered, duplicate, and unknown arguments', ()
 
 test('pins the release probe contract and carries the public provider revision into consent', () => {
   assert.deepEqual(RELEASE_COMPATIBILITY, {
-    stateSchemaVersion: 9,
-    contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
-    providerContractRevision: 10, taskSchemaVersion: 3,
+    stateSchemaVersion: 10,
+    contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
+    providerContractRevision: 10, taskSchemaVersion: 4,
   })
   assert.equal(releaseServiceCompatible({
-    configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
+    configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
     providerContractRevision: 10, providerRevision: 23,
   }), true)
   for (const incompatible of [
-    { configured: true, storageReady: true, contractVersion: 1, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 1, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10 },
     { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '6', aiDataConsentVersion: 2, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 1, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 6 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 8, providerRevision: 23 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: 23 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 0 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 1.5 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: '23' },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 1, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 6 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 8, providerRevision: 23 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: 23 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 0 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 1.5 },
+    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: '23' },
   ]) assert.equal(releaseServiceCompatible(incompatible), false)
 
   const preferences = requestedPreferences(10)
@@ -200,7 +200,7 @@ test('pins the release probe contract and carries the public provider revision i
   assert.equal(Object.prototype.hasOwnProperty.call(request, 'taskSchemaVersion'), false,
     'task schema is assigned and verified by the server, not selected by a client request')
   const serverTaskCore = fs.readFileSync(path.resolve(__dirname, '..', '..', 'cloudfunctions', 'aiPlanner', 'task-core.js'), 'utf8')
-  assert.match(serverTaskCore, /const TASK_SCHEMA_VERSION = 3\b/)
+  assert.match(serverTaskCore, /const TASK_SCHEMA_VERSION = 4\b/)
   const probeSource = fs.readFileSync(path.resolve(__dirname, 'ai-safe-release-probe.js'), 'utf8')
   assert.equal(RELEASE_COMPATIBILITY.stateSchemaVersion, require('../../shared/user-state').CURRENT_SCHEMA)
   assert.equal((probeSource.match(/action: 'saveState', clientSchemaVersion: state\.releaseCompatibility\.stateSchemaVersion/g) || []).length, 3,

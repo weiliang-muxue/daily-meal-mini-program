@@ -23,9 +23,9 @@ const planStateFingerprint = 'a'.repeat(64)
 const cacheNamespace = 'b'.repeat(32)
 assert.strictEqual(AI_DATA_CONSENT_VERSION, 2)
 assert.strictEqual(AI_CONTRACT_VERSION, 2)
-assert.strictEqual(AI_PLANNER_VERSION, '7')
+assert.strictEqual(AI_PLANNER_VERSION, '8')
 assert.strictEqual(AI_PROVIDER_CONTRACT_REVISION, 10)
-assert.strictEqual(TASK_SCHEMA_VERSION, 3)
+assert.strictEqual(TASK_SCHEMA_VERSION, 4)
 assert.deepStrictEqual(QUERY_STATUSES, [
   'queued', 'running', 'finalizing', 'pending', 'processing', 'generating', 'validating', 'active',
 ])
@@ -41,7 +41,7 @@ assert.deepStrictEqual(progressCounts({
 }), { totalSteps: 4, completedSteps: 2 })
 
 const raw = {
-  taskSchemaVersion: 3, owner: 'owner_12345678', status: 'validating', phase: 'validation', taskRevision: 7,
+  taskSchemaVersion: TASK_SCHEMA_VERSION, owner: 'owner_12345678', status: 'validating', phase: 'validation', taskRevision: 7,
   cacheNamespace,
   generationEpoch: 3, expiresAt: 1000, createdAt: 100, createdAtMs: 100, updatedAt: 800,
   input: { healthNotes: 'must disappear' },
@@ -59,7 +59,7 @@ const raw = {
 assert.strictEqual(taskVersionState(raw), 'current')
 const compacted = compactExpiredTask(raw, 'task_12345678', now)
 assert.strictEqual(compacted.data.status, 'expired')
-assert.strictEqual(compacted.data.taskSchemaVersion, 3)
+assert.strictEqual(compacted.data.taskSchemaVersion, TASK_SCHEMA_VERSION)
 assert.strictEqual(compacted.data.contractVersion, AI_CONTRACT_VERSION)
 assert.strictEqual(compacted.data.plannerVersion, AI_PLANNER_VERSION)
 assert.strictEqual(compacted.data.planStateFingerprint, planStateFingerprint)
@@ -72,6 +72,9 @@ assert.strictEqual(compacted.data.input, undefined)
 assert.strictEqual(compacted.data.outline, undefined)
 assert.strictEqual(compacted.data.chunks, undefined)
 assert.strictEqual(compacted.data.finalize, undefined)
+const singleCompacted = compactExpiredTask({ ...raw, purpose: 'meal', replacementTarget: { sourceSnapshot: 'private' } }, 'task_single_12345678', now)
+assert.strictEqual(singleCompacted.data.purpose, 'meal')
+assert.strictEqual(singleCompacted.data.replacementTarget, undefined)
 assert.strictEqual(compactExpiredTask({ ...raw, status: 'failed' }, 'task_12345678', now), null)
 
 const legacyContractRaw = {

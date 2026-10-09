@@ -37,7 +37,7 @@ const TEST_PROVIDER_CONFIG_VERSION = 'a'.repeat(64)
 const activeTask = {
   taskId: 'task_page_test',
   contractVersion: 2,
-  plannerVersion: '7',
+  plannerVersion: '8',
   taskRevision: 3,
   status: 'running',
   phase: 'details',
@@ -54,7 +54,7 @@ let recentFailureResponse = null
 let recentFailureImplementation = async () => recentFailureResponse
 let cachedTaskResponse = null
 let statusResponse = {
-  configured: false, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
+  configured: false, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
 }
 let statusImplementation = async () => statusResponse
 let startImplementation = async () => ({ task: activeTask })
@@ -159,7 +159,7 @@ require.cache[aiPlannerPath] = {
     taskPresentation,
     failurePolicy,
     CONTRACT_VERSION: 2,
-    PLANNER_VERSION: '7',
+    PLANNER_VERSION: '8',
     AI_DATA_CONSENT_VERSION: 2,
     PROVIDER_CONTRACT_REVISION,
   },
@@ -224,7 +224,7 @@ function resetMocks() {
   recentFailureImplementation = async () => recentFailureResponse
   cachedTaskResponse = null
   statusResponse = {
-    configured: false, storageReady: true, contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
+    configured: false, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
   }
   statusImplementation = async () => statusResponse
   startImplementation = async () => ({ task: activeTask })
@@ -579,7 +579,7 @@ async function testCurrentFailureWithoutCachedTaskPreservesServiceStatus() {
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
     contractVersion: 2,
-    plannerVersion: '7',
+    plannerVersion: '8',
     aiDataConsentVersion: 2,
     providerDisplayName: '测试 AI 服务',
   }
@@ -614,7 +614,7 @@ async function testCurrentFailureWithCachedTaskUsesRecoveryCopy() {
         storageReady: true,
         providerContractRevision: PROVIDER_CONTRACT_REVISION,
         contractVersion: 2,
-        plannerVersion: '7',
+        plannerVersion: '8',
         aiDataConsentVersion: 2,
         ...(aiConfigured ? {
           providerDisplayName: '测试 AI 服务', providerRevision: TEST_PROVIDER_REVISION,
@@ -746,7 +746,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 2, plannerVersion: '7', providerDisplayName: '测试 AI 服务',
+    contractVersion: 2, plannerVersion: '8', providerDisplayName: '测试 AI 服务',
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'error', '旧云函数未声明同意协议时不能允许生成')
@@ -763,7 +763,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
+    contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'error', '缺少公开服务名称时必须关闭生成入口')
@@ -775,7 +775,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
     contractVersion: 2,
-    plannerVersion: '7',
+    plannerVersion: '8',
     aiDataConsentVersion: 2,
     providerDisplayName: '测试 AI 服务',
   }
@@ -785,7 +785,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
   assert.strictEqual(page.data.providerRevision, TEST_PROVIDER_REVISION)
 
   statusResponse = {
-    configured: true, storageReady: true, contractVersion: 2, plannerVersion: '7',
+    configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8',
     aiDataConsentVersion: 2, providerDisplayName: '测试 AI 服务', providerRevision: TEST_PROVIDER_REVISION,
   }
   await page.checkAiStatus()
@@ -793,7 +793,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
 
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
-    contractVersion: 2, plannerVersion: '7', aiDataConsentVersion: 2,
+    contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
     providerDisplayName: '测试 AI 服务',
   }
   await page.checkAiStatus()
@@ -810,12 +810,12 @@ async function testNormalizedServiceStatusReachesPageReadyState() {
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
     contractVersion: 2,
-    plannerVersion: '7',
+    plannerVersion: '8',
     aiDataConsentVersion: 2,
     providerDisplayName: '测试 AI 服务',
     privateDetail: '不得透传到页面',
   })
-  assert.strictEqual(statusResponse.plannerVersion, '7')
+  assert.strictEqual(statusResponse.plannerVersion, '8')
   assert.strictEqual(Object.prototype.hasOwnProperty.call(statusResponse, 'privateDetail'), false)
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'ready', '生产服务状态清洗结果必须能通过真实页面就绪检查')
@@ -830,7 +830,7 @@ async function testStorageReadinessBlocksGenerationAndMapsSafeCopy() {
       providerContractRevision: PROVIDER_CONTRACT_REVISION,
       providerRevision: TEST_PROVIDER_REVISION,
       contractVersion: 2,
-      plannerVersion: '7',
+      plannerVersion: '8',
       aiDataConsentVersion: 2,
       providerDisplayName: '测试 AI 服务',
     }
@@ -897,7 +897,7 @@ async function testStorageFailureKeepsPendingStartForSameRequestRetry() {
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
     contractVersion: 2,
-    plannerVersion: '7',
+    plannerVersion: '8',
     aiDataConsentVersion: 2,
     providerDisplayName: '测试 AI 服务',
   }
@@ -947,7 +947,7 @@ async function testRecoveryStorageFailureCannotLeaveServiceReady() {
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
     contractVersion: 2,
-    plannerVersion: '7',
+    plannerVersion: '8',
     aiDataConsentVersion: 2,
     providerDisplayName: '测试 AI 服务',
   }

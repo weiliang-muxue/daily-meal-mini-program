@@ -11,8 +11,8 @@ const {
 
 assert.strictEqual(AI_DATA_CONSENT_VERSION, 2)
 assert.strictEqual(AI_CONTRACT_VERSION, 2)
-assert.strictEqual(AI_PLANNER_VERSION, '7')
-assert.strictEqual(TASK_SCHEMA_VERSION, 3)
+assert.strictEqual(AI_PLANNER_VERSION, '8')
+assert.strictEqual(TASK_SCHEMA_VERSION, 4)
 
 const CURRENT_AI_VERSIONS = Object.freeze({
   taskSchemaVersion: TASK_SCHEMA_VERSION,
@@ -137,7 +137,7 @@ function snapshot(name) {
 }
 function task(owner, status, expiresAt, epoch = 1, cacheNamespace = CACHE_NAMESPACE) {
   return {
-    taskSchemaVersion: 3, owner, status, expiresAt, generationEpoch: epoch, taskRevision: 2,
+    taskSchemaVersion: TASK_SCHEMA_VERSION, owner, status, expiresAt, generationEpoch: epoch, taskRevision: 2,
     cacheNamespace,
     ...CURRENT_AI_VERSIONS,
     planStateFingerprint: 'a'.repeat(64),

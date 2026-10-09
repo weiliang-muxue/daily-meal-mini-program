@@ -106,32 +106,35 @@ function totalsFor(items) {
   if (Array.isArray(items)) items.forEach(i => result.set(keyOf(i), round((result.get(keyOf(i)) || 0) + i.quantity)))
   return result
 }
-function changedKeys(plan, before = {}, after = {}) {
-  const result = new Set()
-  allMeals(plan).forEach(meal => {
+function ingredientTotalsChanged(plan, before = {}, after = {}) {
+  return allMeals(plan).some(meal => {
     const left = totalsFor(ingredientsFor(meal, before)), right = totalsFor(ingredientsFor(meal, after))
-    new Set([...left.keys(), ...right.keys()]).forEach(key => { if (left.get(key) !== right.get(key)) result.add(key) })
+    return [...new Set([...left.keys(), ...right.keys()])].some(key => left.get(key) !== right.get(key))
   })
-  return result
 }
 function reconcileChecks(before, after) {
   const byPlan = { ...after.planUiStateByPlan }
   let activeChecked = after.checkedShoppingIds || []
   const plans = [after.activePlan, after.draftPlan, ...(after.planHistory || [])].filter(Boolean)
   for (const plan of plans) {
-    const affected = changedKeys(plan, before.mealOverrides, after.mealOverrides)
-    if (!affected.size) continue
     const entry = byPlan[plan.id]
-    const meals = selectedMeals(plan, after.activePlan && plan.id === after.activePlan.id ? after : entry)
-    const left = inventory(plan, meals, before.mealOverrides) || []
-    const right = inventory(plan, meals, after.mealOverrides) || []
+    const oldUi = before.activePlan && plan.id === before.activePlan.id ? before : (before.planUiStateByPlan || {})[plan.id]
+    const newUi = after.activePlan && plan.id === after.activePlan.id ? after : entry
+    const oldMeals = selectedMeals(plan, oldUi), newMeals = selectedMeals(plan, newUi)
+    const selectionChanged = oldMeals.length !== newMeals.length || oldMeals.some((meal, index) => meal.id !== newMeals[index].id)
+    // Avoid rebuilding every historical shopping list on each checkbox save.
+    if (!selectionChanged && !ingredientTotalsChanged(plan, before.mealOverrides, after.mealOverrides)) continue
+    const left = inventory(plan, oldMeals, before.mealOverrides)
+    const right = inventory(plan, newMeals, after.mealOverrides)
+    // Text-only legacy plans cannot be recomputed reliably; retain their checks.
+    if (!left || !right) continue
     const flatten = groups => groups.flatMap(g => g.items.map(i => ({ ...i, category: g.name })))
     const leftItems = flatten(left), rightItems = flatten(right)
     const leftTotals = totalsFor(leftItems), rightTotals = totalsFor(rightItems)
     const removed = new Set()
     ;[...leftItems, ...rightItems].forEach(item => {
       const key = keyOf(item)
-      if (affected.has(key) && leftTotals.get(key) !== rightTotals.get(key)) removed.add(item.id)
+      if (leftTotals.get(key) !== rightTotals.get(key)) removed.add(item.id)
     })
     if (entry) byPlan[plan.id] = { ...entry, checkedShoppingIds: (entry.checkedShoppingIds || []).filter(id => !removed.has(id)) }
     if (after.activePlan && plan.id === after.activePlan.id) activeChecked = activeChecked.filter(id => !removed.has(id))

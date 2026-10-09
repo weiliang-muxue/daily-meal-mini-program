@@ -638,6 +638,22 @@ class UserStore {
     return this.replaceFromCloud(data, namespace)
   }
 
+  async confirmMealReplacement(expectedDraftPlanId, expectedStateRevision) {
+    if (!validPlanId(expectedDraftPlanId)) throw new Error('候选餐食标识无效，请刷新后重试')
+    const namespace = this.requireNamespace()
+    await this.flush()
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    if (!Number.isSafeInteger(expectedStateRevision) || expectedStateRevision !== this.data.stateRevision) {
+      const error = new Error('餐单或采购状态已变化，请重新预览后确认')
+      error.code = 'STATE_REVISION_CONFLICT'
+      throw error
+    }
+    const data = await callFunction('userData', 'confirmMealReplacement', {
+      expectedDraftPlanId, expectedStateRevision, expectedCacheNamespace: namespace,
+    })
+    return this.replaceFromCloud(data, namespace)
+  }
+
   async restoreHistory(planId) {
     const namespace = this.requireNamespace()
     await this.flush()

@@ -21,12 +21,13 @@ const {
   createTask, claimNext, completeClaim, failClaim, assertTaskOwner,
   cancelTask, expireTask, finishTask, publicTask, compactTask, terminal,
   planStateFingerprint, hasPlanStateFingerprint, hasAiDataConsent,
-  AI_DATA_CONSENT_VERSION, assertSupportedTaskSchema,
+  AI_DATA_CONSENT_VERSION, TASK_SCHEMA_VERSION, assertSupportedTaskSchema,
 } = require('./task-core')
 const {
   CURRENT_SCHEMA, migrate, sanitizeState, sanitizePlan, sanitizeGenerationPreferences,
 } = require('./user-state')
 const { notFound } = require('./not-found')
+const mealReplacement = require('./meal-replacement')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -309,7 +310,8 @@ function assertTaskVersionReadable(task) {
 
 function hasCurrentPlannerContract(task) {
   const version = assertTaskVersionReadable(task)
-  return version.plannerVersion === Number(PLANNER_VERSION) && version.contractVersion === CONTRACT_VERSION
+  return version.taskSchemaVersion === TASK_SCHEMA_VERSION
+    && version.plannerVersion === Number(PLANNER_VERSION) && version.contractVersion === CONTRACT_VERSION
 }
 
 function hasCurrentProviderConfiguration(task, config) {
@@ -458,7 +460,7 @@ function clearActiveTaskPointer(control, taskId, now) {
   return { ...control, activeTaskId: '', updatedAt: now }
 }
 
-async function startTask(openid, rawPreferences, expectedStateRevision, clientRequestId, rawConsent, expectedCacheNamespace, config) {
+async function startTask(openid, rawPreferences, expectedStateRevision, clientRequestId, rawConsent, expectedCacheNamespace, config, replacement) {
   const { aiDataConsentVersion, providerRevision } = validateAiDataConsent(rawConsent, config)
   const input = normalizeRequest(rawPreferences)
   const baseStateRevision = validRevision(expectedStateRevision)
@@ -466,11 +468,6 @@ async function startTask(openid, rawPreferences, expectedStateRevision, clientRe
   const now = Date.now()
   const prefHash = preferencesHash(input)
   const idemHash = idempotencyFingerprint(openid, clientRequestId)
-  const reqFingerprint = requestFingerprint({
-    preferencesHash: prefHash, baseStateRevision,
-    contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION, aiDataConsentVersion,
-    providerRevision, providerConfigVersion: config.providerConfigVersion,
-  })
   const taskId = generateTaskId()
   const planId = newPlanId()
 
@@ -491,6 +488,22 @@ async function startTask(openid, rawPreferences, expectedStateRevision, clientRe
     if (state.stateRevision !== baseStateRevision) {
       throw plannerError('STATE_REVISION_CONFLICT', '数据已在另一台设备更新，请刷新后重试')
     }
+    let replacementTarget = null
+    if (replacement !== undefined && replacement !== null) {
+      if (rawState.schemaVersion !== CURRENT_SCHEMA) throw plannerError('STATE_SCHEMA_UPGRADE_REQUIRED', '请先刷新并升级个人数据')
+      if (typeof replacement !== 'object' || Array.isArray(replacement)
+        || Object.keys(replacement).some(key => !['planId', 'mealId', 'dinnerMode'].includes(key))
+        || !state.activePlan || replacement.planId !== state.activePlan.id) {
+        throw plannerError('MEAL_REPLACEMENT_INVALID', '请从当前餐单重新选择要替换的一餐')
+      }
+      replacementTarget = mealReplacement.createTarget(state, replacement.mealId, { dinnerMode: replacement.dinnerMode })
+      mealReplacement.assertRequest(state, replacementTarget, input)
+    }
+    const reqFingerprint = requestFingerprint({
+      preferencesHash: prefHash, baseStateRevision,
+      contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION, aiDataConsentVersion,
+      providerRevision, providerConfigVersion: config.providerConfigVersion, replacementTarget,
+    })
     let control = normalizeControl(rawControl, openid)
     if (rawControl && control.cacheNamespace && control.cacheNamespace !== expectedCacheNamespace) {
       throw plannerError('STALE_DATA_GENERATION', '生成任务属于旧账号数据版本，请重新发起')
@@ -572,12 +585,14 @@ async function startTask(openid, rawPreferences, expectedStateRevision, clientRe
       startStage = 'START_TRANSACTION_VALIDATE'
     }
 
+    if (replacementTarget && state.draftPlan) throw plannerError('DRAFT_ALREADY_EXISTS', '请先确认或放弃已有候选，再替换这一餐')
     const rate = enforceRateLimit(control, now)
     const generationEpoch = control.generationEpoch + 1
     const task = createTask({
       taskId, owner: openid, input, preferencesHash: prefHash,
       baseStateRevision, stateRevision: baseStateRevision, planId,
       activePlan: state.activePlan, draftPlan: state.draftPlan,
+      replacementTarget,
       generatedAt: new Date(now).toISOString(), clientRequestId,
       idempotencyHash: idemHash, requestFingerprint: reqFingerprint,
       contractVersion: CONTRACT_VERSION, plannerVersion: PLANNER_VERSION,
@@ -1017,15 +1032,36 @@ async function settleSuccess(
     if (task.preferencesHash !== preferencesHash(task.input)) throw plannerError('AI_OUTPUT_INVALID', '生成条件已变化')
     let latestPreferencesHash = ''
     try { latestPreferencesHash = preferencesHash(state.generationPreferences) } catch (_) {}
-    if (latestPreferencesHash !== task.preferencesHash) {
+    let replacementConflict = false
+    if (task.purpose === 'meal') {
+      try { mealReplacement.assertRequest(state, task.replacementTarget, task.input) } catch (_) { replacementConflict = true }
+    }
+    if (replacementConflict || (task.purpose !== 'meal' && latestPreferencesHash !== task.preferencesHash)) {
       task = compactTask(finishTask(task, 'conflict', now, { errorCode: 'STATE_REVISION_CONFLICT' }), 'conflict', now)
       control = terminalControl(control, task, now)
       await taskRef.set({ data: taskData(task) })
       await controlRef.set({ data: control })
       return { task: publicProgress(task, now, openid), result: null }
     }
-    const draftPlan = sanitizePlan(result, 'draftPlan')
-    const cleanGenerationPreferences = sanitizeGenerationPreferences(task.input)
+    if (task.purpose !== 'meal' && result.replacementTarget) throw plannerError('AI_OUTPUT_INVALID', '整单生成不能包含单餐替换标记')
+    let draftPlan
+    try {
+      draftPlan = sanitizePlan({ ...result,
+        ...(task.purpose === 'meal' ? { replacementTarget: task.replacementTarget } : {}),
+      }, 'draftPlan')
+      if (task.purpose === 'meal') mealReplacement.proposal(state, draftPlan)
+    } catch (error) {
+      if (task.purpose !== 'meal') throw error
+      // A rejected candidate is terminal. Do not loop on the same invalid result
+      // or write any part of it into the user's current meals.
+      task = compactTask(finishTask(task, 'failed', now, { errorCode: 'AI_OUTPUT_INVALID' }), 'failed', now)
+      control = terminalControl(control, task, now)
+      await taskRef.set({ data: taskData(task) })
+      await controlRef.set({ data: control })
+      return { task: publicProgress(task, now, openid), result: null }
+    }
+    const cleanGenerationPreferences = task.purpose === 'meal'
+      ? state.generationPreferences : sanitizeGenerationPreferences(task.input)
     const stateRevision = state.stateRevision + 1
     const nextState = sanitizeState({
       ...state, draftPlan, generationPreferences: cleanGenerationPreferences, stateRevision,
@@ -1147,6 +1183,9 @@ const PUBLIC_FAILURE_MESSAGES = Object.freeze({
   TASK_REVISION_CONFLICT: '任务状态已变化，请刷新后重试',
   INVALID_TASK_REVISION: '请刷新生成进度后再取消',
   ACTIVE_TASK_EXISTS: '已有生成任务正在进行，请先继续或取消',
+  DRAFT_ALREADY_EXISTS: '请先确认或放弃已有候选，再替换这一餐',
+  MEAL_REPLACEMENT_INVALID: '单餐替换条件无效，请返回当前餐单重新选择',
+  MEAL_REPLACEMENT_CONFLICT: '原餐食或晚餐模式已变化，请重新选择，当前餐单保持不变',
   AI_DATA_CONSENT_REQUIRED: '请重新确认本次 AI 数据发送范围',
   DIET_INTENT_REQUIRED: '请至少选择一个饮食目标或风格，或填写本次补充目标',
   EXERCISE_INTENT_REQUIRED: '请明确选择本周期是否安排运动',
@@ -1206,7 +1245,7 @@ exports.main = async (event = {}) => {
         success: true,
         data: await startTask(
           OPENID, event.preferences, event.expectedStateRevision, event.clientRequestId, event.aiDataConsent,
-          expectedCacheNamespace, config,
+          expectedCacheNamespace, config, event.replacement,
         ),
       }
     }

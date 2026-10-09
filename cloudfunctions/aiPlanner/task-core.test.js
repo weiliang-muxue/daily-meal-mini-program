@@ -81,7 +81,7 @@ test('相同幂等键和请求只重放，内容或 revision 改变即冲突', (
 
 test('创建任务会重新规范化偏好并拒绝伪造的三类指纹', () => {
   const created = task({ input: { ...input, ignoredByContract: '不得存入任务' } })
-  assert.strictEqual(TASK_SCHEMA_VERSION, 3)
+  assert.strictEqual(TASK_SCHEMA_VERSION, 4)
   assert.strictEqual(created.taskSchemaVersion, TASK_SCHEMA_VERSION)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(created.input, 'ignoredByContract'), false)
   assert.throws(() => task({ preferencesHash: 'f'.repeat(32) }), (error) => error.code === 'REQUEST_FINGERPRINT_MISMATCH')
@@ -173,7 +173,7 @@ test('计划基线摘要包含 null 与完整规范化计划内容且不保存�
 
 test('任务从 queued 开始，每次有效状态变更递增 taskRevision', () => {
   const created = task()
-  assert.strictEqual(created.plannerVersion, '7')
+  assert.strictEqual(created.plannerVersion, '8')
   assert.strictEqual(created.chunks.every((chunk) => chunk.mealSlots === 1), true)
   assert.strictEqual(created.chunks.reduce((sum, chunk) => sum + chunk.mealSlots, 0), 28)
   assert.strictEqual(created.status, 'queued')
@@ -374,7 +374,7 @@ test('只有完成 finalize 的任务可成功，revision 冲突使用独立终�
 test('公开进度不泄露 owner、偏好、结果、租约或健康文本', () => {
   const progress = publicTask(task(), 1100, owner)
   assert.deepStrictEqual(Object.keys(progress), [
-    'taskId', 'status', 'contractVersion', 'plannerVersion', 'phase', 'taskRevision', 'completedSteps', 'totalSteps', 'progressPercent',
+    'taskId', 'status', 'purpose', 'contractVersion', 'plannerVersion', 'phase', 'taskRevision', 'completedSteps', 'totalSteps', 'progressPercent',
     'errorCode', 'failureCode', 'expiresAt', 'resultStateRevision',
   ])
   const serialized = JSON.stringify(progress)

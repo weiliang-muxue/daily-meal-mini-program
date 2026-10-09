@@ -10,6 +10,9 @@ if (cliArgs.some((argument) => argument !== '--check')) {
   throw new Error('仅支持 --check 参数')
 }
 const copies = [
+  ['shared/meal-replacement.js', 'miniprogram/services/meal-replacement.js'],
+  ['shared/meal-replacement.js', 'cloudfunctions/userData/meal-replacement.js'],
+  ['shared/meal-replacement.js', 'cloudfunctions/aiPlanner/meal-replacement.js'],
   ['shared/meal-shopping.js', 'miniprogram/services/meal-shopping.js'],
   ['shared/meal-shopping.js', 'cloudfunctions/userData/meal-shopping.js'],
   ['shared/meal-shopping.js', 'cloudfunctions/aiPlanner/meal-shopping.js'],

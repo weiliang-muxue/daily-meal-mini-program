@@ -1,7 +1,7 @@
 const crypto = require('crypto')
 
 const CONTRACT_VERSION = 2
-const PLANNER_VERSION = '7'
+const PLANNER_VERSION = '8'
 const MAX_DETAIL_MEAL_SLOTS = 1
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
 const SCENARIOS = ['default', 'rest', 'workout']

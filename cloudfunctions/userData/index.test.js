@@ -377,20 +377,20 @@ async function testMigrations() {
     raw.settings.futureServerSetting = { fromSchema: schemaVersion }
     raw.generationPreferences.futureServerPreference = { fromSchema: schemaVersion }
     const migrated = userData._test.migrateStored(raw)
-    assert.strictEqual(migrated.schemaVersion, 9)
+    assert.strictEqual(migrated.schemaVersion, 10)
     assert.strictEqual(migrated.waterReminder.enabled, false)
     assert.deepStrictEqual(migrated.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(migrated.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     reset(raw)
     const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
     const stored = get('meal_user_states', owner)
-    assert.strictEqual(bootstrapped.schemaVersion, 9)
+    assert.strictEqual(bootstrapped.schemaVersion, 10)
     assert.strictEqual(bootstrapped.waterReminder.enabled, false)
     assert.deepStrictEqual(stored.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
   }
-  const unsupported = { ...currentState(), schemaVersion: 10 }
+  const unsupported = { ...currentState(), schemaVersion: 11 }
   reset(unsupported)
   await assert.rejects(
     userData._test.bootstrap(owner, cacheNamespace),
@@ -499,18 +499,72 @@ async function testStructuredMealShoppingSave() {
   const originalContext = cloudStub.getWXContext
   cloudStub.getWXContext = () => ({ OPENID: owner })
   try {
-    for (const clientSchemaVersion of [undefined, 8, 10]) {
+    for (const clientSchemaVersion of [undefined, 8, 9, 11]) {
       const reply = await userData.main({ action: 'saveState', clientSchemaVersion, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
       assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED')
       assert.deepStrictEqual(get('meal_user_states', owner), beforeInvalid)
     }
-    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 9, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
+    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 10, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
     assert.strictEqual(reply.success, true)
     assert.deepStrictEqual(reply.data.checkedShoppingIds, ['eggs'])
   } finally { cloudStub.getWXContext = originalContext }
 }
 
+async function testSingleMealConfirmation() {
+  const replacement = require('./meal-replacement')
+  const source = currentState(4)
+  source.draftPlan = null
+  const target = replacement.createTarget(source, 'active-meal-0')
+  const candidate = plan('single', 'candidate-future')
+  candidate.durationDays = 1
+  candidate.days = candidate.days.slice(0, 1)
+  candidate.days[0].meals[0].title = 'Single replacement'
+  candidate.days[0].meals[0].ingredients[0].quantity = 80
+  candidate.replacementTarget = target
+  source.draftPlan = candidate
+  const payload = { expectedDraftPlanId: candidate.id, expectedStateRevision: 4, expectedCacheNamespace: cacheNamespace }
+  reset(source)
+  const before = get('meal_user_states', owner)
+  for (const [action, data, code] of [
+    ['confirmDraft', payload, 'MEAL_REPLACEMENT_CONFIRM_REQUIRED'],
+    ['confirmMealReplacement', { ...payload, expectedDraftPlanId: 'wrong' }, 'STATE_REVISION_CONFLICT'],
+    ['confirmMealReplacement', { ...payload, expectedStateRevision: 3 }, 'STATE_REVISION_CONFLICT'],
+    ['confirmMealReplacement', { ...payload, expectedCacheNamespace: rotatedCacheNamespace }, 'STALE_DATA_GENERATION'],
+  ]) {
+    await assert.rejects(userData._test.changePlan(owner, action, data), error => error.code === code)
+    assert.deepStrictEqual(get('meal_user_states', owner), before)
+  }
+  put('meal_members', 'another-member', { status: 'active', cacheNamespace: rotatedCacheNamespace })
+  put('meal_user_states', 'another-member', { ...defaults(), stateRevision: 4 })
+  await assert.rejects(userData._test.changePlan('another-member', 'confirmMealReplacement', {
+    ...payload, expectedCacheNamespace: rotatedCacheNamespace,
+  }), error => error.code === 'STATE_REVISION_CONFLICT')
+  assert.deepStrictEqual(get('meal_user_states', owner), before, 'another member cannot confirm this draft')
+  const saved = await userData._test.changePlan(owner, 'confirmMealReplacement', payload)
+  const normalized = userData._test.migrateStored(before)
+  for (const field of ['activePlan', 'activePlanId', 'planHistory', 'generationPreferences', 'settings', 'customReminders']) {
+    assert.deepStrictEqual(saved[field], normalized[field], `${field} must remain unchanged`)
+  }
+  assert.strictEqual(saved.mealOverrides['active-meal-0'].title, 'Single replacement')
+  assert.strictEqual(saved.stateRevision, 5)
+  assert.strictEqual(saved.draftPlan, null)
+  assertNestedFuture(saved)
+  await assert.rejects(userData._test.changePlan(owner, 'confirmMealReplacement', payload), error => error.code === 'STATE_REVISION_CONFLICT')
+
+  // Client-controlled state cannot create a trusted AI candidate or alter its scope.
+  reset({ ...source, draftPlan: null })
+  const spoof = await userData._test.saveState(owner, { draftPlan: candidate }, 4, cacheNamespace)
+  assert.strictEqual(spoof.draftPlan, null)
+  reset(source)
+  put('meal_members', owner, { status: 'deleting', cacheNamespace })
+  await assert.rejects(userData._test.changePlan(owner, 'confirmMealReplacement', payload), error => error.code === 'ACCOUNT_DELETION_IN_PROGRESS')
+  assert.deepStrictEqual(get('meal_user_states', owner), source)
+  reset({ ...source, draftPlan: { ...candidate, generatedAt: '2000-01-01T00:00:00.000Z' } })
+  await assert.rejects(userData._test.changePlan(owner, 'confirmMealReplacement', payload), error => error.code === 'DRAFT_EXPIRED')
+}
+
 ;(async () => {
+  await testSingleMealConfirmation()
   await testStructuredMealShoppingSave()
   await testBootstrapAndSave()
   await testDurationPersistenceBoundaries()

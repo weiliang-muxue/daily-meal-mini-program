@@ -6,7 +6,7 @@ const { membershipStore } = require('./membership-store')
 const CACHE_PREFIX = 'meal_ai_task_v2_'
 const CACHE_VERSION = 2
 const CONTRACT_VERSION = 2
-const PLANNER_VERSION = '7'
+const PLANNER_VERSION = '8'
 const AI_DATA_CONSENT_VERSION = 2
 const PROVIDER_CONTRACT_REVISION = 10
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'finalizing'])
@@ -109,6 +109,7 @@ function normalizeTaskProgress(value) {
     throw new Error('生成任务版本不受支持，请升级或重新发起')
   }
   const status = normalizeStatus(source.status)
+  if (source.purpose !== undefined && !['plan', 'meal'].includes(source.purpose)) throw new Error('生成任务用途无效，请重新发起')
   const completedSteps = integer(source.completedSteps, 0, 1000)
   const totalSteps = Math.max(completedSteps, integer(source.totalSteps, 0, 1000))
   const derivedPercent = totalSteps ? Math.round(completedSteps * 100 / totalSteps) : 0
@@ -118,6 +119,7 @@ function normalizeTaskProgress(value) {
   if (status === 'succeeded') progressPercent = 100
   return {
     taskId: source.taskId,
+    purpose: source.purpose === 'meal' ? 'meal' : 'plan',
     contractVersion: CONTRACT_VERSION,
     plannerVersion: PLANNER_VERSION,
     status,
@@ -245,6 +247,7 @@ function safeTaskCache(value, now = Date.now()) {
   return {
     cacheVersion: CACHE_VERSION,
     taskId: task.taskId,
+    purpose: task.purpose,
     contractVersion: task.contractVersion,
     plannerVersion: task.plannerVersion,
     status: task.status,
@@ -473,7 +476,7 @@ class AiPlannerService {
     return response
   }
 
-  start(preferences, expectedStateRevision, clientRequestId, consentVersion, providerRevision) {
+  start(preferences, expectedStateRevision, clientRequestId, consentVersion, providerRevision, replacement) {
     if (!validIdentifier(clientRequestId)) return Promise.reject(new Error('生成请求标识无效'))
     if (consentVersion !== AI_DATA_CONSENT_VERSION) {
       return Promise.reject(new Error('请重新确认本次 AI 数据发送范围'))
@@ -485,8 +488,20 @@ class AiPlannerService {
       || preferences.durationDays < 1 || preferences.durationDays > 14) {
       return Promise.reject(new Error('计划周期必须是 1–14 天的整数'))
     }
+    if (replacement !== undefined) {
+      if (!replacement || typeof replacement !== 'object' || Array.isArray(replacement)
+        || Object.keys(replacement).some(key => !['planId', 'mealId', 'dinnerMode'].includes(key))
+        || ['planId', 'mealId'].some(key => typeof replacement[key] !== 'string' || !replacement[key].trim()
+          || replacement[key].length > 120 || /[\u0000-\u001f\u007f]/.test(replacement[key]))
+        || !['', 'rest', 'workout', undefined].includes(replacement.dinnerMode)
+        || preferences.durationDays !== 1 || !Array.isArray(preferences.mealTypes)
+        || preferences.mealTypes.length !== 1 || preferences.doubleDinner !== false) {
+        return Promise.reject(new Error('单餐替换范围无效，请从当前餐单重新选择'))
+      }
+    }
     return this.taskAction('start', {
       preferences, expectedStateRevision, clientRequestId,
+      ...(replacement === undefined ? {} : { replacement }),
       aiDataConsent: {
         accepted: true,
         version: AI_DATA_CONSENT_VERSION,

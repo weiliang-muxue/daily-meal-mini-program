@@ -2,8 +2,9 @@
 
 const crypto = require('crypto')
 const { buildChunkLayout, normalizeRequest, preferencesHash: computePreferencesHash } = require('./lib')
+const { sanitizeTarget } = require('./meal-replacement')
 
-const TASK_SCHEMA_VERSION = 3
+const TASK_SCHEMA_VERSION = 4
 const AI_DATA_CONSENT_VERSION = 2
 const TASK_TTL_MS = 2 * 60 * 60 * 1000
 const LEASE_MS = 70 * 1000
@@ -161,9 +162,11 @@ function requestFingerprint(options = {}) {
   if (!PROVIDER_CONFIG_VERSION_PATTERN.test(providerConfigVersion)) {
     throw taskError('INVALID_TASK_INPUT', 'providerConfigVersion无效')
   }
-  return digestParts('meal-ai-request-v3', {
+  const replacementTarget = options.replacementTarget ? sanitizeTarget(options.replacementTarget) : null
+  return digestParts('meal-ai-request-v4', {
     preferencesHash, baseStateRevision, contractVersion, plannerVersion, aiDataConsentVersion,
     providerRevision, providerConfigVersion,
+    replacementTarget,
   })
 }
 
@@ -256,6 +259,7 @@ function createTask(options = {}) {
   const fingerprint = requestFingerprint({
     preferencesHash, baseStateRevision, contractVersion, plannerVersion, aiDataConsentVersion,
     providerRevision, providerConfigVersion,
+    replacementTarget: options.replacementTarget,
   })
   if (options.requestFingerprint && normalizeHash(options.requestFingerprint, 'requestFingerprint') !== fingerprint) {
     throw taskError('REQUEST_FINGERPRINT_MISMATCH', '请求指纹不匹配')
@@ -264,6 +268,8 @@ function createTask(options = {}) {
   const outlineInputHash = digestParts('meal-ai-outline-input-v1', fingerprint)
   const task = {
     _id: taskId, taskSchemaVersion: TASK_SCHEMA_VERSION, owner,
+    purpose: options.replacementTarget ? 'meal' : 'plan',
+    ...(options.replacementTarget ? { replacementTarget: sanitizeTarget(options.replacementTarget) } : {}),
     status: 'queued', phase: 'outline', taskRevision: 0,
     clientRequestIdHash: digestParts('meal-ai-client-request-v1', clientRequestId),
     idempotencyHash, requestFingerprint: fingerprint, preferencesHash, requestHash: preferencesHash,
@@ -522,6 +528,7 @@ function publicTask(task, now = Date.now(), owner) {
       : ''
   return {
     taskId: typeof task._id === 'string' ? task._id : '', status,
+    purpose: task.purpose === 'meal' ? 'meal' : 'plan',
     contractVersion: safeInteger(task.contractVersion, 'contractVersion', 1),
     plannerVersion: typeof task.plannerVersion === 'string' ? task.plannerVersion : '',
     phase: terminal(status) ? 'terminal' : task.phase,
@@ -544,6 +551,7 @@ function compactTask(rawTask, status, now, extra = {}) {
     ? terminalTask.shardCleanupUpdatedAtMs : now
   return {
     _id: terminalTask._id, taskSchemaVersion: terminalTask.taskSchemaVersion,
+    purpose: terminalTask.purpose === 'meal' ? 'meal' : 'plan',
     owner: terminalTask.owner,
     ...(typeof terminalTask.cacheNamespace === 'string' ? { cacheNamespace: terminalTask.cacheNamespace } : {}),
     status: progress.status, phase: 'terminal', taskRevision: terminalTask.taskRevision,

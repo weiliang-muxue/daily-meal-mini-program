@@ -1,7 +1,8 @@
 'use strict'
 
-const CURRENT_SCHEMA = 9
+const CURRENT_SCHEMA = 10
 const mealShopping = require('./meal-shopping')
+const mealReplacement = require('./meal-replacement')
 const CURRENT_AI_CONTRACT = 2
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
@@ -486,6 +487,10 @@ function sanitizePlan(raw, field = 'plan') {
     days,
     shoppingGroups: sanitizeShoppingGroups(raw.shoppingGroups, `${field}.shoppingGroups`, source === 'legacy'),
   }
+  if (raw.replacementTarget !== undefined) {
+    result.replacementTarget = mealReplacement.sanitizeTarget(raw.replacementTarget)
+    mealReplacement.assertSingleMealDraft(result)
+  }
   assertPlanSize(result, field)
   return result
 }
@@ -692,6 +697,9 @@ function sanitizeState(raw, options = {}) {
     ? null
     : sanitizePlan(value.draftPlan, 'draftPlan')
   const planHistory = sanitizeHistory(value.planHistory)
+  if ((activePlan && activePlan.replacementTarget) || planHistory.some(plan => plan.replacementTarget)) {
+    fail('单餐候选不能作为整份餐单或历史餐单', 'MEAL_REPLACEMENT_INVALID')
+  }
   const plans = [activePlan, draftPlan, ...planHistory]
   const activePlanId = activePlan ? activePlan.id : cleanText(value.activePlanId, 'activePlanId', 120)
   const mealOverrides = sanitizeMealOverrides(value.mealOverrides, plans)
@@ -826,6 +834,7 @@ function confirmDraft(raw, expectedStateRevision) {
   const state = sanitizeState(raw, { preserveUnknownFrom: raw })
   assertRevision(state, expectedStateRevision)
   if (!state.draftPlan) fail('There is no draft plan to confirm', 'DRAFT_NOT_FOUND')
+  if (state.draftPlan.replacementTarget) fail('请在单餐预览中确认替换，原餐单保持不变', 'MEAL_REPLACEMENT_CONFIRM_REQUIRED')
   const activePlan = state.draftPlan
   const activeUi = activatePlanUiState(state, activePlan)
   const candidate = {
@@ -838,6 +847,14 @@ function confirmDraft(raw, expectedStateRevision) {
     ...activeUi,
   }
   return sanitizeState(candidate, { preserveUnknownFrom: candidate })
+}
+
+function confirmMealReplacement(raw, expectedStateRevision) {
+  const state = sanitizeState(raw, { preserveUnknownFrom: raw })
+  assertRevision(state, expectedStateRevision)
+  if (!state.draftPlan) fail('There is no draft meal to confirm', 'DRAFT_NOT_FOUND')
+  const next = mealReplacement.proposal(state, state.draftPlan)
+  return sanitizeState(next, { preserveUnknownFrom: next })
 }
 
 function restoreHistory(raw, historyPlanId, expectedStateRevision) {
@@ -875,5 +892,6 @@ module.exports = {
   sanitizeGenerationPreferences,
   sanitizeWaterReminder,
   confirmDraft,
+  confirmMealReplacement,
   restoreHistory,
 }

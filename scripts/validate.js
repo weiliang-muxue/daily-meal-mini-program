@@ -186,7 +186,7 @@ validateReleaseGate({
   },
   versionTag: versionTag(releaseManifest.workingVersion),
 })
-assert.strictEqual(releaseManifest.stateSchemaVersion, 9, '当前发布清单必须使用 schema v9')
+assert.strictEqual(releaseManifest.stateSchemaVersion, 10, '当前发布清单必须使用 schema v10')
 assert.strictEqual(stateSchema.CURRENT_SCHEMA, releaseManifest.stateSchemaVersion, '共享 schema 与版本清单不一致')
 assert.strictEqual(aiPlanner.CONTRACT_VERSION, releaseManifest.aiContractVersion, 'AI 契约与版本清单不一致')
 assert.strictEqual(aiPlanner.PLANNER_VERSION, releaseManifest.aiPlannerVersion, 'AI 生成器与版本清单不一致')
@@ -238,10 +238,12 @@ const sharedSource = read('shared/user-state.js')
 ].forEach((file) => assert.strictEqual(read(file), sharedSource, `${file} 未与 shared/user-state.js 同步`))
 ;['miniprogram/services/meal-shopping.js', 'cloudfunctions/userData/meal-shopping.js', 'cloudfunctions/aiPlanner/meal-shopping.js']
   .forEach(file => assert.strictEqual(read(file), read('shared/meal-shopping.js'), `${file} 未与采购共享逻辑同步`))
+;['miniprogram/services/meal-replacement.js', 'cloudfunctions/userData/meal-replacement.js', 'cloudfunctions/aiPlanner/meal-replacement.js']
+  .forEach(file => assert.strictEqual(read(file), read('shared/meal-replacement.js'), `${file} 未与单餐替换共享逻辑同步`))
 assert.strictEqual(read('cloudfunctions/privacy/membership-core.js'), read('cloudfunctions/membership/core.js'), 'privacy 成员控制逻辑未同步')
 
 const fresh = stateSchema.defaults()
-assert.strictEqual(fresh.schemaVersion, 9)
+assert.strictEqual(fresh.schemaVersion, 10)
 assert.strictEqual(fresh.waterReminder.enabled, false, '新用户喝水提醒必须默认关闭')
 assert.strictEqual(fresh.activePlan, null, '新用户不能自动获得静态计划')
 assert.strictEqual(fresh.draftPlan, null, '新用户默认不应存在候选计划')
@@ -557,6 +559,7 @@ const testScripts = [
   'scripts/git-hooks.test.js',
   'scripts/deploy-production-function.test.js',
   'shared/user-state.test.js',
+  'shared/meal-replacement.test.js',
   'cloudfunctions/userData/index.test.js',
   'shared/image-file.test.js',
   'shared/image-source.test.js',

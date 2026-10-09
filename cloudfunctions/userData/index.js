@@ -1,7 +1,7 @@
 'use strict'
 
 const cloud = require('wx-server-sdk')
-const { CURRENT_SCHEMA, MAX_HISTORY, defaults, migrate, sanitizeState, confirmDraft, restoreHistory } = require('./user-state')
+const { CURRENT_SCHEMA, MAX_HISTORY, defaults, migrate, sanitizeState, confirmDraft, confirmMealReplacement, restoreHistory } = require('./user-state')
 const { catalog, plans, shoppingGroups } = require('./legacy-plan')
 const { notFound } = require('./not-found')
 const { reconcileChecks } = require('./meal-shopping')
@@ -24,6 +24,7 @@ const BUSINESS_ERROR_CODES = new Set([
   'MEMBERSHIP_REQUIRED', 'ACCOUNT_DELETION_IN_PROGRESS', 'INVALID_STATE_REVISION', 'STATE_REVISION_CONFLICT',
   'DRAFT_NOT_FOUND', 'DRAFT_EXPIRED', 'HISTORY_PLAN_NOT_FOUND', 'INVALID_USER_STATE', 'STATE_SCHEMA_UNSUPPORTED',
   'PLAN_TOO_LARGE', 'STATE_TOO_LARGE', 'STATE_HISTORY_LIMIT', 'STALE_DATA_GENERATION',
+  'MEAL_REPLACEMENT_INVALID', 'MEAL_REPLACEMENT_CONFLICT', 'MEAL_REPLACEMENT_CONFIRM_REQUIRED',
 ])
 const CACHE_NAMESPACE_PATTERN = /^[a-f0-9]{32}$/
 const MAX_LEGACY_PLAN_INJECTION_SCHEMA = 5
@@ -177,10 +178,12 @@ async function changePlan(openid, action, payload) {
     const raw = (await reference.get()).data || {}
     const current = migrateStored(raw)
     let next
-    if (action === 'confirmDraft') {
+    if (action === 'confirmDraft' || action === 'confirmMealReplacement') {
       assertExpectedDraftPlan(current, payload.expectedDraftPlanId)
       assertDraftFresh(current)
-      next = confirmDraft(current, payload.expectedStateRevision)
+      next = action === 'confirmDraft'
+        ? confirmDraft(current, payload.expectedStateRevision)
+        : confirmMealReplacement(current, payload.expectedStateRevision)
     } else if (action === 'restoreHistory') {
       next = restoreHistory(current, payload.planId, payload.expectedStateRevision)
     } else if (action === 'discardDraft') {
@@ -230,7 +233,7 @@ exports.main = async (event = {}) => {
         data: await saveState(OPENID, event.state, event.expectedStateRevision, event.expectedCacheNamespace),
       }
     }
-    if (['confirmDraft', 'restoreHistory', 'discardDraft'].includes(event.action)) {
+    if (['confirmDraft', 'confirmMealReplacement', 'restoreHistory', 'discardDraft'].includes(event.action)) {
       return { success: true, data: await changePlan(OPENID, event.action, event) }
     }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的数据操作' }

@@ -314,7 +314,7 @@ async function startWithExistingMealState(seed) {
   )
   const taskId = started.task.taskId
   const task = get('meal_ai_tasks', taskId)
-  assert.strictEqual(task.taskSchemaVersion, 3)
+  assert.strictEqual(task.taskSchemaVersion, 4)
   assert.strictEqual(task.cacheNamespace, cacheNamespace)
   assert.strictEqual(task.providerConfigVersion, providerConfig.providerConfigVersion)
   assert.strictEqual(started.task.status, 'queued')
@@ -427,6 +427,120 @@ test('aiPlanner transactions do not issue parallel database reads', () => {
   assert.strictEqual(/Promise\.all\s*\(/.test(source), false)
 })
 
+async function startSingleMeal() {
+  reset()
+  const activePlan = referencePlan(1)
+  const state = stateWithPlans({ activePlan, stateRevision: 5,
+    planHistory: [referencePlan(2)], customReminders: [{ id: 'test', text: '虚构提醒', done: true }],
+    generationPreferences: { ...input, customGoal: '保留整单偏好' },
+  })
+  put('meal_user_states', owner, state)
+  const request = { ...input, durationDays: 1, customGoal: '单餐选择，不写回整单偏好', exerciseByDay: [] }
+  const target = { planId: activePlan.id, mealId: activePlan.days[0].meals[0].id }
+  const started = await rawPlannerTest.startTask(owner, request, 5, 's'.repeat(32), consent, cacheNamespace, providerConfig, target)
+  assert.strictEqual(started.task.purpose, 'meal')
+  assert.deepStrictEqual(get('meal_user_states', owner), state, 'enqueue must not change meals or preferences')
+  return { state, request, target, started, task: { ...get('meal_ai_tasks', started.task.taskId), _id: started.task.taskId } }
+}
+
+function claimSingleFinalize(original) {
+  let task = clone(original)
+  const token = generateLeaseToken(Buffer.alloc(32, 91))
+  for (let i = 0; i < 10; i++) {
+    const work = claimNext(task, token, Date.now())
+    assert(work.claim)
+    if (work.claim.kind === 'finalize') return { task: work.task, claim: work.claim, token }
+    task = completeClaim(work.task, work.claim, token, work.claim.kind === 'outline'
+      ? { title: '虚构提纲', rationale: ['测试'] } : { days: [] }, Date.now()).task
+  }
+  throw new Error('single-meal task did not reach finalize')
+}
+
+test('single-meal task binds scope, replays safely and finalizes only a candidate', async () => {
+  const { task, state, request, target } = await startSingleMeal()
+  assert(!Object.prototype.hasOwnProperty.call(task.input, 'replacementTarget'), 'snapshot must not enter AI input')
+  const replay = await rawPlannerTest.startTask(owner, request, 5, 's'.repeat(32), consent, cacheNamespace, providerConfig, target)
+  assert.strictEqual(replay.task.taskId, task._id)
+  await assert.rejects(rawPlannerTest.startTask(owner, request, 5, 's'.repeat(32), consent, cacheNamespace, providerConfig), error => error.code === 'IDEMPOTENCY_CONFLICT')
+  const work = claimSingleFinalize(task)
+  put('meal_ai_tasks', task._id, work.task)
+  const response = await planner._test.settleSuccess(owner, task._id, work.claim, work.token, validPlan(task))
+  assert.strictEqual(response.task.status, 'succeeded')
+  assert.strictEqual(response.task.purpose, 'meal')
+  const result = get('meal_user_states', owner)
+  for (const field of ['activePlan', 'planHistory', 'mealOverrides', 'generationPreferences', 'customReminders', 'checkedShoppingIds']) {
+    assert.deepStrictEqual(result[field], state[field], `${field} must not be replaced by a single-meal draft`)
+  }
+  assert.strictEqual(result.schemaVersion, 10)
+  assert.strictEqual(result.stateRevision, 6)
+  assert.strictEqual(result.draftPlan.days.length, 1)
+  assert.strictEqual(result.draftPlan.replacementTarget.mealId, target.mealId)
+  assert.strictEqual(get('meal_ai_tasks', task._id).replacementTarget, undefined, 'terminal task drops source snapshot')
+  assert.strictEqual(get('meal_ai_tasks', task._id).input, undefined, 'terminal task drops preferences')
+  const resumed = await planner._test.readTaskStatus(owner, task._id)
+  assert.deepStrictEqual(resumed.result.draftPlan, result.draftPlan)
+})
+
+test('single-meal scope rejects wrong duration, slot, plan, consent and existing draft without writes', async () => {
+  const { state, request, target } = await startSingleMeal()
+  for (const changes of [
+    { request: { ...request, durationDays: 7 } },
+    { request: { ...request, mealTypes: ['lunch'] } },
+    { target: { ...target, planId: 'another-plan' } },
+    { target: { ...target, mealId: 'another-meal' } },
+    { target: { ...target, owner: otherOwner } },
+    { consent: { ...consent, accepted: false } },
+    { draft: referencePlan(3) },
+  ]) {
+    reset()
+    put('meal_user_states', owner, { ...state, ...(changes.draft ? { draftPlan: changes.draft } : {}) })
+    collectionStore('meal_ai_controls')
+    const before = storesSnapshot(); databaseCalls.length = 0
+    await assert.rejects(rawPlannerTest.startTask(owner, changes.request || request, 5, 'r'.repeat(32),
+      changes.consent || consent, cacheNamespace, providerConfig, changes.target || target))
+    assertZeroBusinessWrites(before, 'invalid single-meal start')
+  }
+})
+
+test('edited original meal conflicts at finalize; cancel and failure retain current plan', async () => {
+  const { task, state } = await startSingleMeal()
+  const work = claimSingleFinalize(task)
+  put('meal_ai_tasks', task._id, work.task)
+  const changed = stateWithPlans({ ...state, stateRevision: 6, mealOverrides: {
+    [task.replacementTarget.mealId]: { title: '另外设备改过这餐' },
+  } })
+  put('meal_user_states', owner, changed)
+  const reply = await planner._test.settleSuccess(owner, task._id, work.claim, work.token, validPlan(task))
+  assert.strictEqual(reply.task.status, 'conflict')
+  assert.deepStrictEqual(get('meal_user_states', owner), changed)
+  const fresh = await startSingleMeal()
+  const cancelled = await planner._test.cancelGeneration(owner, fresh.task._id, fresh.task.taskRevision)
+  assert.strictEqual(cancelled.task.status, 'cancelled')
+  assert.deepStrictEqual(get('meal_user_states', owner), fresh.state)
+  const failed = await startSingleMeal()
+  const claim = await planner._test.claimWork(owner, failed.task._id)
+  await planner._test.settleFailure(owner, failed.task._id, claim.claim, claim.claim.leaseToken, {
+    code: 'AI_OUTPUT_INVALID', retryable: false, retryAfterMs: 0,
+  })
+  assert.deepStrictEqual(get('meal_user_states', owner), failed.state)
+})
+
+test('invalid single-meal candidate becomes terminal without writing user state', async () => {
+  const { task, state } = await startSingleMeal()
+  const work = claimSingleFinalize(task)
+  put('meal_ai_tasks', task._id, work.task)
+  const invalid = validPlan(task)
+  invalid.days[0].meals[0].type = 'lunch'
+  databaseCalls.length = 0
+  const reply = await planner._test.settleSuccess(owner, task._id, work.claim, work.token, invalid)
+  assert.strictEqual(reply.task.status, 'failed')
+  assert.strictEqual(reply.task.errorCode, 'AI_OUTPUT_INVALID')
+  assert.strictEqual(reply.result, null)
+  assert.deepStrictEqual(get('meal_user_states', owner), state)
+  assert(!databaseCalls.some(call => call.name === 'meal_user_states' && call.operation !== 'get'))
+  assert.strictEqual(get('meal_ai_controls', owner).activeTaskId, '')
+})
+
 test('production outline and detail bodies use the requested Sol max model settings', () => {
   const { buildOutlineRequestBody, buildDetailRequestBody, buildChunkLayout } = require('./lib')
   const options = planner._test.providerOptions(providerConfig)
@@ -480,7 +594,7 @@ test('planner reads schema v7 in memory while older and future schemas fail clos
   delete legacy.waterReminder
   const before = clone(legacy)
   const migrated = planner._test.currentStateForPlanning(legacy, { preserveUnknownFrom: legacy })
-  assert.strictEqual(migrated.schemaVersion, 9)
+  assert.strictEqual(migrated.schemaVersion, 10)
   assert.strictEqual(migrated.waterReminder.enabled, false)
   assert.deepStrictEqual(migrated.customReminders, legacy.customReminders)
   assert.deepStrictEqual(legacy, before, '兼容读取只能在内存迁移，不能改写原始 v7 对象')
@@ -489,7 +603,7 @@ test('planner reads schema v7 in memory while older and future schemas fail clos
     (error) => error.code === 'STATE_SCHEMA_UPGRADE_REQUIRED',
   )
   assert.throws(
-    () => planner._test.currentStateForPlanning({ ...legacy, schemaVersion: 10 }),
+    () => planner._test.currentStateForPlanning({ ...legacy, schemaVersion: 11 }),
     (error) => error.code === 'STATE_SCHEMA_UNSUPPORTED',
   )
 })
@@ -1272,14 +1386,14 @@ test('future or invalid task versions are rejected without writes across every t
   }
 
   const scenarios = [
-    { action: 'status', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'current', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'claim', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'settleSuccess', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'settleFailure', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'cancel', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'advance', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'replayStart', mutate: (task) => { task.taskSchemaVersion = 4 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'status', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'current', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'claim', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'settleSuccess', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'settleFailure', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'cancel', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'advance', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'replayStart', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
     { action: 'status', mutate: (task) => { task.taskSchemaVersion = '3' }, expectedCode: 'AI_TASK_VERSION_INVALID' },
     { action: 'current', mutate: (task) => { delete task.taskSchemaVersion }, expectedCode: 'AI_TASK_VERSION_INVALID' },
     { action: 'status', mutate: (task) => { task.contractVersion = CONTRACT_VERSION + 1 }, expectedCode: 'AI_CONTRACT_VERSION_UNSUPPORTED' },
@@ -1387,7 +1501,7 @@ test('start is idempotent for the same owner, request id, preferences, and state
   const replay = await planner._test.startTask(owner, input, 0, clientRequestId, consent)
   assert.strictEqual(replay.task.taskId, first.task.taskId)
   assert.strictEqual(collectionStore('meal_ai_tasks').size, 1)
-  assert.strictEqual(get('meal_ai_tasks', first.task.taskId).plannerVersion, '7')
+  assert.strictEqual(get('meal_ai_tasks', first.task.taskId).plannerVersion, '8')
   assert.strictEqual(get('meal_ai_tasks', first.task.taskId).chunks.every((chunk) => chunk.mealSlots === 1), true)
   assert.strictEqual(get('meal_ai_controls', owner).rateCount, 1)
   await assert.rejects(
@@ -1456,7 +1570,7 @@ test('schema v7 remains usable across start, claim, finalize, and status without
 
 test('future user-state schemas fail closed before start or finalize can write', async () => {
   reset()
-  const futureStartState = { ...get('meal_user_states', owner), schemaVersion: 10 }
+  const futureStartState = { ...get('meal_user_states', owner), schemaVersion: 11 }
   put('meal_user_states', owner, futureStartState)
   collectionStore('meal_ai_controls')
   const beforeStart = storesSnapshot()
@@ -1468,7 +1582,7 @@ test('future user-state schemas fail closed before start or finalize can write',
 
   reset()
   const final = finalClaimTask(109, 42)
-  const futureFinalizeState = { ...stateWithPlans({ stateRevision: 4 }), schemaVersion: 10 }
+  const futureFinalizeState = { ...stateWithPlans({ stateRevision: 4 }), schemaVersion: 11 }
   put('meal_user_states', owner, futureFinalizeState)
   put('meal_ai_tasks', final.task._id, planner._test.taskData(final.task))
   put('meal_ai_controls', owner, { owner, activeTaskId: final.task._id, generationEpoch: 42 })

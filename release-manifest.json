@@ -2,12 +2,12 @@
   "lastReleasedVersion": "0.2.1",
   "workingVersion": "0.3.0-dev.0",
   "releaseStatus": "unreleased",
-  "wechatUploadDescription": "开发中：个人食材用量编辑与采购预览联动；喝水提醒改用微信订阅消息。尚缺云端部署、实际模板与真机验收，不作为可发布版本。",
-  "stateSchemaVersion": 9,
+  "wechatUploadDescription": "开发中：个人食材与采购联动；单餐替换服务链路已实现、页面待接通。喝水消息未验证送达。尚缺云端与真机验收，不作为可发布版本。",
+  "stateSchemaVersion": 10,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 2,
-  "aiPlannerVersion": "7",
-  "aiTaskSchemaVersion": 3,
+  "aiPlannerVersion": "8",
+  "aiTaskSchemaVersion": 4,
   "aiDataConsentVersion": 2,
   "aiProviderContractRevision": 10
 }
