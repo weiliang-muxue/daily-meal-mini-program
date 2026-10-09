@@ -1,8 +1,8 @@
 {
   "lastReleasedVersion": "0.2.1",
-  "workingVersion": "0.3.0-dev.0",
-  "releaseStatus": "unreleased",
-  "wechatUploadDescription": "开发中：餐食与采购联动、单餐替换、做饭条件、私人收藏及独立不喜欢偏好已本地接通。未完成实际云端、原生布局和手机验收；喝水消息未验证送达，不作为可发布版本。",
+  "workingVersion": "0.3.0",
+  "releaseStatus": "release-candidate",
+  "wechatUploadDescription": "0.3.0候选：餐食调整联动采购、单餐替换、做饭条件、私人收藏与参考菜谱库。保留既有餐单和记录。按所有者要求先上传；云端配套切换与手机验收待完成，喝水消息及管理员手机号尚未启用，当前不替换线上版本。",
   "stateSchemaVersion": 13,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 4,
