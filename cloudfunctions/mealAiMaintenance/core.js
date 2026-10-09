@@ -15,11 +15,11 @@ const QUERY_STATUSES = Object.freeze(Object.keys(ACTIVE_STATUS_ALIASES))
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/
 const HASH_PATTERN = /^[a-f0-9]{64}$/
 const CACHE_NAMESPACE_PATTERN = /^[a-f0-9]{32}$/
-const AI_DATA_CONSENT_VERSION = 3
-const AI_CONTRACT_VERSION = 3
-const AI_PLANNER_VERSION = '9'
+const AI_DATA_CONSENT_VERSION = 4
+const AI_CONTRACT_VERSION = 4
+const AI_PLANNER_VERSION = '10'
 const AI_PROVIDER_CONTRACT_REVISION = 10
-const TASK_SCHEMA_VERSION = 5
+const TASK_SCHEMA_VERSION = 6
 
 function maintenanceError(code, message) {
   const error = new Error(message)

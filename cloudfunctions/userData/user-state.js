@@ -1,11 +1,11 @@
 'use strict'
 
-const CURRENT_SCHEMA = 12
+const CURRENT_SCHEMA = 13
 const recipeLibrary = require('./recipe-library')
 const mealShopping = require('./meal-shopping')
 const mealReplacement = require('./meal-replacement')
 const mealConditions = require('./meal-conditions')
-const CURRENT_AI_CONTRACT = 3
+const CURRENT_AI_CONTRACT = 4
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
 const MAX_STATE_BYTES = 900 * 1024
@@ -110,7 +110,8 @@ function cleanText(value, field, maxLength, options = {}) {
     return ''
   }
   if (typeof value !== 'string') fail(`${field} must be a string`)
-  const result = value.trim().replace(/[\u0000-\u001f\u007f]/g, '')
+  const controls = options.multiline ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g : /[\u0000-\u001f\u007f]/g
+  const result = value.trim().replace(controls, '')
   if (options.required && !result) fail(`${field} is required`)
   if (result.length > maxLength) fail(`${field} exceeds ${maxLength} characters`)
   return result
@@ -203,6 +204,7 @@ function defaultGenerationPreferences() {
     goals: [],
     styles: [],
     customGoal: '',
+    dislikes: '',
     restrictions: '',
     healthNotes: '',
     exerciseIntent: '',
@@ -336,6 +338,7 @@ function sanitizeGenerationPreferences(raw) {
     goals: uniqueTextArray(value.goals, 'generationPreferences.goals', { maxItems: 10, maxLength: 40 }),
     styles: uniqueTextArray(value.styles, 'generationPreferences.styles', { maxItems: 10, maxLength: 40 }),
     customGoal: cleanText(value.customGoal, 'generationPreferences.customGoal', 160),
+    dislikes: cleanText(value.dislikes, 'generationPreferences.dislikes', 240, { multiline: true }),
     restrictions: cleanText(value.restrictions, 'generationPreferences.restrictions', 240),
     healthNotes: cleanText(value.healthNotes, 'generationPreferences.healthNotes', 240),
     exerciseIntent: EXERCISE_INTENTS.includes(value.exerciseIntent) ? value.exerciseIntent : '',
@@ -359,6 +362,7 @@ function sanitizeGenerationBasis(raw, field) {
     goals: uniqueTextArray(value.goals, `${field}.goals`, { maxItems: 10, maxLength: 40 }),
     styles: uniqueTextArray(value.styles, `${field}.styles`, { maxItems: 10, maxLength: 40 }),
     customGoal: cleanText(value.customGoal, `${field}.customGoal`, 160),
+    ...(value.dislikes !== undefined ? { dislikes: cleanText(value.dislikes, `${field}.dislikes`, 240, { multiline: true }) } : {}),
     restrictions: cleanText(value.restrictions, `${field}.restrictions`, 240),
     healthNotes: cleanText(value.healthNotes, `${field}.healthNotes`, 240),
     exerciseIntent: EXERCISE_INTENTS.includes(value.exerciseIntent) ? value.exerciseIntent : '',
@@ -505,7 +509,7 @@ function sanitizePlan(raw, field = 'plan') {
     result.replacementTarget = mealReplacement.sanitizeTarget(raw.replacementTarget)
     mealReplacement.assertSingleMealDraft(result)
   }
-  if (result.source === 'ai' && result.contractVersion === 3) {
+  if (result.source === 'ai' && result.contractVersion >= 3) {
     const conditions = mealConditions.normalizeConditions(result.generationBasis, { required: true })
     if (days.some(day => day.meals.some(meal => meal.quantityBasis !== 'total' || meal.servings !== conditions.servings
       || !Number.isSafeInteger(meal.estimatedCookingMinutes) || meal.estimatedCookingMinutes > conditions.maxCookingMinutes))) {

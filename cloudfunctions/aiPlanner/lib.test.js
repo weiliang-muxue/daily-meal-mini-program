@@ -101,11 +101,12 @@ function normalizedPlan(input, raw = rawPlan(input)) {
 }
 
 test('严格校验契约版本和 1–14 天整数周期', () => {
-  assert.strictEqual(CONTRACT_VERSION, 3)
-  assert.strictEqual(PLANNER_VERSION, '9')
+  assert.strictEqual(CONTRACT_VERSION, 4)
+  assert.strictEqual(PLANNER_VERSION, '10')
   assert.throws(() => normalizeRequest(request({ contractVersion: 1 })), /契约版本/)
   assert.throws(() => normalizeRequest(request({ contractVersion: 2 })), /契约版本/)
-  assert.throws(() => normalizeRequest(request({ contractVersion: 4 })), /契约版本/)
+  assert.throws(() => normalizeRequest(request({ contractVersion: 3 })), /契约版本/)
+  assert.throws(() => normalizeRequest(request({ contractVersion: 5 })), /契约版本/)
   ;Array.from({ length: 14 }, (_, index) => index + 1).forEach((durationDays) => {
     const exerciseByDay = durationDays === 1 ? [] : request().exerciseByDay
     assert.strictEqual(normalizeRequest(request({ durationDays, exerciseByDay })).exerciseByDay.length, durationDays)
@@ -159,7 +160,7 @@ test('双晚餐只能用于晚餐并生成 rest/workout 两个场景', () => {
 })
 
 test('生成器版本 9 的分片每次只生成一个餐位并完整覆盖 1–14 天动态餐次', () => {
-  assert.strictEqual(PLANNER_VERSION, '9')
+  assert.strictEqual(PLANNER_VERSION, '10')
   const heavySeven = request({ mealTypes: ['breakfast', 'lunch', 'dinner'], doubleDinner: true })
   assert.deepStrictEqual(buildChunkLayout(heavySeven).map(({ dayOffset, dayCount, mealSlots }) => ({ dayOffset, dayCount, mealSlots })), [
     { dayOffset: 0, dayCount: 1, mealSlots: 1 },

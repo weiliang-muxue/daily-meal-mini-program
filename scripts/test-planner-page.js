@@ -36,8 +36,8 @@ const TEST_PROVIDER_CONFIG_VERSION = 'a'.repeat(64)
 
 const activeTask = {
   taskId: 'task_page_test',
-  contractVersion: 3,
-  plannerVersion: '9',
+  contractVersion: 4,
+  plannerVersion: '10',
   taskRevision: 3,
   status: 'running',
   phase: 'details',
@@ -54,7 +54,7 @@ let recentFailureResponse = null
 let recentFailureImplementation = async () => recentFailureResponse
 let cachedTaskResponse = null
 let statusResponse = {
-  configured: false, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3,
+  configured: false, storageReady: true, contractVersion: 4, plannerVersion: '10', aiDataConsentVersion: 4,
 }
 let statusImplementation = async () => statusResponse
 let startImplementation = async () => ({ task: activeTask })
@@ -158,9 +158,9 @@ require.cache[aiPlannerPath] = {
     isActiveTask,
     taskPresentation,
     failurePolicy,
-    CONTRACT_VERSION: 3,
-    PLANNER_VERSION: '9',
-    AI_DATA_CONSENT_VERSION: 3,
+    CONTRACT_VERSION,
+    PLANNER_VERSION,
+    AI_DATA_CONSENT_VERSION,
     PROVIDER_CONTRACT_REVISION,
   },
 }
@@ -224,7 +224,7 @@ function resetMocks() {
   recentFailureImplementation = async () => recentFailureResponse
   cachedTaskResponse = null
   statusResponse = {
-    configured: false, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3,
+    configured: false, storageReady: true, contractVersion: 4, plannerVersion: '10', aiDataConsentVersion: 4,
   }
   statusImplementation = async () => statusResponse
   startImplementation = async () => ({ task: activeTask })
@@ -578,9 +578,9 @@ async function testCurrentFailureWithoutCachedTaskPreservesServiceStatus() {
     storageReady: true,
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3,
-    plannerVersion: '9',
-    aiDataConsentVersion: 3,
+    contractVersion: 4,
+    plannerVersion: '10',
+    aiDataConsentVersion: 4,
     providerDisplayName: '测试 AI 服务',
   }
   currentTaskImplementation = async () => {
@@ -613,9 +613,9 @@ async function testCurrentFailureWithCachedTaskUsesRecoveryCopy() {
         configured: aiConfigured,
         storageReady: true,
         providerContractRevision: PROVIDER_CONTRACT_REVISION,
-        contractVersion: 3,
-        plannerVersion: '9',
-        aiDataConsentVersion: 3,
+        contractVersion: 4,
+        plannerVersion: '10',
+        aiDataConsentVersion: 4,
         ...(aiConfigured ? {
           providerDisplayName: '测试 AI 服务', providerRevision: TEST_PROVIDER_REVISION,
         } : {}),
@@ -746,7 +746,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3, plannerVersion: '9', providerDisplayName: '测试 AI 服务',
+    contractVersion: 4, plannerVersion: '10', providerDisplayName: '测试 AI 服务',
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'error', '旧云函数未声明同意协议时不能允许生成')
@@ -754,8 +754,8 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3, plannerVersion: '6',
-    aiDataConsentVersion: 3, providerDisplayName: '测试 AI 服务',
+    contractVersion: 4, plannerVersion: '6',
+    aiDataConsentVersion: 4, providerDisplayName: '测试 AI 服务',
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'error', '旧生成器版本不能被误判为可用')
@@ -763,7 +763,7 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3,
+    contractVersion: 4, plannerVersion: '10', aiDataConsentVersion: 4,
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'error', '缺少公开服务名称时必须关闭生成入口')
@@ -774,26 +774,29 @@ async function testConsentProtocolVersionIsRequiredForReadyStatus() {
     storageReady: true,
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3,
-    plannerVersion: '9',
-    aiDataConsentVersion: 3,
+    contractVersion: 4,
+    plannerVersion: '10',
+    aiDataConsentVersion: 4,
     providerDisplayName: '测试 AI 服务',
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'ready')
   assert.strictEqual(page.data.providerDisplayName, '测试 AI 服务')
   assert.strictEqual(page.data.providerRevision, TEST_PROVIDER_REVISION)
+  statusResponse = { ...statusResponse, aiDataConsentVersion: 3 }
+  await page.checkAiStatus()
+  assert.strictEqual(page.data.aiStatus, 'error', '旧同意范围不包含新增软偏好，不允许发送')
 
   statusResponse = {
-    configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9',
-    aiDataConsentVersion: 3, providerDisplayName: '测试 AI 服务', providerRevision: TEST_PROVIDER_REVISION,
+    configured: true, storageReady: true, contractVersion: 4, plannerVersion: '10',
+    aiDataConsentVersion: 4, providerDisplayName: '测试 AI 服务', providerRevision: TEST_PROVIDER_REVISION,
   }
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'error', '旧云函数缺少 provider 契约版本时不能允许生成')
 
   statusResponse = {
     configured: true, storageReady: true, providerContractRevision: PROVIDER_CONTRACT_REVISION,
-    contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3,
+    contractVersion: 4, plannerVersion: '10', aiDataConsentVersion: 4,
     providerDisplayName: '测试 AI 服务',
   }
   await page.checkAiStatus()
@@ -809,13 +812,13 @@ async function testNormalizedServiceStatusReachesPageReadyState() {
     storageReady: true,
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3,
-    plannerVersion: '9',
-    aiDataConsentVersion: 3,
+    contractVersion: 4,
+    plannerVersion: '10',
+    aiDataConsentVersion: 4,
     providerDisplayName: '测试 AI 服务',
     privateDetail: '不得透传到页面',
   })
-  assert.strictEqual(statusResponse.plannerVersion, '9')
+  assert.strictEqual(statusResponse.plannerVersion, '10')
   assert.strictEqual(Object.prototype.hasOwnProperty.call(statusResponse, 'privateDetail'), false)
   await page.checkAiStatus()
   assert.strictEqual(page.data.aiStatus, 'ready', '生产服务状态清洗结果必须能通过真实页面就绪检查')
@@ -829,9 +832,9 @@ async function testStorageReadinessBlocksGenerationAndMapsSafeCopy() {
       storageReady,
       providerContractRevision: PROVIDER_CONTRACT_REVISION,
       providerRevision: TEST_PROVIDER_REVISION,
-      contractVersion: 3,
-      plannerVersion: '9',
-      aiDataConsentVersion: 3,
+      contractVersion: 4,
+      plannerVersion: '10',
+      aiDataConsentVersion: 4,
       providerDisplayName: '测试 AI 服务',
     }
     const page = makePage()
@@ -896,9 +899,9 @@ async function testStorageFailureKeepsPendingStartForSameRequestRetry() {
     storageReady: true,
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3,
-    plannerVersion: '9',
-    aiDataConsentVersion: 3,
+    contractVersion: 4,
+    plannerVersion: '10',
+    aiDataConsentVersion: 4,
     providerDisplayName: '测试 AI 服务',
   }
   currentTaskImplementation = async () => null
@@ -946,9 +949,9 @@ async function testRecoveryStorageFailureCannotLeaveServiceReady() {
     storageReady: true,
     providerContractRevision: PROVIDER_CONTRACT_REVISION,
     providerRevision: TEST_PROVIDER_REVISION,
-    contractVersion: 3,
-    plannerVersion: '9',
-    aiDataConsentVersion: 3,
+    contractVersion: 4,
+    plannerVersion: '10',
+    aiDataConsentVersion: 4,
     providerDisplayName: '测试 AI 服务',
   }
   const storageError = new Error('private current-task detail')
@@ -1782,7 +1785,53 @@ async function testCookingIdentityAndHide() {
   delete userStore.namespace
 }
 
+async function testIndependentDislikesAndConsent() {
+  resetMocks()
+  const page = makePage()
+  const event = value => ({ detail: { value } })
+  page.inputRestrictions(event('花生过敏'))
+  page.inputHealthNotes(event('仅供测试的已知约束'))
+  page.setData({ aiDataConsentAccepted: true })
+  page.inputDislikes(event('不喜欢苦瓜，希望少安排粥'))
+  assert.strictEqual(page.data.aiDataConsentAccepted, false)
+  assert.strictEqual(page.data.preferences.restrictions, '花生过敏')
+  assert.strictEqual(page.data.preferences.healthNotes, '仅供测试的已知约束')
+  assert.strictEqual(page.data.summaryRows.find(row => row.label === '不喜欢 · 尽量少用').value, '不喜欢苦瓜，希望少安排粥')
+  assert.strictEqual(page.data.summaryRows.find(row => row.label === '过敏与忌口 · 必须避开').value, '花生过敏')
+  await tick()
+  await page.flushPreferenceDraft()
+  const preferences = JSON.parse(JSON.stringify(userStore.data.generationPreferences))
+  const restored = makePage()
+  restored.renderPreferences(preferences)
+  assert.strictEqual(restored.data.preferences.dislikes, preferences.dislikes)
+  assert.strictEqual(restored.data.aiDataConsentAccepted, false)
+  page.setData({ aiDataConsentAccepted: true })
+  page.inputDislikes(event(''))
+  assert.strictEqual(page.data.aiDataConsentAccepted, false)
+  assert.strictEqual(page.data.preferences.restrictions, '花生过敏')
+  await tick()
+  await page.flushPreferenceDraft()
+  const count = calls.patches.length
+  page.replacementContext = { dinnerLocked: false, date: '2026-10-10', mealType: 'breakfast', conditions: { pantryItems: [] } }
+  page.inputDislikes(event('这餐少用芹菜'))
+  await tick()
+  assert.strictEqual(page.data.preferences.dislikes, '这餐少用芹菜')
+  assert.strictEqual(calls.patches.length, count, '单餐偏好不能覆盖已保存的整单偏好')
+  userStore.namespace = 'b'.repeat(32)
+  page.formNamespace = 'a'.repeat(32)
+  page.inputDislikes(event('不应写入另一个人'))
+  await tick()
+  assert.strictEqual(calls.patches.length, count)
+  assert(page.data.pageError.includes('身份'))
+  delete userStore.namespace
+  const wxml = fs.readFileSync(plannerWxmlPath, 'utf8')
+  assert(wxml.includes('不喜欢 · 尽量少用（选填）') && wxml.includes('过敏与忌口 · 必须避开'))
+  assert(wxml.includes('主动填写的不喜欢、过敏忌口'))
+  assert(wxml.includes('aria-label="不喜欢或尽量少用的食物'))
+}
+
 async function main() {
+  await testIndependentDislikesAndConsent()
   await testCookingIdentityAndHide()
   await testCookingInputsAndConsent()
   await testMealWishesReuseExistingPreferences()

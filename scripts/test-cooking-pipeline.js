@@ -44,13 +44,15 @@ function assemble(input) {
 let cases = 0
 for (const durationDays of [1, 7, 14]) for (const servings of [1, 3, 12]) {
   for (const mealTypes of [['breakfast'], ['breakfast', 'lunch', 'dinner', 'snack']]) {
-    const input = request({ durationDays, servings, mealTypes, doubleDinner: mealTypes.includes('dinner'),
+    const input = request({ durationDays, servings, mealTypes, doubleDinner: mealTypes.includes('dinner'), dislikes: '不喜欢苦瓜', restrictions: '花生过敏',
       pantryItems: [{ name: '番茄', quantity: 125, unit: 'g' }, { name: '菠菜', quantity: 10, unit: 'g' }] })
     const assembled = assemble(input)
     const plan = ai.normalizePlan(assembled, input, options)
     const saved = state.sanitizeState({ ...state.defaults(), draftPlan: plan, generationPreferences: input })
     const confirmed = state.confirmDraft(saved, saved.stateRevision)
     assert.deepStrictEqual(confirmed.activePlan.generationBasis.pantryItems, input.pantryItems)
+    assert.strictEqual(confirmed.activePlan.generationBasis.dislikes, input.dislikes)
+    assert.strictEqual(confirmed.activePlan.generationBasis.restrictions, input.restrictions)
     for (const day of plan.days) for (const meal of day.meals) {
       assert.strictEqual(meal.servings, servings)
       assert.strictEqual(meal.ingredients[0].quantity, 100.125 * servings)

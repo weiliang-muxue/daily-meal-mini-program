@@ -94,7 +94,7 @@ function run() {
   for (const version of [8, 9, 10, 11]) {
     const previous = fixture(7); delete previous.favoriteRecipes
     const migrated = core.migrate({ ...previous, schemaVersion: version })
-    assert.deepStrictEqual(migrated, { ...previous, schemaVersion: 12, favoriteRecipes: [] })
+    assert.deepStrictEqual(migrated, { ...previous, schemaVersion: 13, favoriteRecipes: [] })
   }
   console.log('Recipe library: snapshot, 1/7/14-day shopping, migration, limits and conflict tests passed')
 }

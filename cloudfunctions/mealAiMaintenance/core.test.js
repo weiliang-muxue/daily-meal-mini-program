@@ -21,11 +21,11 @@ const {
 const now = 2000
 const planStateFingerprint = 'a'.repeat(64)
 const cacheNamespace = 'b'.repeat(32)
-assert.strictEqual(AI_DATA_CONSENT_VERSION, 3)
-assert.strictEqual(AI_CONTRACT_VERSION, 3)
-assert.strictEqual(AI_PLANNER_VERSION, '9')
+assert.strictEqual(AI_DATA_CONSENT_VERSION, 4)
+assert.strictEqual(AI_CONTRACT_VERSION, 4)
+assert.strictEqual(AI_PLANNER_VERSION, '10')
 assert.strictEqual(AI_PROVIDER_CONTRACT_REVISION, 10)
-assert.strictEqual(TASK_SCHEMA_VERSION, 5)
+assert.strictEqual(TASK_SCHEMA_VERSION, 6)
 assert.deepStrictEqual(QUERY_STATUSES, [
   'queued', 'running', 'finalizing', 'pending', 'processing', 'generating', 'validating', 'active',
 ])

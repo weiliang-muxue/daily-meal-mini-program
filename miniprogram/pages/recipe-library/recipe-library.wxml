@@ -50,6 +50,7 @@
         <text class="section-title">确认后只替换这一餐</text>
         <text class="recipe-copy">{{preview.targetLabel}} → {{selected.recipe.title}}</text>
         <text class="section-copy">当前已保存的忌口：{{preview.restrictions}}</text>
+        <text class="section-copy">当前不喜欢（软偏好）：{{preview.dislikes}}。本次直接复用收藏，不由 AI 重新搭配，请自行核对。</text>
         <text class="section-copy">原餐单生成时的忌口：{{preview.planRestrictions}}</text>
         <text wx:if="{{!preview.changes.length}}" class="section-copy">采购用量没有变化，现有勾选保留。</text>
         <view wx:for="{{preview.changes}}" wx:key="name" class="change-row">

@@ -5,9 +5,9 @@ const { membershipStore } = require('./membership-store')
 
 const CACHE_PREFIX = 'meal_ai_task_v2_'
 const CACHE_VERSION = 2
-const CONTRACT_VERSION = 3
-const PLANNER_VERSION = '9'
-const AI_DATA_CONSENT_VERSION = 3
+const CONTRACT_VERSION = 4
+const PLANNER_VERSION = '10'
+const AI_DATA_CONSENT_VERSION = 4
 const PROVIDER_CONTRACT_REVISION = 10
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'finalizing'])
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'conflict'])

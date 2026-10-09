@@ -117,6 +117,7 @@ Page({
       this.previewRevision = state.stateRevision
       this.setData({ preview: { targetLabel: targetOption.label, ...changes,
         restrictions: state.generationPreferences.restrictions || '尚未填写，请结合实际情况核对',
+        dislikes: state.generationPreferences.dislikes || '未填写',
         planRestrictions: state.activePlan.generationBasis.restrictions || '原餐单未记录' }, reviewed: false, error: '', notice: '' })
     } catch (error) { this.setData({ preview: null, reviewed: false, error: error.message || '暂时不能安排，请刷新后重试' }) }
   },

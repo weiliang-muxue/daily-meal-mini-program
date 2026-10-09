@@ -96,6 +96,7 @@ function generationBasisRows(plan) {
     { label: '晚餐方案', value: basis.doubleDinner ? '运动与不运动两套' : '单一方案' },
     { label: '饮食目标', value: [...(basis.goals || []), basis.customGoal].filter(Boolean).join('、') },
     { label: '饮食风格', value: (basis.styles || []).join('、') },
+    { label: '不喜欢 · 尽量少用', value: basis.dislikes === undefined ? '本餐单未记录此项' : basis.dislikes || '未填写' },
     { label: '忌口约束', value: basis.restrictions || '' },
     { label: '健康约束', value: basis.healthNotes || '' },
     { label: '运动说明', value: basis.exerciseNotes || '' },

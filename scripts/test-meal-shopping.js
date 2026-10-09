@@ -108,7 +108,7 @@ async function main() {
 
   const oldV8 = { ...checked, schemaVersion: 8, waterReminder: { ...defaults().waterReminder, enabled: true, cadence: 'weekdays', scheduleVersion: 3 }, customReminders: [{ id: 'fictional-reminder', text: '虚构提醒', done: true }] }
   const migrated = migrate(oldV8)
-  assert.strictEqual(migrated.schemaVersion, 12)
+  assert.strictEqual(migrated.schemaVersion, 13)
   assert.deepStrictEqual(migrated.waterReminder, oldV8.waterReminder)
   assert.deepStrictEqual(migrated.customReminders, oldV8.customReminders)
   assert.deepStrictEqual(migrate(migrated), migrated, 'v8 to v11 migration is idempotent')

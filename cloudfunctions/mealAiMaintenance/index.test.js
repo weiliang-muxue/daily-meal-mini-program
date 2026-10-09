@@ -9,10 +9,10 @@ const {
   TASK_SCHEMA_VERSION,
 } = require('./core')
 
-assert.strictEqual(AI_DATA_CONSENT_VERSION, 3)
-assert.strictEqual(AI_CONTRACT_VERSION, 3)
-assert.strictEqual(AI_PLANNER_VERSION, '9')
-assert.strictEqual(TASK_SCHEMA_VERSION, 5)
+assert.strictEqual(AI_DATA_CONSENT_VERSION, 4)
+assert.strictEqual(AI_CONTRACT_VERSION, 4)
+assert.strictEqual(AI_PLANNER_VERSION, '10')
+assert.strictEqual(TASK_SCHEMA_VERSION, 6)
 
 const CURRENT_AI_VERSIONS = Object.freeze({
   taskSchemaVersion: TASK_SCHEMA_VERSION,

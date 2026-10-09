@@ -227,6 +227,10 @@ async function main() {
   // Candidate confirmation uses the exact revision shown, not a whole-plan API.
   reset(); store.data.draftPlan = draft(store.data)
   let preview = page('plan-preview'); preview.render()
+  assert(preview.data.plan.basisRows.some(row => row.label === '不喜欢 · 尽量少用' && row.value === '本餐单未记录此项'))
+  store.data.draftPlan.generationBasis.dislikes = '不喜欢苦瓜'
+  preview.render()
+  assert(preview.data.plan.basisRows.some(row => row.label === '不喜欢 · 尽量少用' && row.value === '不喜欢苦瓜'))
   assert(preview.data.replacementPreview)
   assert(!preview.data.plan.replacementTarget, 'private source snapshot is not sent to WXML')
   const basePlan = clone(store.data.activePlan), originalPreferences = clone(store.data.generationPreferences)

@@ -1588,7 +1588,7 @@ async function testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits() {
   assert.strictEqual(storage.get(pendingKey).mealOverrideOperations[mealId].value.ingredientItems[0].quantity, 3)
   cloudHandler = async (_name, action, payload) => {
     assert.strictEqual(action, 'saveState')
-    assert.strictEqual(payload.clientSchemaVersion, 12)
+    assert.strictEqual(payload.clientSchemaVersion, 13)
     return { ...restarted.data, ...payload.state, stateRevision: 1 }
   }
   await restarted.flush()
@@ -1637,6 +1637,7 @@ async function testCookingPreferencesOfflineRecoveryAndIsolation() {
   const store = new UserStore(member)
   store.bindNamespace()
   const preferences = { ...store.data.generationPreferences, servings: 4, maxCookingMinutes: 45,
+    dislikes: '不喜欢苦瓜', restrictions: '花生过敏',
     pantryItems: [{ name: '虚构燕麦', quantity: 125.5, unit: 'g' }] }
   cloudHandler = async () => { throw new Error('offline') }
   await assert.rejects(store.savePreferences(preferences), /offline/)
@@ -1649,7 +1650,7 @@ async function testCookingPreferencesOfflineRecoveryAndIsolation() {
   assert.deepStrictEqual(restored.data, beforeInvalid, 'invalid input must not clear cached meals or preferences')
   cloudHandler = async (_name, action, payload) => {
     assert.strictEqual(action, 'saveState')
-    assert.strictEqual(payload.clientSchemaVersion, 12)
+    assert.strictEqual(payload.clientSchemaVersion, 13)
     assert.deepStrictEqual(payload.state.generationPreferences, preferences)
     return { ...restored.data, ...payload.state, stateRevision: 1 }
   }
@@ -1661,6 +1662,8 @@ async function testCookingPreferencesOfflineRecoveryAndIsolation() {
   other.bindNamespace()
   assert.deepStrictEqual(other.data.generationPreferences.pantryItems, [])
   assert.strictEqual(other.data.generationPreferences.servings, 1)
+  assert.strictEqual(other.data.generationPreferences.dislikes, '')
+  assert.strictEqual(other.data.generationPreferences.restrictions, '')
   assert.deepStrictEqual(storage.get(key).generationPreferences, preferences)
 }
 function copyForCooking(value) { return JSON.parse(JSON.stringify(value)) }
@@ -1675,7 +1678,7 @@ async function testFavoritesCacheAndLateIdentityResponses() {
   cloudHandler = (name, action, payload) => {
     assert.strictEqual(name, 'userData'); assert.strictEqual(action, 'addFavorite')
     assert.strictEqual(payload.expectedCacheNamespace, namespaceA)
-    assert.strictEqual(payload.clientSchemaVersion, 12)
+    assert.strictEqual(payload.clientSchemaVersion, 13)
     return new Promise(resolve => { finish = resolve })
   }
   const request = store.changeFavorite('addFavorite', { mealId: 'meal-0-breakfast', expectedPlanId: 'test-library-plan' }, 3)

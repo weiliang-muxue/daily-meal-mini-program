@@ -93,6 +93,7 @@ function defaultPreferences(startDate) {
     goals: [],
     styles: [],
     customGoal: '',
+    dislikes: '',
     restrictions: '',
     healthNotes: '',
     exerciseIntent: '',
@@ -139,6 +140,7 @@ function normalizePreferences(value) {
     goals: cleanArray(source.goals, GOAL_OPTIONS),
     styles: cleanArray(source.styles, STYLE_OPTIONS),
     customGoal: String(source.customGoal || '').slice(0, 160),
+    dislikes: String(source.dislikes || '').slice(0, 240),
     restrictions: String(source.restrictions || '').slice(0, 240),
     healthNotes: String(source.healthNotes || '').slice(0, 240),
     exerciseIntent,
@@ -242,7 +244,9 @@ function summaryRows(preferences) {
     { label: '目标', value: preferences.goals.join('、') || '未选择' },
     { label: '想吃 / 补充', value: preferences.customGoal || '未填写' },
     { label: '风格', value: preferences.styles.join('、') || '未选择' },
-    { label: '约束', value: preferences.restrictions || preferences.healthNotes ? '已填写，将仅用于本次生成' : '未填写' },
+    { label: '不喜欢 · 尽量少用', value: preferences.dislikes || '未填写' },
+    { label: '过敏与忌口 · 必须避开', value: preferences.restrictions || '未填写' },
+    { label: '健康饮食约束', value: preferences.healthNotes || '未填写' },
     {
       label: '运动',
       value: preferences.exerciseIntent === 'none'
@@ -852,6 +856,7 @@ Page({
   },
 
   inputCustomGoal(event) { this.updatePreferences({ customGoal: event.detail.value }) },
+  inputDislikes(event) { this.updatePreferences({ dislikes: event.detail.value }) },
   inputRestrictions(event) { this.updatePreferences({ restrictions: event.detail.value }) },
   inputHealthNotes(event) { this.updatePreferences({ healthNotes: event.detail.value }) },
   inputExerciseNotes(event) { this.updatePreferences({ exerciseNotes: event.detail.value }) },

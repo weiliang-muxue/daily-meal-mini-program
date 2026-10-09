@@ -148,11 +148,16 @@
     </view>
 
     <view wx:elif="{{currentStep === 3}}" class="step-body">
-      <text class="section-heading">需要避开的食物</text>
-      <text class="section-description">请明确填写过敏、忌口和医生已经告知的饮食限制。AI 结果仅供餐单参考。</text>
+      <text class="section-heading">口味偏好与饮食限制</text>
+      <text class="section-description">不喜欢和必须避开分开填写，可随时修改；不会从收藏自动推断。AI 结果仅供餐单参考，食材仍需自己核对。</text>
       <view class="field-block">
-        <text class="field-label">过敏与忌口</text>
-        <textarea maxlength="240" value="{{preferences.restrictions}}" bindinput="inputRestrictions" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：花生过敏；不吃猪肉；乳糖不耐" auto-height="false" />
+        <text class="field-label">不喜欢 · 尽量少用（选填）</text>
+        <textarea maxlength="240" value="{{preferences.dislikes}}" bindinput="inputDislikes" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" aria-label="不喜欢或尽量少用的食物，选填，最多240字" placeholder="例如：不太喜欢苦瓜；希望少安排粥" auto-height="false" />
+        <text class="field-counter">最多 240 字。仅作为口味偏好；过敏或不能吃的食物请填在下方。</text>
+      </view>
+      <view class="field-block">
+        <text class="field-label">过敏与忌口 · 必须避开</text>
+        <textarea maxlength="240" value="{{preferences.restrictions}}" bindinput="inputRestrictions" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" aria-label="过敏与忌口，必须避开的食物，最多240字" placeholder="例如：花生过敏；不吃猪肉；乳糖不耐" auto-height="false" />
         <text class="field-counter">最多 240 字</text>
       </view>
       <view class="field-block">
@@ -272,7 +277,7 @@
             <text class="privacy-intro">点击生成后，以下“会发送”内容将交给 {{providerDisplayName}}，仅用于生成本次候选餐单。</text>
             <view class="privacy-scope send-scope">
               <text class="privacy-scope-label">会发送</text>
-              <text class="privacy-scope-copy">本次选择的餐次、日期、目标、风格、就餐人数、做饭时间、已有食材的名称数量和单位，以及你主动填写的饮食约束与运动安排。</text>
+              <text class="privacy-scope-copy">本次选择的餐次、日期、目标、风格、就餐人数、做饭时间、已有食材的名称数量和单位，以及你主动填写的不喜欢、过敏忌口、健康饮食约束与运动安排。</text>
             </view>
             <view class="privacy-scope protected-scope">
               <text class="privacy-scope-label">不会发送</text>

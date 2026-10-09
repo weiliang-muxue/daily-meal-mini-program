@@ -82,7 +82,7 @@ test('相同幂等键和请求只重放，内容或 revision 改变即冲突', (
 
 test('创建任务会重新规范化偏好并拒绝伪造的三类指纹', () => {
   const created = task({ input: { ...input, ignoredByContract: '不得存入任务' } })
-  assert.strictEqual(TASK_SCHEMA_VERSION, 5)
+  assert.strictEqual(TASK_SCHEMA_VERSION, 6)
   assert.strictEqual(created.taskSchemaVersion, TASK_SCHEMA_VERSION)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(created.input, 'ignoredByContract'), false)
   assert.throws(() => task({ preferencesHash: 'f'.repeat(32) }), (error) => error.code === 'REQUEST_FINGERPRINT_MISMATCH')
@@ -95,6 +95,7 @@ test('创建任务会重新规范化偏好并拒绝伪造的三类指纹', () =>
   assert.strictEqual(created.providerRevision, providerRevision)
   assert.strictEqual(created.providerConfigVersion, providerConfigVersion)
   assert.throws(() => task({ aiDataConsentVersion: 0 }), (error) => error.code === 'AI_DATA_CONSENT_REQUIRED')
+  assert.throws(() => task({ aiDataConsentVersion: 3 }), (error) => error.code === 'AI_DATA_CONSENT_REQUIRED')
   assert.throws(() => task({ providerRevision: 0 }), (error) => error.code === 'INVALID_TASK_INPUT')
   assert.throws(() => task({ providerConfigVersion: '' }), (error) => error.code === 'INVALID_TASK_INPUT')
 })
@@ -174,7 +175,7 @@ test('计划基线摘要包含 null 与完整规范化计划内容且不保存�
 
 test('任务从 queued 开始，每次有效状态变更递增 taskRevision', () => {
   const created = task()
-  assert.strictEqual(created.plannerVersion, '9')
+  assert.strictEqual(created.plannerVersion, '10')
   assert.strictEqual(created.chunks.every((chunk) => chunk.mealSlots === 1), true)
   assert.strictEqual(created.chunks.reduce((sum, chunk) => sum + chunk.mealSlots, 0), 28)
   assert.strictEqual(created.status, 'queued')
