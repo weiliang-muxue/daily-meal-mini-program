@@ -69,7 +69,11 @@ const hasError = (result, fragment) => result.errors.some((error) => error.inclu
   'miniprogram/app.json', '.github/workflows/validate.yml',
   'cloudfunctions/aiPlanner/.env.example', 'cloudfunctions/auth/package-lock.json',
   'project.config.example.json',
+  'THIRD_PARTY_NOTICES.md',
 ].forEach((file) => assert.strictEqual(pathReason(file), '', `${file} 应属于公开文本白名单`))
+
+assert(pathReason('THIRD_PARTY_NOTICES.private.json'), 'NOTICE 白名单仅接受精确公开文件名')
+assert(blobReason('THIRD_PARTY_NOTICES.md', Buffer.from([65, 0, 66])), 'NOTICE 仍需通过正文安全检查')
 
 ;['photo.jpg', 'image.png', 'bundle.zip', 'guide.pdf', 'state.db', 'run.log', 'request.har']
   .forEach((file) => assert(blobReason(`scripts/${file}`, Buffer.from('public')), `${file} 必须默认拒绝`))

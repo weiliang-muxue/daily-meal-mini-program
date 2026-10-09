@@ -42,6 +42,7 @@ const ROOT_TEXT_ALLOWLIST = new Set([
   '.gitignore', '.gitattributes', '.env.example',
   'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md', 'SUPPORT.md',
   'LICENSE', 'LICENSE.txt', 'NOTICE', 'NOTICE.txt',
+  'THIRD_PARTY_NOTICES.md',
   'database.indexes.json', 'database.rules.json', 'storage.rules.json', 'release-manifest.json',
   'project.config.example.json', 'project.private.config.example.json',
 ])
