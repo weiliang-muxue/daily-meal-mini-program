@@ -33,7 +33,7 @@ const BOTTOM_EVIDENCE_SELECTORS = Object.freeze({
   shopping: ['.reset-button', '.status-panel', '.group'],
   guide: ['.warning', '.reminder-list', '.status-panel', '.reminder-form', '.guide-state'],
   profile: ['.danger-card'],
-  'water-reminder': ['.calendar-card', '.save-button', '.status-panel'],
+  'water-reminder': ['.push-card', '.save-button', '.status-panel'],
   'user-agreement': ['.legal-section'],
   privacy: ['.legal-link'],
 })

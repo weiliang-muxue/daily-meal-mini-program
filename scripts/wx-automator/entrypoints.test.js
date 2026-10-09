@@ -114,7 +114,7 @@ test('planner visual gate validates exact button geometry and screenshot glyph p
 test('visual gate covers the complete water reminder page including its bottom actions', () => {
   const source = read('visual-regression.js')
   assert.match(source, /\['water-reminder', '\/pages\/water-reminder\/water-reminder'/)
-  assert.match(source, /'water-reminder': \['\.calendar-card', '\.save-button', '\.status-panel'\]/)
+  assert.match(source, /'water-reminder': \['\.push-card', '\.save-button', '\.status-panel'\]/)
   assert.match(source, /'water-reminder-bottom'/)
 })
 
@@ -132,7 +132,7 @@ test('water reminder interaction changes only an unsaved draft and restores it',
   assert.match(step[0], /String\(original\.intervalIndex\)/)
   assert.match(step[0], /next\.intervalIndex === original\.intervalIndex/)
   assert.match(step[0], /finally \{[\s\S]*callMethod\('updateDraft', originalDraft\)/)
-  assert.doesNotMatch(step[0], /callMethod\(['"](?:save|addToCalendar)['"]|\.save-button|\.calendar-button/)
+  assert.doesNotMatch(step[0], /callMethod\(['"](?:save|subscribe|submitGrant)['"]|\.save-button|\.push-button/)
 })
 
 test('personal reminder interaction waits for cloud writes and confirms cleanup', () => {

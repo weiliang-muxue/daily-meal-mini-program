@@ -6,7 +6,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 
-const FUNCTIONS = ['membership', 'auth', 'userData', 'health', 'privacy', 'aiPlanner', 'mealAiMaintenance']
+const FUNCTIONS = ['membership', 'auth', 'userData', 'health', 'privacy', 'aiPlanner', 'mealAiMaintenance', 'waterReminder']
 const CONFIG_FILES = ['project.config.json', 'project.private.config.json', 'miniprogram/config.js']
 const MARKER = 'wechat-import-manifest.json'
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex')

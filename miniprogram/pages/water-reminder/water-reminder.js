@@ -7,13 +7,8 @@ const {
   defaultWaterReminder,
   sanitizeWaterReminder,
 } = require('../../services/user-state-core')
-const {
-  CALENDAR_REPEAT_DAYS,
-  reminderTimes,
-  buildCalendarEntries,
-  canUseRepeatCalendar,
-  installCalendarEntries,
-} = require('../../services/water-reminder-calendar')
+const { reminderTimes, request: pushRequest } = require('../../services/water-push')
+const pushActions = require('./push-actions')
 
 const INTERVAL_OPTIONS = WATER_REMINDER_INTERVALS.map((value) => ({ value, label: `${value} 分钟` }))
 
@@ -72,6 +67,7 @@ function confirmModal(options) {
 }
 
 const waterReminderPage = {
+  ...pushActions,
   data: {
     canNavigateBack: false,
     pageNavigationLabel: '返回我的',
@@ -90,18 +86,24 @@ const waterReminderPage = {
     saved: defaultWaterReminder(),
     previewTimes: [],
     previewText: '',
-    calendarEntryCount: 0,
-    calendarActionLocked: false,
-    calendarInstalling: false,
-    calendarProgress: 0,
-    calendarTotal: 0,
-    calendarStatus: 'idle',
-    calendarMessage: '',
-    calendarPermissionDenied: false,
-    repeatDays: CALENDAR_REPEAT_DAYS,
+    pushLoading: false, subscribing: false, pushReady: false, canSubscribe: false,
+    pushTitle: '正在检查微信提醒', pushDetail: '', pushNext: '', pushError: '',
+    pendingGrant: false, subscribeLabel: '订阅下一次提醒',
   },
 
   async onLoad() {
+    this.unloaded = false
+    this.unsubscribeIdentity = membershipStore.onCacheNamespaceChange(() => {
+      this.pushRevision = (this.pushRevision || 0) + 1
+      this.intent = null; this.grant = null
+      if (!this.unloaded) {
+        this.setData({ canSubscribe: false, pendingGrant: false, pushReady: false, pushNext: '',
+          pushTitle: '请重新验证账号', pushDetail: '', pushError: '', subscribing: false, saving: false,
+          saved: defaultWaterReminder(), draft: defaultWaterReminder(), previewTimes: [], previewText: '',
+          dirty: false, syncPending: false, loading: false, loadError: '账号已变化，请重新进入', saveError: '' })
+        this.disableLeaveAlert()
+      }
+    })
     this.refreshNavigation()
     this.setupTheme()
     await this.load()
@@ -110,8 +112,8 @@ const waterReminderPage = {
   onShow() { this.refreshNavigation() },
 
   onUnload() {
-    if (this.calendarInstallToken) this.calendarInstallToken.cancelled = true
-    this.calendarActionLocked = false
+    this.unloaded = true
+    if (this.unsubscribeIdentity) this.unsubscribeIdentity()
     if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
     this.disableLeaveAlert()
   },
@@ -138,8 +140,8 @@ const waterReminderPage = {
   },
 
   async navigateFromPage() {
-    if (this.data.calendarInstalling || this.calendarActionLocked) {
-      wx.showToast({ title: '日历操作进行中，请稍候', icon: 'none' })
+    if (this.data.subscribing || this.data.saving) {
+      wx.showToast({ title: '操作进行中，请稍候', icon: 'none' })
       return
     }
     if (this.data.dirty && !await this.confirmDiscard()) return
@@ -174,14 +176,18 @@ const waterReminderPage = {
   },
 
   async load(force = false) {
+    const loadRevision = this.loadRevision = (this.loadRevision || 0) + 1
     this.setData({ loading: true, loadError: '', saveError: '' })
     try {
       const member = await membershipStore.init({ force })
+      if (this.unloaded || loadRevision !== this.loadRevision) return
       if (!member || member.status !== 'active') {
         wx.reLaunch({ url: '/pages/access/access' })
         return
       }
+      const namespace = membershipStore.cacheNamespace
       await userStore.init({ force })
+      if (this.unloaded || loadRevision !== this.loadRevision || namespace !== membershipStore.cacheNamespace) return
       const saved = sanitizeWaterReminder(userStore.data.waterReminder)
       const syncPending = hasWaterReminderPending()
       this.setData({
@@ -192,11 +198,13 @@ const waterReminderPage = {
         intervalIndex: intervalIndex(saved.intervalMinutes),
         dirty: false,
         syncPending,
-        saveError: syncPending ? '设置已保存在本机，尚未同步到云端；联网后点“重试同步”' : '',
+        saveError: syncPending ? '设置仅保存在本机，尚未同步；关闭提醒也需要联网生效。' : '',
       })
       this.disableLeaveAlert()
       this.refreshPreview()
+      await this.refreshPush()
     } catch (error) {
+      if (this.unloaded || loadRevision !== this.loadRevision) return
       this.setData({ loading: false, loadError: error.message || '喝水提醒设置加载失败，请重试' })
     }
   },
@@ -204,11 +212,13 @@ const waterReminderPage = {
   retryLoad() { return this.load(true) },
 
   updateDraft(patch) {
-    if (this.data.loading || this.data.saving || this.data.calendarInstalling) return
+    if (this.data.loading || this.data.saving || this.data.subscribing) return
+    this.pushRevision = (this.pushRevision || 0) + 1
+    this.intent = null; this.grant = null
     const draft = { ...this.data.draft, ...patch }
     const dirty = !sameReminder(draft, this.data.saved)
     const syncPending = hasWaterReminderPending()
-    this.setData({ draft, dirty, syncPending, saveError: '', calendarStatus: 'idle', calendarMessage: '' })
+    this.setData({ draft, dirty, syncPending, saveError: '', canSubscribe: false, pendingGrant: false })
     if (dirty) this.enableLeaveAlert()
     else this.disableLeaveAlert()
     this.refreshPreview()
@@ -234,29 +244,27 @@ const waterReminderPage = {
 
   refreshPreview() {
     if (!this.data.draft.enabled) {
-      this.setData({ previewTimes: [], previewText: '', calendarEntryCount: 0, scheduleInvalid: false })
+      this.setData({ previewTimes: [], previewText: '', scheduleInvalid: false })
       return
     }
     try {
       const clean = sanitizeWaterReminder(this.data.draft)
       const times = reminderTimes(clean)
-      const count = times.length * (clean.cadence === 'weekdays' ? 5 : 1)
       this.setData({
         previewTimes: times,
-        previewText: `${cadenceLabel(clean.cadence)}，每天 ${times.length} 次`,
-        calendarEntryCount: count,
+        previewText: `${cadenceLabel(clean.cadence)}，每天 ${times.length} 个时间点`,
         scheduleInvalid: false,
       })
     } catch (error) {
       this.setData({
-        previewTimes: [], previewText: '', calendarEntryCount: 0,
+        previewTimes: [], previewText: '',
         scheduleInvalid: true, saveError: displayScheduleError(error),
       })
     }
   },
 
   async save() {
-    if (this.data.loading || this.data.saving || this.data.calendarInstalling) return
+    if (this.data.loading || this.data.saving || this.data.subscribing) return
     if (this.data.syncPending && !this.data.dirty) return this.retrySync()
     let clean
     try { clean = reminderForSave(this.data.draft, this.data.saved) }
@@ -268,6 +276,8 @@ const waterReminderPage = {
       wx.showToast({ title: '设置没有变化', icon: 'none' })
       return
     }
+    const namespace = membershipStore.cacheNamespace
+    const isCurrent = () => !this.unloaded && namespace === membershipStore.cacheNamespace
     const now = new Date().toISOString()
     const next = {
       ...clean,
@@ -277,6 +287,7 @@ const waterReminderPage = {
     this.setData({ saving: true, saveError: '' })
     try {
       const state = await userStore.patch({ waterReminder: next }, { immediate: true })
+      if (!isCurrent()) return
       const saved = sanitizeWaterReminder(state.waterReminder)
       this.setData({
         saved,
@@ -290,8 +301,13 @@ const waterReminderPage = {
       })
       this.disableLeaveAlert()
       this.refreshPreview()
-      wx.showToast({ title: saved.enabled ? '提醒设置已保存' : '喝水提醒已关闭', icon: 'success' })
+      if (!saved.enabled && this.data.pushReady) { try { await pushRequest('stop', {}, namespace) } catch (_) {} }
+      if (!isCurrent()) return
+      await this.refreshPush()
+      if (!isCurrent()) return
+      wx.showToast({ title: saved.enabled ? '时间已保存，请确认订阅' : '微信提醒已关闭', icon: 'success' })
     } catch (error) {
+      if (!isCurrent()) return
       const syncPending = hasWaterReminderPending()
       const local = syncPending ? sanitizeWaterReminder(userStore.data.waterReminder) : null
       this.setData({
@@ -302,18 +318,21 @@ const waterReminderPage = {
         dirty: local ? false : this.data.dirty,
         syncPending,
         saveError: syncPending
-          ? '设置已保存在本机，尚未同步到云端；联网后点“重试同步”'
+          ? '设置仅保存在本机，尚未同步；关闭提醒也需要联网生效。'
           : displayError(error, '保存失败，请重试'),
       })
       if (local) this.disableLeaveAlert()
-    } finally { this.setData({ saving: false }) }
+    } finally { if (isCurrent()) this.setData({ saving: false }) }
   },
 
   async retrySync() {
-    if (!this.data.syncPending || this.data.saving || this.data.calendarInstalling) return
+    if (!this.data.syncPending || this.data.saving || this.data.subscribing) return
+    const namespace = membershipStore.cacheNamespace
+    const isCurrent = () => !this.unloaded && namespace === membershipStore.cacheNamespace
     this.setData({ saving: true, saveError: '' })
     try {
       const state = await userStore.flush()
+      if (!isCurrent()) return
       const saved = sanitizeWaterReminder(state.waterReminder)
       this.setData({
         saved,
@@ -325,8 +344,13 @@ const waterReminderPage = {
         saveError: '',
       })
       this.refreshPreview()
+      if (!saved.enabled && this.data.pushReady) { try { await pushRequest('stop', {}, namespace) } catch (_) {} }
+      if (!isCurrent()) return
+      await this.refreshPush()
+      if (!isCurrent()) return
       wx.showToast({ title: '已同步到云端', icon: 'success' })
     } catch (error) {
+      if (!isCurrent()) return
       this.setData({
         offline: userStore.state === 'offline',
         syncPending: hasWaterReminderPending(),
@@ -334,84 +358,10 @@ const waterReminderPage = {
           ? '设置仍保存在本机，尚未同步到云端；联网后可再次重试'
           : displayError(error, '同步失败，请重试'),
       })
-    } finally { this.setData({ saving: false }) }
+    } finally { if (isCurrent()) this.setData({ saving: false }) }
   },
 
-  async addToCalendar() {
-    if (this.data.loading || this.data.saving || this.data.calendarInstalling || this.calendarActionLocked) return
-    if (!this.data.draft.enabled || !this.data.saved.enabled) return
-    if (this.data.dirty || this.data.syncPending) {
-      this.setData({ calendarStatus: 'error', calendarMessage: '请先保存当前设置，再添加到系统日历' })
-      return
-    }
-    if (!canUseRepeatCalendar(wx)) {
-      this.setData({ calendarStatus: 'error', calendarMessage: '当前微信版本不支持添加重复日历，请更新微信后重试' })
-      return
-    }
-    let entries
-    try { entries = buildCalendarEntries(this.data.saved) }
-    catch (error) {
-      this.setData({ calendarStatus: 'error', calendarMessage: error.message || '提醒排程无效' })
-      return
-    }
-    if (!entries.length) return
-    const token = { cancelled: false }
-    this.calendarActionLocked = true
-    this.calendarInstallToken = token
-    this.setData({ calendarActionLocked: true })
-    try {
-      const confirmed = await confirmModal({
-        title: `添加 ${entries.length} 条日历事项？`,
-        content: `如果以前添加过相同排程，本次操作会产生重复事项，请先在系统日历核对。将按${cadenceLabel(this.data.saved.cadence)}排程，把 ${entries.length} 条重复事项写入设备系统日历，覆盖未来 ${CALENDAR_REPEAT_DAYS} 天。系统会另行请求日历权限。修改或关闭本页设置不会自动删除已添加事项。`,
-        confirmText: '继续添加',
-      })
-      if (!confirmed || token.cancelled) return
-      this.setData({
-        calendarInstalling: true,
-        calendarProgress: 0,
-        calendarTotal: entries.length,
-        calendarStatus: 'installing',
-        calendarMessage: '正在逐项添加，请勿离开本页',
-        calendarPermissionDenied: false,
-      })
-      this.enableLeaveAlert('正在添加系统日历事项，离开可能只完成部分添加。')
-      const result = await installCalendarEntries(wx, entries, (progress) => {
-        if (!token.cancelled) this.setData({ calendarProgress: progress.completed })
-      }, { shouldContinue: () => !token.cancelled })
-      if (token.cancelled) return
-      if (result.created === result.total) {
-        this.setData({
-          calendarStatus: 'success',
-          calendarMessage: `已添加 ${result.created} 条重复事项。再次添加可能产生重复，请先在系统日历核对；是否提醒仍受系统日历与设备通知设置影响。`,
-        })
-        return
-      }
-      const uncreated = result.failed + result.skipped
-      this.setData({
-        calendarStatus: result.created ? 'partial' : 'error',
-        calendarPermissionDenied: result.permissionDenied,
-        calendarMessage: result.permissionDenied
-          ? `已添加 ${result.created} 条，${uncreated} 条未添加。请允许“添加到日历”后再重新操作；先在系统日历核对，避免重复。`
-          : `已添加 ${result.created} 条，${uncreated} 条未添加。失败项不会自动重试，请先在系统日历核对后再决定是否重试。`,
-      })
-    } catch (error) {
-      if (!token.cancelled) {
-        this.setData({ calendarStatus: 'error', calendarMessage: error.message || '系统日历暂时不可用，请稍后重试' })
-      }
-    } finally {
-      if (this.calendarInstallToken === token) this.calendarInstallToken = null
-      this.calendarActionLocked = false
-      if (!token.cancelled) {
-        this.setData({ calendarInstalling: false, calendarActionLocked: false })
-        this.disableLeaveAlert()
-      }
-    }
-  },
 
-  openCalendarPermission() {
-    if (!this.data.calendarPermissionDenied || typeof wx.openSetting !== 'function') return
-    wx.openSetting({ fail: () => wx.showToast({ title: '设置页暂时无法打开', icon: 'none' }) })
-  },
 }
 
 Page(waterReminderPage)

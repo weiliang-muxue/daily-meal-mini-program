@@ -43,22 +43,13 @@
 .time-chip { min-width: 100rpx; min-height: 48rpx; padding: 8rpx 12rpx; border: 1rpx solid var(--line); border-radius: 6rpx; background: var(--surface); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.4; letter-spacing: 0; display: inline-flex; align-items: center; justify-content: center; }
 .inline-error { display: block; margin-top: 16rpx; padding: 18rpx 20rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .save-button { width: 100%; margin-top: 20rpx; }
-.calendar-card { margin-top: 28rpx; padding: 26rpx; }
-.calendar-title, .calendar-detail, .calendar-warning, .calendar-count, .calendar-disabled, .calendar-progress, .calendar-message { display: block; }
-.calendar-title { font-size: 16px; line-height: 1.4; font-weight: 730; }
-.calendar-detail { margin-top: 8rpx; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.calendar-warning { margin-top: 16rpx; padding: 16rpx 18rpx; border-left: 6rpx solid var(--warm); background: var(--warm-soft); color: var(--warm-ink); font-size: 12px; line-height: 1.55; }
-.calendar-action-area { margin-top: 22rpx; }
-.calendar-count, .calendar-disabled { color: var(--muted-strong); font-size: 13px; line-height: 1.5; }
-.calendar-disabled { margin-top: 20rpx; }
-.calendar-button { width: 100%; margin-top: 16rpx; }
-.calendar-status { margin-top: 18rpx; padding: 18rpx; border: 1rpx solid var(--line); border-radius: 8rpx; background: var(--surface-muted); }
-.calendar-status.success { border-color: var(--exercise-saved-border); background: var(--exercise-saved-surface); color: var(--exercise-saved-ink); }
-.calendar-status.error { border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger); }
-.calendar-status.partial { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
-.calendar-progress { font-size: 13px; line-height: 1.4; font-weight: 720; }
-.calendar-message { margin-top: 6rpx; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
-.permission-button { width: 100%; min-height: 48px; margin: 16rpx 0 0; border: 1rpx solid currentColor; border-radius: 9rpx; background: var(--surface); color: var(--danger); font-size: 14px; }
+.push-card { margin-top: 28rpx; padding: 26rpx; }
+.push-title, .push-detail, .push-next, .push-warning { display: block; overflow-wrap: anywhere; }
+.push-title { font-size: 16px; line-height: 1.5; font-weight: 730; }
+.push-detail { margin-top: 12rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.55; }
+.push-next { margin-top: 16rpx; color: var(--primary); font-size: 14px; line-height: 1.55; }
+.push-warning { margin-top: 16rpx; color: var(--gold-ink); background: var(--gold-soft); padding: 16rpx; font-size: 14px; line-height: 1.55; }
+.push-button { width: 100%; min-height: 48px; margin-top: 16rpx; white-space: normal; }
 @media (max-width: 340px) {
   .page-heading { align-items: flex-start; }
   .preview-heading { flex-direction: column; gap: 4rpx; }
@@ -70,7 +61,7 @@
   .screen { max-width: none; padding-left: calc(16px + constant(safe-area-inset-left)); padding-right: calc(16px + constant(safe-area-inset-right)); padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
   .page-heading { min-height: 64px; }
   .master-row, .field-row { min-height: 56px; }
-  .calendar-card { padding: 16px; }
+  .push-card { padding: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .segment, .page-navigation { transition: none; }

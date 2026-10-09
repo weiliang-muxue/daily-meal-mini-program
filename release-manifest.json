@@ -1,8 +1,8 @@
 {
-  "lastReleasedVersion": "0.2.0",
-  "workingVersion": "0.2.1",
-  "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.2.1：支持管理员邀请最多10位成员，新增仅管理员可见的成员备注；生成前可填写想吃的菜品或食材，改善采购清单同步失败提示和重试。保留已有餐单、记录及有效邀请，不重置用户数据。",
+  "lastReleasedVersion": "0.2.1",
+  "workingVersion": "0.3.0-dev.0",
+  "releaseStatus": "unreleased",
+  "wechatUploadDescription": "开发中：喝水提醒改用微信订阅消息，移除日历功能。尚缺实际模板配置、真机授权和真实送达验证，不作为可发布版本。",
   "stateSchemaVersion": 8,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 2,

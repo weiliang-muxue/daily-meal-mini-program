@@ -1,279 +1,125 @@
 'use strict'
-
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
-const {
-  CALENDAR_REPEAT_DAYS,
-  reminderTimes,
-  buildCalendarEntries,
-  canUseRepeatCalendar,
-  installCalendarEntries,
-} = require('../miniprogram/services/water-reminder-calendar')
-
 const root = path.resolve(__dirname, '..')
-const enabled = {
-  enabled: true,
-  cadence: 'daily',
-  startTime: '09:00',
-  endTime: '18:00',
-  intervalMinutes: 60,
-  timeZone: 'Asia/Shanghai',
-  scheduleVersion: 1,
-  updatedAt: '2026-09-02T00:00:00.000Z',
+const { membershipStore } = require('../miniprogram/services/membership-store')
+const { userStore } = require('../miniprogram/services/user-store')
+const push = require('../miniprogram/services/water-push')
+global.Page = () => {}
+global.wx = { showToast() {} }
+const { waterReminderPage: definition, reminderForSave } = require('../miniprogram/pages/water-reminder/water-reminder')
+const raw = { enabled: true, cadence: 'daily', startTime: '09:00', endTime: '18:00', intervalMinutes: 60, timeZone: 'Asia/Shanghai', scheduleVersion: 1, updatedAt: null }
+const ns = 'a'.repeat(32)
+let cases = 0
+async function check(name, fn) { await fn(); cases += 1; console.log('PASS', name) }
+function page() {
+  const p = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), setData(patch) { Object.assign(this.data, patch) } }
+  p.data.saved = { ...raw }; p.data.draft = { ...raw }; p.data.loading = false
+  p.intent = { id: 'offline-intent', templateId: 'offline-template', expiresAt: Date.now() + 60000 }
+  p.data.canSubscribe = true
+  return p
 }
-const nowMs = Date.parse('2026-09-02T02:15:00.000Z')
-
-assert.strictEqual(CALENDAR_REPEAT_DAYS, 30)
-assert.deepStrictEqual(reminderTimes(enabled), [
-  '09:00', '10:00', '11:00', '12:00', '13:00',
-  '14:00', '15:00', '16:00', '17:00', '18:00',
-], 'start and end times must both be included')
-
-const daily = buildCalendarEntries(enabled, nowMs)
-assert.strictEqual(daily.length, 10)
-daily.forEach((entry) => {
-  assert.strictEqual(entry.options.repeatInterval, 'day')
-  assert(entry.options.startTime > Math.floor(nowMs / 1000), 'calendar entry must start in the future')
-})
-
-const weekdays = buildCalendarEntries({ ...enabled, cadence: 'weekdays' }, nowMs)
-assert.strictEqual(weekdays.length, 50, 'each time needs five weekly calendar rules')
-assert.strictEqual(new Set(weekdays.map((entry) => entry.key)).size, weekdays.length)
-weekdays.forEach((entry) => {
-  assert.strictEqual(entry.options.repeatInterval, 'week')
-  assert(entry.options.startTime > Math.floor(nowMs / 1000))
-})
-
-assert.deepStrictEqual(buildCalendarEntries({ ...enabled, enabled: false }, nowMs), [])
-assert.strictEqual(canUseRepeatCalendar({}), false)
-assert.strictEqual(canUseRepeatCalendar({ addPhoneRepeatCalendar() {}, canIUse: () => false }), false)
-assert.strictEqual(canUseRepeatCalendar({ addPhoneRepeatCalendar() {}, canIUse: () => true }), true)
-
-async function testCalendarCalls() {
-  let calls = 0
-  const disabledEntries = buildCalendarEntries({ ...enabled, enabled: false }, nowMs)
-  const disabledResult = await installCalendarEntries({
-    addPhoneRepeatCalendar() { calls += 1 },
-    canIUse: () => true,
-  }, disabledEntries)
-  assert.strictEqual(disabledResult.total, 0)
-  assert.strictEqual(calls, 0, 'disabled reminders must never call the calendar API')
-
-  await assert.rejects(installCalendarEntries({}, daily), (error) => error.code === 'CALENDAR_API_UNAVAILABLE')
-
-  calls = 0
-  const denied = await installCalendarEntries({
-    canIUse: () => true,
-    addPhoneRepeatCalendar(options) {
-      calls += 1
-      if (calls === 1) options.success({})
-      else options.fail({ errMsg: 'addPhoneRepeatCalendar:fail auth deny' })
-    },
-  }, daily.slice(0, 4))
-  assert.deepStrictEqual(
-    { created: denied.created, failed: denied.failed, skipped: denied.skipped, permissionDenied: denied.permissionDenied },
-    { created: 1, failed: 1, skipped: 2, permissionDenied: true },
-  )
-  assert.strictEqual(calls, 2, 'permission denial must stop further calendar writes')
-
-  calls = 0
-  const partial = await installCalendarEntries({
-    canIUse: () => true,
-    addPhoneRepeatCalendar(options) {
-      calls += 1
-      if (calls === 2) options.fail({ errMsg: 'temporary failure' })
-      else options.success({})
-    },
-  }, daily.slice(0, 3))
-  assert.deepStrictEqual(
-    { created: partial.created, failed: partial.failed, skipped: partial.skipped, permissionDenied: partial.permissionDenied },
-    { created: 2, failed: 1, skipped: 0, permissionDenied: false },
-  )
-
-  calls = 0
-  let keepInstalling = true
-  const cancelled = await installCalendarEntries({
-    canIUse: () => true,
-    addPhoneRepeatCalendar(options) { calls += 1; options.success({}) },
-  }, daily.slice(0, 3), () => { keepInstalling = false }, { shouldContinue: () => keepInstalling })
-  assert.deepStrictEqual(
-    { created: cancelled.created, skipped: cancelled.skipped, cancelled: cancelled.cancelled },
-    { created: 1, skipped: 2, cancelled: true },
-  )
-  assert.strictEqual(calls, 1, 'cancellation must stop remaining calendar writes')
-}
-
-function testPageIntegration() {
-  const app = JSON.parse(fs.readFileSync(path.join(root, 'miniprogram', 'app.json'), 'utf8'))
-  const page = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'water-reminder', 'water-reminder.js'), 'utf8')
-  const markup = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'water-reminder', 'water-reminder.wxml'), 'utf8')
-  const profile = fs.readFileSync(path.join(root, 'miniprogram', 'pages', 'profile', 'profile.wxml'), 'utf8')
-  assert(app.pages.includes('pages/water-reminder/water-reminder'))
-  assert(profile.includes('bindtap="openWaterReminder"'))
-  assert(page.includes('async retrySync()'))
-  assert(page.includes('const state = await userStore.flush()'), 'retry must flush the existing pending value')
-  const retryMethod = page.slice(page.indexOf('async retrySync()'), page.indexOf('async addToCalendar()'))
-  assert(!/scheduleVersion\s*:/.test(retryMethod), 'retry must not increment scheduleVersion')
-  assert(markup.includes("(syncPending && !dirty) ? '重试同步' : '保存设置'"))
-  assert(!/disabled="[^"]*saveError/.test(markup), 'a save error must not disable retry')
-  assert(markup.includes('周一至周五模式会为每个时间点分别创建 5 条每周规则'))
-  assert.strictEqual((markup.match(/<picker[^>]+aria-label=/g) || []).length, 3)
-  assert(page.includes("const syncPending = hasWaterReminderPending()"))
-  assert(page.includes('if (this.data.syncPending && !this.data.dirty) return this.retrySync()'))
-  assert(page.includes('reminderForSave(this.data.draft, this.data.saved)'),
-    '关闭提醒时必须允许以最后保存的有效排程修复隐藏的无效草稿')
-  assert(page.includes('结束时间必须晚于开始时间'))
-  assert(page.includes('如果以前添加过相同排程，本次操作会产生重复事项'))
-  assert(!page.includes("const hasPriorWrites = this.data.calendarStatus"),
-    'duplicate warning must not depend on the current page session')
-  assert(page.includes("this.enableLeaveAlert('正在添加系统日历事项，离开可能只完成部分添加。')"))
-  assert(markup.includes('disabled="{{calendarInstalling || calendarActionLocked}}"'))
-  assert(markup.includes('calendarInstalling || calendarActionLocked || saving'))
-  assert(page.includes('this.calendarActionLocked = true'))
-  assert(page.includes('if (this.calendarInstallToken) this.calendarInstallToken.cancelled = true'))
-}
-
-function testDisabledReminderCanSaveAfterInvalidScheduleEdit() {
-  const previousPage = global.Page
-  const previousWx = global.wx
-  let registeredPage
-  global.Page = (definition) => { registeredPage = definition }
-  global.wx = { switchTab() {} }
-  const pagePath = path.join(root, 'miniprogram', 'pages', 'water-reminder', 'water-reminder.js')
-  delete require.cache[pagePath]
-  const { reminderForSave } = require(pagePath)
-
-  const result = reminderForSave({
-    ...enabled,
-    enabled: false,
-    startTime: '18:00',
-    endTime: '09:00',
-  }, enabled)
-
-  assert.strictEqual(result.enabled, false)
-  assert.strictEqual(result.startTime, enabled.startTime,
-    '关闭时遇到隐藏的无效开始时间，应保留最后保存的有效排程')
-  assert.strictEqual(result.endTime, enabled.endTime,
-    '关闭时遇到隐藏的无效结束时间，应保留最后保存的有效排程')
-  assert.throws(() => reminderForSave({
-    ...enabled,
-    enabled: true,
-    startTime: '18:00',
-    endTime: '09:00',
-  }, enabled), /endTime must be later than startTime/,
-  '开启提醒时仍必须拒绝无效排程')
-
-  global.Page = previousPage
-  global.wx = previousWx
-  delete require.cache[pagePath]
-}
-
-async function testCalendarActionLock() {
-  const previousPage = global.Page
-  const previousWx = global.wx
-  let registeredPage
-  let modalSuccess
-  let modalCalls = 0
-  let navigationCalls = 0
-  let toastCalls = 0
-  global.Page = (definition) => { registeredPage = definition }
-  global.wx = {
-    canIUse: () => true,
-    addPhoneRepeatCalendar() {},
-    showModal(options) { modalCalls += 1; modalSuccess = options.success },
-    showToast() { toastCalls += 1 },
-    switchTab() { navigationCalls += 1 },
-  }
-  const pagePath = path.join(root, 'miniprogram', 'pages', 'water-reminder', 'water-reminder.js')
-  delete require.cache[pagePath]
-  require(pagePath)
-  const context = {
-    ...registeredPage,
-    data: {
-      ...registeredPage.data,
-      loading: false,
-      saving: false,
-      dirty: false,
-      syncPending: false,
-      scheduleInvalid: false,
-      calendarInstalling: false,
-      saved: { ...enabled },
-      draft: { ...enabled },
-    },
-    setData(patch) { this.data = { ...this.data, ...patch } },
-    disableLeaveAlert() {},
-  }
-  const first = context.addToCalendar()
-  const second = context.addToCalendar()
-  assert.strictEqual(modalCalls, 1, 'double tap before confirmation must open one modal only')
-  assert.strictEqual(context.calendarActionLocked, true)
-  await context.navigateFromPage()
-  assert.strictEqual(toastCalls, 1)
-  assert.strictEqual(navigationCalls, 0, 'navigation must be blocked while calendar action is locked')
-  modalSuccess({ confirm: false })
-  await Promise.all([first, second])
-  assert.strictEqual(context.calendarActionLocked, false)
-  global.Page = previousPage
-  global.wx = previousWx
-  delete require.cache[pagePath]
-}
-
-function testPendingStaysVisibleAcrossEditAndRevert() {
-  const previousPage = global.Page
-  const previousWx = global.wx
-  let registeredPage
-  global.Page = (definition) => { registeredPage = definition }
-  global.wx = { switchTab() {} }
-  const pagePath = path.join(root, 'miniprogram', 'pages', 'water-reminder', 'water-reminder.js')
-  const storePath = path.join(root, 'miniprogram', 'services', 'user-store.js')
-  delete require.cache[pagePath]
-  const { userStore, emptyPending } = require(storePath)
-  const pending = emptyPending()
-  pending.revision = 1
-  pending.fields.waterReminder = { ...enabled }
-  pending.fieldRevisions.waterReminder = 1
-  userStore.pending = pending
-  require(pagePath)
-  const context = {
-    ...registeredPage,
-    data: {
-      ...registeredPage.data,
-      loading: false,
-      saving: false,
-      calendarInstalling: false,
-      saved: { ...enabled },
-      draft: { ...enabled },
-    },
-    setData(patch) { this.data = { ...this.data, ...patch } },
-    enableLeaveAlert() {},
-    disableLeaveAlert() {},
-    refreshPreview() {},
-  }
-  context.updateDraft({ startTime: '10:00' })
-  assert.strictEqual(context.data.dirty, true)
-  assert.strictEqual(context.data.syncPending, true)
-  context.updateDraft({ startTime: '09:00' })
-  assert.strictEqual(context.data.dirty, false)
-  assert.strictEqual(context.data.syncPending, true, 'reverting an edit must not hide the persisted pending save')
-  return context.addToCalendar().then(() => {
-    assert.strictEqual(context.data.calendarStatus, 'error')
-    assert.strictEqual(context.data.calendarMessage, '请先保存当前设置，再添加到系统日历')
-  }).finally(() => {
-    userStore.pending = emptyPending()
-    global.Page = previousPage
-    global.wx = previousWx
-    delete require.cache[pagePath]
+async function main() {
+  membershipStore.cacheNamespace = ns; membershipStore.verifiedInRuntime = true
+  const originalRequest = push.request
+  await check('no calendar implementation, permission or entry remains', async () => {
+    assert(!fs.existsSync(path.join(root, 'miniprogram/services/water-reminder-calendar.js')))
+    for (const file of ['miniprogram/pages/water-reminder/water-reminder.js', 'miniprogram/pages/water-reminder/water-reminder.wxml', 'miniprogram/pages/water-reminder/push-actions.js']) {
+      const text = fs.readFileSync(path.join(root, file), 'utf8')
+      assert(!/addPhone(Calendar|RepeatCalendar)|scope\.addPhoneCalendar|addToCalendar|calendarInstalling/.test(text), file)
+    }
+    assert.equal(definition.data.draft.enabled, false); assert.equal(definition.data.canSubscribe, false)
   })
+  await check('schedule validation, turn off invalid hidden form, preview', async () => {
+    assert.equal(push.reminderTimes(raw).length, 10)
+    assert.equal(reminderForSave({ ...raw, enabled: false, endTime: '08:00' }, raw).enabled, false)
+    assert.throws(() => reminderForSave({ ...raw, endTime: '08:00' }, raw))
+    const p = page(); p.refreshPreview(); assert.equal(p.data.previewTimes[0], '09:00')
+    p.data.draft.endTime = '08:00'; p.refreshPreview(); assert(p.data.scheduleInvalid)
+  })
+  await check('subscription native call happens in gesture, no cloud before accept', async () => {
+    const p = page(), order = []; let accept
+    wx.requestSubscribeMessage = (options) => { order.push('native'); accept = options.success }
+    push.request = async (action) => { order.push(action); return { ready: true, type: 'once', enabled: true, remaining: 1 } }
+    p.subscribe(); assert.deepEqual(order, ['native']); assert(p.data.subscribing)
+    p.subscribe(); assert.deepEqual(order, ['native'])
+    accept({ 'offline-template': 'accept' }); await new Promise(setImmediate)
+    assert.deepEqual(order, ['native', 'grant']); assert.equal(p.data.pendingGrant, false)
+  })
+  await check('rejection and failures never register a send credit', async () => {
+    let calls = 0; push.request = async () => { calls += 1 }
+    for (const result of ['reject', 'ban', 'filter']) {
+      const p = page(); wx.requestSubscribeMessage = (o) => o.success({ 'offline-template': result }); p.subscribe()
+      assert(!p.data.subscribing); assert(p.data.pushError)
+    }
+    const p = page(); wx.requestSubscribeMessage = (o) => o.fail({ errMsg: 'raw private error' }); p.subscribe()
+    assert(!p.data.pushError.includes('private')); assert.equal(calls, 0)
+  })
+  await check('expired intent and dirty/pending drafts cannot subscribe', async () => {
+    let count = 0; wx.requestSubscribeMessage = () => { count += 1 }
+    for (const change of [{ dirty: true }, { syncPending: true }, { saving: true }, { canSubscribe: false }]) { const p = page(); Object.assign(p.data, change); p.subscribe() }
+    const p = page(); p.intent.expiresAt = 1; p.subscribe(); assert.equal(count, 0); assert(p.data.pushError)
+  })
+  await check('grant retry is idempotent cloud-only and does not re-prompt', async () => {
+    const p = page(); let calls = 0, prompt = 0
+    wx.requestSubscribeMessage = (o) => { prompt += 1; o.success({ 'offline-template': 'accept' }) }
+    push.request = async () => { if (++calls === 1) throw Error('offline'); return { ready: true, type: 'once', remaining: 1, enabled: true } }
+    p.subscribe(); await new Promise(setImmediate); assert(p.data.pendingGrant)
+    await p.submitGrant(); assert(!p.data.pendingGrant); assert.equal(prompt, 1); assert.equal(calls, 2)
+  })
+  await check('stale namespace/unloaded page cannot register native callbacks', async () => {
+    let calls = 0, callback; push.request = async () => { calls += 1 }
+    wx.requestSubscribeMessage = (o) => { callback = o.success }
+    const p = page(); p.subscribe(); membershipStore.cacheNamespace = 'b'.repeat(32); callback({ 'offline-template': 'accept' })
+    await new Promise(setImmediate); assert.equal(calls, 0); membershipStore.cacheNamespace = ns
+    const q = page(); q.subscribe(); q.unloaded = true; callback({ 'offline-template': 'accept' }); assert.equal(calls, 0)
+  })
+  await check('state refresh never automatically invokes native authorization', async () => {
+    let prompts = 0; wx.requestSubscribeMessage = () => { prompts += 1 }
+    push.request = async () => ({ ready: false }); const p = page(); await p.refreshPush()
+    assert(!p.data.canSubscribe); assert(p.data.pushTitle.includes('暂未开通')); assert.equal(prompts, 0)
+  })
+  await check('identity changes clear the previous user schedule and displayed status', async () => {
+    const p = page(); p.load = async () => {}; p.setupTheme = () => {}; p.refreshNavigation = () => {}
+    await p.onLoad(); p.data.previewTimes = ['09:00']; p.data.pushDetail = 'previous status'
+    try {
+      membershipStore.namespaceListeners.forEach((listener) => listener())
+      assert.equal(p.data.saved.enabled, false); assert.equal(p.data.draft.enabled, false)
+      assert.deepEqual(p.data.previewTimes, []); assert.equal(p.data.pushDetail, '')
+      assert(!p.data.canSubscribe); assert(p.data.loadError)
+    } finally { p.onUnload() }
+  })
+  await check('save only patches schedule; retry does not increment the schedule twice', async () => {
+    const originalPatch = userStore.patch, originalFlush = userStore.flush
+    const p = page(); p.refreshPush = async () => {}; p.data.dirty = true; p.data.draft.startTime = '10:00'
+    let fields, options
+    userStore.patch = async (value, settings) => { fields = value; options = settings; return value }
+    try {
+      await p.save()
+      assert.deepEqual(Object.keys(fields), ['waterReminder']); assert.equal(options.immediate, true)
+      assert.equal(fields.waterReminder.scheduleVersion, 2); assert.equal(p.data.saved.startTime, '10:00')
+      assert(!p.data.dirty); assert(!p.data.saving)
+      p.data.syncPending = true; userStore.flush = async () => fields
+      await p.retrySync(); assert.equal(p.data.saved.scheduleVersion, 2); assert(!p.data.syncPending)
+      p.data.dirty = true; userStore.patch = async () => { throw new Error('temporary failure') }
+      await p.save(); assert(p.data.saveError); assert(!p.data.saving); assert(p.data.dirty)
+    } finally { userStore.patch = originalPatch; userStore.flush = originalFlush }
+  })
+  await check('editing during pending preparation cannot unlock stale subscription', async () => {
+    const p = page(); let done; push.request = () => new Promise(resolve => { done = resolve })
+    const pending = p.refreshPush(); p.updateDraft({ startTime: '10:00' })
+    done({ ready: true, intentId: 'stale', templateId: 'offline-template', intentExpiresAt: Date.now() + 60000 })
+    await pending; assert(!p.data.canSubscribe); assert(!p.intent)
+  })
+  await check('unconfigured and limited authorization copy never promises permanent messages', async () => {
+    assert(push.presentation({ ready: false }).title.includes('暂未开通'))
+    assert(push.presentation({ ready: true, type: 'once', remaining: 2 }).detail.includes('用完需再次订阅'))
+    assert(push.presentation({ ready: true, type: 'once', lastOutcome: 'unknown' }).detail.includes('已暂停'))
+    const styles = fs.readFileSync(path.join(root, 'miniprogram/pages/water-reminder/water-reminder.wxss'), 'utf8')
+    assert(/\.push-button[^}]*min-height: 48px/.test(styles)); assert(styles.includes('prefers-reduced-motion'))
+  })
+  push.request = originalRequest
+  console.log(`water reminder page: ${cases} scenarios passed (mock native API only)`)
 }
-
-testCalendarCalls().then(() => {
-  testPageIntegration()
-  testDisabledReminderCanSaveAfterInvalidScheduleEdit()
-  return testPendingStaysVisibleAcrossEditAndRevert()
-}).then(() => testCalendarActionLock()).then(() => {
-  console.log('water reminder calendar and page tests passed')
-}).catch((error) => {
-  console.error(error)
-  process.exitCode = 1
-})
+main().catch((error) => { console.error(error); process.exitCode = 1 })

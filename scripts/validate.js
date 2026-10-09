@@ -18,11 +18,12 @@ const EXPECTED_DATABASE_RULES = {
   meal_ai_tasks: { read: false, write: false },
   meal_ai_shards: { read: false, write: false },
   meal_ai_controls: { read: false, write: false },
+  meal_water_push: { read: false, write: false },
 }
 
 function validateDatabaseRules(rules) {
   assert.deepStrictEqual(rules, EXPECTED_DATABASE_RULES,
-    '数据库安全规则必须恰好覆盖十个正式集合且全部拒绝客户端读写')
+    '数据库安全规则必须恰好覆盖十一个正式集合且全部拒绝客户端读写')
 }
 
 if (process.argv[2] === '--validate-database-rules-stdin') {
@@ -47,7 +48,7 @@ const membershipCore = require(path.join(root, 'cloudfunctions/membership/core')
 const { calendarCells } = require(path.join(root, 'miniprogram/utils/date'))
 const CLOUD_FUNCTIONS = [
   'aiPlanner', 'auth', 'health', 'mealAiMaintenance',
-  'membership', 'ownerBootstrapOnce', 'privacy', 'userData',
+  'membership', 'ownerBootstrapOnce', 'privacy', 'userData', 'waterReminder',
 ]
 const DEPLOYED_CLOUD_FUNCTIONS = CLOUD_FUNCTIONS.filter((name) => name !== 'ownerBootstrapOnce')
 const WX_SERVER_SDK_VERSION = '4.0.2'
@@ -418,7 +419,7 @@ membershipFiles.forEach((file) => {
 })
 
 const databaseIndexes = JSON.parse(read('database.indexes.json')).indexes
-assert.strictEqual(databaseIndexes.length, 8, '部署清单必须包含八个复合索引')
+assert.strictEqual(databaseIndexes.length, 9, '部署清单必须包含原有八个索引及喝水提醒启用索引')
 const hasIndex = (collectionName, fields) => databaseIndexes.some((index) => (
   index.collectionName === collectionName
   && JSON.stringify(index.fields.map((field) => field.fieldPath)) === JSON.stringify(fields)
@@ -428,6 +429,7 @@ const hasOrderedIndex = (collectionName, fields) => databaseIndexes.some((index)
   && JSON.stringify(index.fields) === JSON.stringify(fields)
 ))
 assert(hasIndex('meal_invites', ['codeHash', 'active']), '缺少邀请码验证索引')
+assert(hasIndex('meal_water_push', ['enabled']), '缺少微信提醒启用索引')
 assert(hasIndex('meal_members', ['memberRef', 'status']), '缺少管理员转移成员查询索引')
 assert(hasOrderedIndex('meal_ai_tasks', [
   { fieldPath: 'owner', order: 'ASCENDING' },
@@ -584,6 +586,8 @@ const testScripts = [
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',
   'scripts/test-water-reminder.js',
+  'cloudfunctions/waterReminder/service.test.js',
+  'cloudfunctions/waterReminder/index.test.js',
   'scripts/test-private-cache.js',
   'scripts/test-private-image.js',
   'scripts/test-cloud-errors.js',

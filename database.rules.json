@@ -1,4 +1,8 @@
 {
+  "meal_water_push": {
+    "read": false,
+    "write": false
+  },
   "meal_users": {
     "read": false,
     "write": false

@@ -83,6 +83,7 @@ function privateDocumentTargets(openid, data) {
   const targets = [
     { collection: 'meal_users', id: openid },
     { collection: 'meal_user_states', id: openid },
+    { collection: 'meal_water_push', id: openid },
   ]
   ;[
     ['health_daily', health],
@@ -409,7 +410,7 @@ async function listActiveOwnedInvites(openid, expectedCacheNamespace) {
 
 async function verifyCleared(openid, expectedCacheNamespace) {
   await readDeletionMember(openid, expectedCacheNamespace, true)
-  const [user, state, health, avatarTickets, photoTickets, invites, aiTasks, aiShards, aiControls] = await Promise.all([
+  const [user, state, health, avatarTickets, photoTickets, invites, aiTasks, aiShards, aiControls, waterPush] = await Promise.all([
     getDocument('meal_users', openid),
     getDocument('meal_user_states', openid),
     queryAll('health_daily', { owner: openid }),
@@ -419,9 +420,10 @@ async function verifyCleared(openid, expectedCacheNamespace) {
     queryAll(AI_PRIVATE_COLLECTIONS[0], { owner: openid }),
     queryAll(AI_PRIVATE_COLLECTIONS[1], { owner: openid }),
     queryAll(AI_PRIVATE_COLLECTIONS[2], { owner: openid }),
+    getDocument('meal_water_push', openid),
   ])
   if (user || state || health.length || avatarTickets.length || photoTickets.length || invites.length
-    || aiTasks.length || aiShards.length || aiControls.length) {
+    || aiTasks.length || aiShards.length || aiControls.length || waterPush) {
     const error = new Error('仍有私人数据未删除，请重试')
     error.code = 'DELETE_INCOMPLETE'
     throw error

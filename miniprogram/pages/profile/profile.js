@@ -115,7 +115,7 @@ function visibleActiveInvites(summary) {
 function waterReminderSummary(value) {
   if (!value || value.enabled !== true) return '未开启'
   const cadence = value.cadence === 'weekdays' ? '周一至周五' : '每日'
-  return `${cadence} ${value.startTime || '09:00'}–${value.endTime || '18:00'}，每 ${Number(value.intervalMinutes) || 60} 分钟`
+  return `时间已保存：${cadence} ${value.startTime || '09:00'}–${value.endTime || '18:00'}；进入查看微信订阅状态`
 }
 
 function confirmModal(options) {

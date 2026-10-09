@@ -1,11 +1,11 @@
 <view class="screen reminder-screen">
   <view class="page-heading">
-    <button class="page-navigation" bindtap="navigateFromPage" hover-class="control-pressed" disabled="{{calendarInstalling || calendarActionLocked}}" aria-label="{{pageNavigationLabel}}">
+    <button class="page-navigation" bindtap="navigateFromPage" hover-class="control-pressed" disabled="{{subscribing || saving}}" aria-label="{{pageNavigationLabel}}">
       <view class="page-navigation-icon {{canNavigateBack ? 'back' : 'home'}}" aria-hidden="true"></view>
     </button>
     <view class="heading-copy">
       <text class="heading-title">喝水提醒</text>
-      <text class="heading-detail">可选功能，默认关闭。设置使用北京时间。</text>
+      <text class="heading-detail">只通过微信消息提醒，默认关闭。使用北京时间。</text>
     </view>
   </view>
 
@@ -31,10 +31,10 @@
       <label class="master-row touch-target" for="water-reminder-switch">
         <view class="master-copy">
           <text class="master-title">需要喝水提醒</text>
-          <text class="master-detail">关闭时不会申请权限，也不会创建任何日历事项</text>
+          <text class="master-detail">先保存时间，再主动订阅微信消息；修改时间后需重新订阅</text>
         </view>
         <view class="switch-target">
-          <switch id="water-reminder-switch" checked="{{draft.enabled}}" color="{{nativeControlColor}}" bindchange="toggleEnabled" disabled="{{saving || calendarInstalling}}" aria-label="需要喝水提醒，当前{{draft.enabled ? '已开启' : '已关闭'}}" />
+          <switch id="water-reminder-switch" checked="{{draft.enabled}}" color="{{nativeControlColor}}" bindchange="toggleEnabled" disabled="{{saving || subscribing}}" aria-label="需要喝水提醒，当前{{draft.enabled ? '已开启' : '已关闭'}}" />
         </view>
       </label>
 
@@ -42,27 +42,27 @@
         <view class="field-block">
           <text class="field-label">提醒日期</text>
           <view class="segmented" aria-label="提醒日期">
-            <button class="segment {{draft.cadence === 'daily' ? 'selected' : ''}}" data-cadence="daily" bindtap="chooseCadence" disabled="{{saving || calendarInstalling}}" aria-label="每日{{draft.cadence === 'daily' ? '，已选择' : ''}}">每日</button>
-            <button class="segment {{draft.cadence === 'weekdays' ? 'selected' : ''}}" data-cadence="weekdays" bindtap="chooseCadence" disabled="{{saving || calendarInstalling}}" aria-label="周一至周五{{draft.cadence === 'weekdays' ? '，已选择' : ''}}">周一至周五</button>
+            <button class="segment {{draft.cadence === 'daily' ? 'selected' : ''}}" data-cadence="daily" bindtap="chooseCadence" disabled="{{saving || subscribing}}" aria-label="每日{{draft.cadence === 'daily' ? '，已选择' : ''}}">每日</button>
+            <button class="segment {{draft.cadence === 'weekdays' ? 'selected' : ''}}" data-cadence="weekdays" bindtap="chooseCadence" disabled="{{saving || subscribing}}" aria-label="周一至周五{{draft.cadence === 'weekdays' ? '，已选择' : ''}}">周一至周五</button>
           </view>
           <text class="field-hint">“周一至周五”不包含法定节假日和调休判断。</text>
         </view>
 
         <view class="field-row">
           <text class="field-label">开始时间</text>
-          <picker mode="time" value="{{draft.startTime}}" bindchange="changeStartTime" disabled="{{saving || calendarInstalling}}" aria-label="选择开始时间，当前 {{draft.startTime}}">
+          <picker mode="time" value="{{draft.startTime}}" bindchange="changeStartTime" disabled="{{saving || subscribing}}" aria-label="选择开始时间，当前 {{draft.startTime}}">
             <view class="picker-value touch-target">{{draft.startTime}}</view>
           </picker>
         </view>
         <view class="field-row">
           <text class="field-label">结束时间</text>
-          <picker mode="time" value="{{draft.endTime}}" bindchange="changeEndTime" disabled="{{saving || calendarInstalling}}" aria-label="选择结束时间，当前 {{draft.endTime}}">
+          <picker mode="time" value="{{draft.endTime}}" bindchange="changeEndTime" disabled="{{saving || subscribing}}" aria-label="选择结束时间，当前 {{draft.endTime}}">
             <view class="picker-value touch-target">{{draft.endTime}}</view>
           </picker>
         </view>
         <view class="field-row">
           <text class="field-label">提醒间隔</text>
-          <picker mode="selector" range="{{intervalOptions}}" range-key="label" value="{{intervalIndex}}" bindchange="changeInterval" disabled="{{saving || calendarInstalling}}" aria-label="选择提醒间隔，当前 {{intervalOptions[intervalIndex].label}}">
+          <picker mode="selector" range="{{intervalOptions}}" range-key="label" value="{{intervalIndex}}" bindchange="changeInterval" disabled="{{saving || subscribing}}" aria-label="选择提醒间隔，当前 {{intervalOptions[intervalIndex].label}}">
             <view class="picker-value touch-target">{{intervalOptions[intervalIndex].label}}</view>
           </picker>
         </view>
@@ -77,24 +77,18 @@
     </view>
 
     <text wx:if="{{saveError}}" class="inline-error" aria-role="alert">{{saveError}}</text>
-    <button class="primary-button save-button" bindtap="save" loading="{{saving}}" disabled="{{saving || calendarInstalling || scheduleInvalid || (!dirty && !syncPending)}}" hover-class="button-hover">{{saving ? '正在处理' : ((syncPending && !dirty) ? '重试同步' : '保存设置')}}</button>
+    <button class="primary-button save-button" bindtap="save" loading="{{saving}}" disabled="{{saving || subscribing || scheduleInvalid || (!dirty && !syncPending)}}" hover-class="button-hover">{{saving ? '正在处理' : ((syncPending && !dirty) ? '重试同步' : '保存设置')}}</button>
 
-    <view class="surface calendar-card">
-      <text class="calendar-title">系统日历提醒</text>
-      <text class="calendar-detail">保存设置不会写入日历。只有你主动点击并再次确认后，才会请求系统日历权限。</text>
-      <text class="calendar-warning">修改或关闭设置不会自动删除此前系统日历事项，需在系统日历中删除。</text>
-
-      <view wx:if="{{draft.enabled}}" class="calendar-action-area">
-        <text class="calendar-count">当前排程将创建 {{calendarEntryCount}} 条系统日历重复规则，覆盖未来 {{repeatDays}} 天。周一至周五模式会为每个时间点分别创建 5 条每周规则。</text>
-        <button class="secondary-button calendar-button" bindtap="addToCalendar" loading="{{calendarInstalling}}" disabled="{{calendarInstalling || calendarActionLocked || saving || dirty || syncPending || scheduleInvalid || !saved.enabled}}">{{calendarInstalling ? '正在添加' : ((dirty || syncPending) ? '请先完成同步' : '添加到系统日历')}}</button>
-      </view>
-      <text wx:else class="calendar-disabled">喝水提醒关闭时，不申请权限、不创建日历事项。</text>
-
-      <view wx:if="{{calendarStatus !== 'idle'}}" class="calendar-status {{calendarStatus}}" aria-role="status">
-        <text wx:if="{{calendarInstalling}}" class="calendar-progress">进度 {{calendarProgress}} / {{calendarTotal}}</text>
-        <text class="calendar-message">{{calendarMessage}}</text>
-        <button wx:if="{{calendarPermissionDenied}}" class="permission-button" bindtap="openCalendarPermission">打开授权设置</button>
-      </view>
+    <view class="surface push-card" aria-live="polite">
+      <text class="push-title">{{pushTitle}}</text>
+      <text class="push-detail">{{pushDetail}}</text>
+      <text wx:if="{{pushNext}}" class="push-next">{{pushNext}}</text>
+      <text class="push-detail">时间点是计划安排，不代表每个时间点都有可用授权。消息通知还受微信及手机通知设置影响。</text>
+      <text wx:if="{{dirty || syncPending}}" class="push-warning">请先保存并同步当前设置，再订阅。关闭也需要保存到云端；已交给微信发送的消息无法撤回。</text>
+      <text wx:if="{{pushError}}" class="inline-error" aria-role="alert">{{pushError}}</text>
+      <button wx:if="{{pushReady && saved.enabled && !pendingGrant}}" class="primary-button push-button" bindtap="subscribe" loading="{{subscribing}}" disabled="{{!canSubscribe || subscribing || saving || dirty || syncPending}}" hover-class="button-hover">{{subscribeLabel}}</button>
+      <button wx:if="{{pendingGrant}}" class="primary-button push-button" bindtap="submitGrant" loading="{{subscribing}}" disabled="{{subscribing || saving}}" hover-class="button-hover">重试登记授权</button>
+      <button class="secondary-button push-button" bindtap="refreshPush" loading="{{pushLoading}}" disabled="{{pushLoading || subscribing || saving}}" hover-class="button-hover">刷新状态</button>
     </view>
   </block>
 </view>

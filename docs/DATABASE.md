@@ -4,7 +4,7 @@
 
 ## 集合与权限
 
-部署时创建以下十个集合，并把客户端 `read`、`write` 均设为 `false`：
+已发布版本使用前十个集合；开发线增加 `meal_water_push`。部署新模块前增量创建缺失集合，并把客户端 `read`、`write` 均设为 `false`，不要重建已有集合：
 
 - `meal_users`
 - `meal_user_states`
@@ -16,10 +16,13 @@
 - `meal_ai_tasks`
 - `meal_ai_shards`
 - `meal_ai_controls`
+- `meal_water_push`（新模块，尚未部署）
 
 云函数使用服务端 SDK 读写。不要为了调试临时开放集合，也不要允许客户端按 openid 查询或列举用户。
 
 ## `meal_users`
+
+新增消息集合的文档结构、索引、初始化及删除顺序见 `WATER_PUSH.md`；现有用户 schema v8 和餐单迁移路径不变。
 
 文档 `_id` 为当前调用者的 `OPENID`，只在服务端使用。
 

@@ -1104,6 +1104,13 @@ async function concurrentOwnerPreparationCannotDowngradeRecovery() {
 }
 
 async function run() {
+  resetEffects()
+  database.reset({ meal_members: { [CONTROL_ID]: activeControl(), owner: member('owner'), member: member() },
+    meal_water_push: { member: { owner: 'member', cacheNamespace: CACHE_NAMESPACE, enabled: true },
+      owner: { owner: 'owner', enabled: true } } })
+  await privacy._test.clearMyData('member', CACHE_NAMESPACE)
+  assert.strictEqual(database.record('meal_water_push', 'member'), undefined, '清空私人数据必须删除自己的微信提醒登记')
+  assert.strictEqual(database.record('meal_water_push', 'owner').enabled, true, '不能清理其他成员的提醒')
   assertStrictNotFoundClassification()
   assertFixedPublicErrors()
   const source = fs.readFileSync(path.resolve(__dirname, 'index.js'), 'utf8')
