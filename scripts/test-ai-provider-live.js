@@ -54,6 +54,7 @@ let liveStageStartedAt = Date.now()
 let liveStageAttempts = 0
 const SYNTHETIC_PREFERENCES = {
   contractVersion: CONTRACT_VERSION,
+  servings: 1, maxCookingMinutes: 30, pantryItems: [],
   durationDays: 10,
   startDate: '2026-09-07',
   mealTypes: ['breakfast', 'lunch', 'dinner'],

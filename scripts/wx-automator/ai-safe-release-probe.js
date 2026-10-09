@@ -76,6 +76,7 @@ function testStartDate() {
 function fictionalPreferences(durationDays) {
   return {
     contractVersion: RELEASE_COMPATIBILITY.contractVersion,
+    servings: 1, maxCookingMinutes: 30, pantryItems: [],
     durationDays,
     startDate: testStartDate(),
     mealTypes: ['breakfast'],

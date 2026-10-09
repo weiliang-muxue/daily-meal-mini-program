@@ -75,6 +75,7 @@ function rawAiPlan(input) {
         return {
           type,
           scenario,
+          quantityBasis: 'per-person', servings: 1, estimatedCookingMinutes: 20,
           title: `时蔬谷物餐${symbol(dayIndex * 5 + mealIndex)}`,
           ingredients: [{ name: '时令蔬菜', quantity: 100 + mealIndex, unit: 'g', category: '蔬菜' }],
           method: '清洗后煮熟，按一人份装盘',
@@ -98,6 +99,7 @@ function preferencesFor({ durationDays, mealTypes, doubleDinner, caseIndex }) {
     : []
   return {
     contractVersion: CONTRACT_VERSION,
+    servings: 1, maxCookingMinutes: 30, pantryItems: [],
     durationDays,
     startDate: '2026-09-01',
     mealTypes,

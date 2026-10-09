@@ -62,7 +62,7 @@ function failure(code) {
 
 function originalPreferences(durationDays) {
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     durationDays,
     startDate: '2026-08-31',
     mealTypes: ['breakfast', 'lunch', 'dinner'],
@@ -83,7 +83,7 @@ function originalPreferences(durationDays) {
 
 function requestedPreferences(durationDays) {
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     durationDays,
     startDate: '2026-09-01',
     mealTypes: ['breakfast'],
@@ -161,32 +161,32 @@ test('rejects missing, invalid, reordered, duplicate, and unknown arguments', ()
 test('pins the release probe contract and carries the public provider revision into consent', () => {
   assert.deepEqual(RELEASE_COMPATIBILITY, {
     stateSchemaVersion: 11,
-    contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
-    providerContractRevision: 10, taskSchemaVersion: 4,
+    contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3,
+    providerContractRevision: 10, taskSchemaVersion: 5,
   })
   assert.equal(releaseServiceCompatible({
-    configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2,
+    configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3,
     providerContractRevision: 10, providerRevision: 23,
   }), true)
   for (const incompatible of [
-    { configured: true, storageReady: true, contractVersion: 1, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '6', aiDataConsentVersion: 2, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 1, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 6 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 8, providerRevision: 23 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 9, providerRevision: 23 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 0 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: 1.5 },
-    { configured: true, storageReady: true, contractVersion: 2, plannerVersion: '8', aiDataConsentVersion: 2, providerContractRevision: 10, providerRevision: '23' },
+    { configured: true, storageReady: true, contractVersion: 1, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '6', aiDataConsentVersion: 3, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 1, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 6 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 8, providerRevision: 23 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 9, providerRevision: 23 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 10 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 10, providerRevision: 0 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 10, providerRevision: 1.5 },
+    { configured: true, storageReady: true, contractVersion: 3, plannerVersion: '9', aiDataConsentVersion: 3, providerContractRevision: 10, providerRevision: '23' },
   ]) assert.equal(releaseServiceCompatible(incompatible), false)
 
   const preferences = requestedPreferences(10)
   const request = buildReleaseStartRequest(preferences, 11, 'a'.repeat(48), 'b'.repeat(32), 23)
   assert.deepEqual(request, {
     action: 'start', preferences, expectedStateRevision: 11, clientRequestId: 'a'.repeat(48),
-    aiDataConsent: { accepted: true, version: 2, providerRevision: 23 },
+    aiDataConsent: { accepted: true, version: 3, providerRevision: 23 },
     expectedCacheNamespace: 'b'.repeat(32),
   })
   for (const providerRevision of [undefined, null, 0, -1, 1.5, '23']) {
@@ -200,7 +200,7 @@ test('pins the release probe contract and carries the public provider revision i
   assert.equal(Object.prototype.hasOwnProperty.call(request, 'taskSchemaVersion'), false,
     'task schema is assigned and verified by the server, not selected by a client request')
   const serverTaskCore = fs.readFileSync(path.resolve(__dirname, '..', '..', 'cloudfunctions', 'aiPlanner', 'task-core.js'), 'utf8')
-  assert.match(serverTaskCore, /const TASK_SCHEMA_VERSION = 4\b/)
+  assert.match(serverTaskCore, /const TASK_SCHEMA_VERSION = 5\b/)
   const probeSource = fs.readFileSync(path.resolve(__dirname, 'ai-safe-release-probe.js'), 'utf8')
   assert.equal(RELEASE_COMPATIBILITY.stateSchemaVersion, require('../../shared/user-state').CURRENT_SCHEMA)
   assert.equal((probeSource.match(/action: 'saveState', clientSchemaVersion: state\.releaseCompatibility\.stateSchemaVersion/g) || []).length, 3,

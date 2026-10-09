@@ -39,6 +39,9 @@
       <text wx:if="{{errorMessage}}" class="sync-error" aria-role="alert">{{errorMessage}}</text>
       <button class="secondary-button sync-retry" bindtap="retrySync" disabled="{{saving}}" loading="{{saving}}" hover-class="button-hover">{{saving ? '正在重试' : '重试同步'}}</button>
     </view>
+    <view wx:if="{{hasPantry}}" class="pantry-notice">
+      <text>待采购已扣减生成时填写的已有食材，整份餐单只分配一次。这里只作计划计算，不会自动消耗家中库存；实际余量请自行核对。</text>
+    </view>
     <view wx:elif="{{saving}}" class="saving-strip" aria-live="polite">
       <text>正在同步采购进度</text>
     </view>
@@ -53,8 +56,8 @@
         <button class="primary-button status-action" bindtap="openPlanner" hover-class="button-hover">去定制餐单</button>
       </block>
       <block wx:else>
-        <text class="status-title">当前餐单暂无采购项</text>
-        <text class="status-detail">餐单仍然保留。可以查看当前餐单，或下拉重新加载。</text>
+        <text class="status-title">{{coveredGroups.length ? '按已有食材计算，无需额外采购' : '当前餐单暂无采购项'}}</text>
+        <text class="status-detail">{{coveredGroups.length ? '请核对下方已备齐项和家中实际余量，餐单仍然保留。' : '餐单仍然保留。可以查看当前餐单，或下拉重新加载。'}}</text>
         <button class="secondary-button status-action" bindtap="openPlan">查看当前餐单</button>
       </block>
     </view>
@@ -76,10 +79,27 @@
           <view class="food-copy">
             <text class="food-name">{{food.name}}</text>
             <text class="food-amount">{{food.amountText}}</text>
+            <text wx:if="{{food.stockText}}" class="food-amount">{{food.stockText}}</text>
           </view>
         </view>
       </view>
       <button class="secondary-button reset-button" disabled="{{!checked}}" bindtap="resetChecked">重置采购勾选</button>
     </block>
+    <view wx:if="{{coveredGroups.length}}" class="group surface pantry-covered">
+      <text class="group-title">已有食材可覆盖 · 无需采购</text>
+      <block wx:for="{{coveredGroups}}" wx:key="key">
+        <view wx:for="{{item.items}}" wx:for-item="food" wx:key="key" class="pantry-summary-row">
+          <text class="food-name">{{food.name}}</text>
+          <text class="food-amount">需 {{food.requiredQuantity}} {{food.unit}} · 已有可用 {{food.pantryQuantity}} {{food.unit}}</text>
+        </view>
+      </block>
+    </view>
+    <view wx:if="{{unusedPantry.length}}" class="group surface">
+      <text class="group-title">本餐单未用到的已有数量</text>
+      <view wx:for="{{unusedPantry}}" wx:key="index" class="pantry-summary-row">
+        <text class="food-name">{{item.name}}</text>
+        <text class="food-amount">{{item.quantity}} {{item.unit}}</text>
+      </view>
+    </view>
   </block>
 </view>

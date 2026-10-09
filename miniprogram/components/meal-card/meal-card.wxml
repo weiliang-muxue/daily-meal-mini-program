@@ -5,6 +5,7 @@
     <view wx:if="{{editable}}" class="edit-action touch-target" bindtap="edit" hover-class="edit-hover" aria-role="button" aria-label="调整这顿餐">调整</view>
   </view>
   <text class="meal-title">{{meal.title}}</text>
+  <text wx:if="{{meal.quantityBasis === 'total'}}" class="meal-conditions">{{meal.servings}} 人总用量 · {{meal.estimatedCookingMinutes ? '预计 ' + meal.estimatedCookingMinutes + ' 分钟（含备料）' : '做法或食材已调整，耗时待核对'}}</text>
   <text class="meal-ingredients">{{meal.ingredients}}</text>
   <view class="meal-divider"></view>
   <text class="meal-method">{{meal.method}}</text>

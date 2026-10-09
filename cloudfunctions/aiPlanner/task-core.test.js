@@ -16,6 +16,7 @@ const {
 
 const input = {
   contractVersion: CONTRACT_VERSION, durationDays: 7, startDate: '2026-08-31',
+  servings: 1, maxCookingMinutes: 30, pantryItems: [],
   mealTypes: ['breakfast', 'lunch', 'dinner'], doubleDinner: true,
   goals: ['均衡饮食'], styles: ['清淡'], customGoal: '', restrictions: '', healthNotes: '', exerciseIntent: 'none', exerciseNotes: '', exerciseByDay: [],
 }
@@ -81,7 +82,7 @@ test('相同幂等键和请求只重放，内容或 revision 改变即冲突', (
 
 test('创建任务会重新规范化偏好并拒绝伪造的三类指纹', () => {
   const created = task({ input: { ...input, ignoredByContract: '不得存入任务' } })
-  assert.strictEqual(TASK_SCHEMA_VERSION, 4)
+  assert.strictEqual(TASK_SCHEMA_VERSION, 5)
   assert.strictEqual(created.taskSchemaVersion, TASK_SCHEMA_VERSION)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(created.input, 'ignoredByContract'), false)
   assert.throws(() => task({ preferencesHash: 'f'.repeat(32) }), (error) => error.code === 'REQUEST_FINGERPRINT_MISMATCH')
@@ -173,7 +174,7 @@ test('计划基线摘要包含 null 与完整规范化计划内容且不保存�
 
 test('任务从 queued 开始，每次有效状态变更递增 taskRevision', () => {
   const created = task()
-  assert.strictEqual(created.plannerVersion, '8')
+  assert.strictEqual(created.plannerVersion, '9')
   assert.strictEqual(created.chunks.every((chunk) => chunk.mealSlots === 1), true)
   assert.strictEqual(created.chunks.reduce((sum, chunk) => sum + chunk.mealSlots, 0), 28)
   assert.strictEqual(created.status, 'queued')

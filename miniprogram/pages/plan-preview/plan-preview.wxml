@@ -114,6 +114,7 @@
             <view wx:if="{{meal.ingredientItems.length}}" class="ingredient-list">
               <text wx:for="{{meal.ingredientItems}}" wx:for-item="ingredient" wx:key="*this" class="ingredient-item">{{ingredient}}</text>
             </view>
+            <text wx:if="{{meal.quantityBasis === 'total'}}" class="meal-method">{{meal.servings}} 人总用量 · 预计 {{meal.estimatedCookingMinutes}} 分钟（含备料，仅为估计）</text>
             <text wx:if="{{meal.method}}" class="meal-method">做法：{{meal.method}}</text>
             <text wx:if="{{meal.tag}}" class="meal-tag">{{meal.tag}}</text>
           </view>

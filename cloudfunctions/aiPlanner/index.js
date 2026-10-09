@@ -1186,6 +1186,7 @@ const PUBLIC_FAILURE_MESSAGES = Object.freeze({
   DRAFT_ALREADY_EXISTS: '请先确认或放弃已有候选，再替换这一餐',
   MEAL_REPLACEMENT_INVALID: '单餐替换条件无效，请返回当前餐单重新选择',
   MEAL_REPLACEMENT_CONFLICT: '原餐食或晚餐模式已变化，请重新选择，当前餐单保持不变',
+  MEAL_CONDITIONS_INVALID: '请重新核对就餐人数、做饭时间和已有食材的数量、单位',
   AI_DATA_CONSENT_REQUIRED: '请重新确认本次 AI 数据发送范围',
   DIET_INTENT_REQUIRED: '请至少选择一个饮食目标或风格，或填写本次补充目标',
   EXERCISE_INTENT_REQUIRED: '请明确选择本周期是否安排运动',

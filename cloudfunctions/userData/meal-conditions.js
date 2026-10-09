@@ -74,7 +74,7 @@ function storedMealConditions(raw, options = {}) {
     estimatedCookingMinutes: options.allowUnknownTime && raw.estimatedCookingMinutes === null ? null
       : integer(raw.estimatedCookingMinutes, '预计总做饭时间', 1, MAX_COOKING_MINUTES) }
 }
-function scalePerPersonMeal(raw, rawConditions) {
+function normalizePerPersonMeal(raw, rawConditions) {
   const conditions = normalizeConditions(rawConditions, { required: true })
   if (!object(raw) || raw.quantityBasis !== 'per-person') fail('生成食材必须明确为单人份，不能再次放大总份量')
   if (raw.servings !== undefined && raw.servings !== 1) fail('单人份原始食材不能携带多人份数')
@@ -82,13 +82,23 @@ function scalePerPersonMeal(raw, rawConditions) {
   if (!Array.isArray(raw.ingredients) || raw.ingredients.length < 1 || raw.ingredients.length > 30) fail('每餐需有 1–30 项食材')
   const ingredients = raw.ingredients.map(item => {
     if (!object(item)) fail('生成食材不完整')
-    const totalTicks = quantityTicks(item.quantity, '单人用量') * conditions.servings
-    if (totalTicks > MAX_QUANTITY * 1000) fail('多人总用量超过安全范围，请减少人数或调整食材')
-    return { name: cleanText(item.name, '食材名称', 50), quantity: totalTicks / 1000,
+    const ticks = quantityTicks(item.quantity, '单人用量')
+    return { name: cleanText(item.name, '食材名称', 50), quantity: ticks / 1000,
       unit: unit(item.unit), category: cleanText(item.category, '食材分类', 20) }
   })
-  // Estimated duration is for the whole cooking session, not multiplied by servings.
-  return { ...raw, ingredients, servings: conditions.servings, quantityBasis: 'total', estimatedCookingMinutes }
+  return { ...raw, ingredients, servings: 1, quantityBasis: 'per-person', estimatedCookingMinutes }
+}
+function scalePerPersonMeal(raw, rawConditions) {
+  const conditions = normalizeConditions(rawConditions, { required: true })
+  const one = normalizePerPersonMeal(raw, conditions)
+  const ingredients = one.ingredients.map(item => {
+    const totalTicks = quantityTicks(item.quantity, '单人用量') * conditions.servings
+    if (totalTicks > MAX_QUANTITY * 1000) fail('多人总用量超过安全范围，请减少人数或调整食材')
+    return { ...item, quantity: totalTicks / 1000 }
+  })
+  // Only final assembly scales ingredients; the time estimate already covers
+  // the full cooking session. Stored total portions cannot enter this path again.
+  return { ...one, ingredients, servings: conditions.servings, quantityBasis: 'total' }
 }
 
 function applyPantry(groups, rawPantry) {
@@ -133,4 +143,4 @@ function applyPantry(groups, rawPantry) {
 }
 
 module.exports = { MAX_SERVINGS, MIN_COOKING_MINUTES, MAX_COOKING_MINUTES, MAX_PANTRY_ITEMS, MAX_QUANTITY, MAX_REQUIRED_QUANTITY,
-  UNITS, normalizeConditions, normalizePantry, storedConditions, storedMealConditions, pantryKey, scalePerPersonMeal, applyPantry }
+  UNITS, normalizeConditions, normalizePantry, storedConditions, storedMealConditions, pantryKey, normalizePerPersonMeal, scalePerPersonMeal, applyPantry }

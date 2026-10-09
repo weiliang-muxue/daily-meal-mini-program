@@ -1,5 +1,17 @@
 .replacement-scope { padding: 24rpx; margin-bottom: 24rpx; border: 1rpx solid var(--line-strong); border-radius: var(--radius-card); overflow-wrap: anywhere; }
 .replacement-scope .option-title { display: block; margin-top: 12rpx; }
+.cooking-section { margin-top: 32rpx; padding-top: 24rpx; border-top: 1rpx solid var(--line); }
+.cooking-numbers { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.cooking-field { min-width: 0; }
+.cooking-section input, .pantry-unit { box-sizing: border-box; width: 100%; min-height: 48px; margin-top: 8px; padding: 10px 12px; border: 1rpx solid var(--line-strong); border-radius: 8rpx; color: var(--ink); background: var(--surface); font-size: 16px; }
+.pantry-row { margin-top: 16px; padding: 16px; border: 1rpx solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+.pantry-amount { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+.pantry-unit { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pantry-action { box-sizing: border-box; min-height: 48px; width: 100%; margin: 12px 0 0; padding: 10px 12px; border: 1rpx solid var(--line-strong); border-radius: 8rpx; background: var(--surface); color: var(--primary); font-size: 15px; line-height: 1.5; white-space: normal; }
+.pantry-action[disabled] { opacity: .48; }
+.pantry-readonly { display: block; overflow-wrap: anywhere; color: var(--ink); line-height: 1.6; }
+@media (min-width: 600px) { .cooking-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 340px) { .pantry-amount { grid-template-columns: minmax(0, 1fr); } }
 .planner-screen {
   box-sizing: border-box;
   max-width: 720px;

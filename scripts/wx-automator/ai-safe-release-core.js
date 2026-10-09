@@ -14,11 +14,11 @@ const RECOVERY_JOURNAL_KEYS = [
 ]
 const RELEASE_COMPATIBILITY = Object.freeze({
   stateSchemaVersion: 11,
-  contractVersion: 2,
-  plannerVersion: '8',
-  aiDataConsentVersion: 2,
+  contractVersion: 3,
+  plannerVersion: '9',
+  aiDataConsentVersion: 3,
   providerContractRevision: 10,
-  taskSchemaVersion: 4,
+  taskSchemaVersion: 5,
 })
 const PUBLIC_TASK_ERROR_CATEGORIES = Object.freeze({
   AI_CONFIGURATION_INVALID: 'AI_KEY_MISSING',

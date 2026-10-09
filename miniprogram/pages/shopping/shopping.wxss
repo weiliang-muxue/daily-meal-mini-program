@@ -55,3 +55,5 @@
   .heading-skeleton { height: 52px; margin-bottom: 16px; }
   .group-skeleton { height: 180px; margin-bottom: 16px; }
 }
+.pantry-notice { margin: 16px 0; padding: 12px; border: 1rpx solid var(--line); color: var(--muted-strong); background: var(--surface); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.pantry-summary-row { padding: 12px 0; border-top: 1rpx solid var(--line); margin-top: 12px; overflow-wrap: anywhere; }

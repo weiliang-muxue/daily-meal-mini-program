@@ -255,6 +255,7 @@ assert.deepStrictEqual(fresh.generationPreferences.mealTypes, [], '餐次必须�
 
 const preferenceBase = {
   contractVersion: aiPlanner.CONTRACT_VERSION,
+  servings: 1, maxCookingMinutes: 30, pantryItems: [],
   startDate: '2026-08-26',
   mealTypes: ['breakfast', 'lunch', 'snack'],
   doubleDinner: false,
@@ -593,6 +594,7 @@ const testScripts = [
   'scripts/test-plan-view.js',
   'scripts/test-meal-shopping.js',
   'scripts/test-cooking-state.js',
+  'scripts/test-cooking-pipeline.js',
   'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',

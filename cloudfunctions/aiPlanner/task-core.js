@@ -4,8 +4,8 @@ const crypto = require('crypto')
 const { buildChunkLayout, normalizeRequest, preferencesHash: computePreferencesHash } = require('./lib')
 const { sanitizeTarget } = require('./meal-replacement')
 
-const TASK_SCHEMA_VERSION = 4
-const AI_DATA_CONSENT_VERSION = 2
+const TASK_SCHEMA_VERSION = 5
+const AI_DATA_CONSENT_VERSION = 3
 const TASK_TTL_MS = 2 * 60 * 60 * 1000
 const LEASE_MS = 70 * 1000
 const MAX_ATTEMPTS = 2

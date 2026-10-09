@@ -6,7 +6,7 @@ const { CONTRACT_VERSION, PLANNER_VERSION, expectedMealKeys, normalizeRequest, n
 const { defaults, sanitizeState, sanitizePlan, confirmDraft, restoreHistory } = require('./user-state')
 const {
   createTask, generateTaskId, generateLeaseToken, claimNext, completeClaim, AI_DATA_CONSENT_VERSION,
-  RETENTION_SCHEMA_VERSION, MAX_ATTEMPTS,
+  RETENTION_SCHEMA_VERSION, MAX_ATTEMPTS, TASK_SCHEMA_VERSION,
 } = require('./task-core')
 const {
   PROFILE_FULL, PROFILE_NO_MAX_TOKENS, PROFILE_NO_MAX_TOKENS_OR_REASONING,
@@ -112,6 +112,7 @@ const providerConfig = configuration({
 })
 const input = {
   contractVersion: CONTRACT_VERSION,
+  servings: 1, maxCookingMinutes: 30, pantryItems: [],
   durationDays: 7,
   startDate: '2026-08-31',
   mealTypes: ['breakfast'],
@@ -237,6 +238,7 @@ function validPlan(task) {
         const [type, scenario] = key.split(':')
         return {
           type, scenario, title: `${type}-${scenario}-${String.fromCharCode(0x3400 + dayIndex * 8 + mealIndex)}`,
+          quantityBasis: 'per-person', servings: 1, estimatedCookingMinutes: 20,
           ingredients: [{ name: `食材-${dayIndex}-${mealIndex}`, quantity: 100, unit: 'g', category: '蔬菜' }],
           method: '洗净后煮熟', tag: '清淡调味',
         }
@@ -314,7 +316,7 @@ async function startWithExistingMealState(seed) {
   )
   const taskId = started.task.taskId
   const task = get('meal_ai_tasks', taskId)
-  assert.strictEqual(task.taskSchemaVersion, 4)
+  assert.strictEqual(task.taskSchemaVersion, 5)
   assert.strictEqual(task.cacheNamespace, cacheNamespace)
   assert.strictEqual(task.providerConfigVersion, providerConfig.providerConfigVersion)
   assert.strictEqual(started.task.status, 'queued')
@@ -1386,14 +1388,14 @@ test('future or invalid task versions are rejected without writes across every t
   }
 
   const scenarios = [
-    { action: 'status', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'current', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'claim', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'settleSuccess', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'settleFailure', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'cancel', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'advance', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
-    { action: 'replayStart', mutate: (task) => { task.taskSchemaVersion = 5 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'status', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'current', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'claim', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'settleSuccess', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'settleFailure', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'cancel', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'advance', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
+    { action: 'replayStart', mutate: (task) => { task.taskSchemaVersion = TASK_SCHEMA_VERSION + 1 }, expectedCode: 'AI_TASK_SCHEMA_VERSION_UNSUPPORTED' },
     { action: 'status', mutate: (task) => { task.taskSchemaVersion = '3' }, expectedCode: 'AI_TASK_VERSION_INVALID' },
     { action: 'current', mutate: (task) => { delete task.taskSchemaVersion }, expectedCode: 'AI_TASK_VERSION_INVALID' },
     { action: 'status', mutate: (task) => { task.contractVersion = CONTRACT_VERSION + 1 }, expectedCode: 'AI_CONTRACT_VERSION_UNSUPPORTED' },
@@ -1501,7 +1503,7 @@ test('start is idempotent for the same owner, request id, preferences, and state
   const replay = await planner._test.startTask(owner, input, 0, clientRequestId, consent)
   assert.strictEqual(replay.task.taskId, first.task.taskId)
   assert.strictEqual(collectionStore('meal_ai_tasks').size, 1)
-  assert.strictEqual(get('meal_ai_tasks', first.task.taskId).plannerVersion, '8')
+  assert.strictEqual(get('meal_ai_tasks', first.task.taskId).plannerVersion, PLANNER_VERSION)
   assert.strictEqual(get('meal_ai_tasks', first.task.taskId).chunks.every((chunk) => chunk.mealSlots === 1), true)
   assert.strictEqual(get('meal_ai_controls', owner).rateCount, 1)
   await assert.rejects(
@@ -2269,7 +2271,8 @@ test('finalize preserves trusted future preference fields and rejects unknown ta
   const exercise = {
     dayIndex: 0, planned: true, type: '快走', durationMinutes: 30, intensity: 'medium',
   }
-  const preferences = { ...input, exerciseIntent: 'daily', exerciseByDay: [exercise] }
+  const preferences = { ...input, exerciseIntent: 'daily', exerciseByDay: [exercise],
+    servings: 4, maxCookingMinutes: 45, pantryItems: [{ name: '虚构食材', quantity: 120, unit: 'g' }] }
   const { task, claim, leaseToken } = finalClaimTask(31, 10, preferences)
   task.input.futureClientPreference = { shouldNotPersist: true }
   task.input.exerciseByDay[0].futureClientExerciseField = 'reject-me'
@@ -2288,7 +2291,7 @@ test('finalize preserves trusted future preference fields and rejects unknown ta
   const outcome = await planner._test.settleSuccess(owner, task._id, claim, leaseToken, validPlan(task))
   assert.strictEqual(outcome.task.status, 'succeeded')
   const stored = get('meal_user_states', owner)
-  assert.strictEqual(stored.generationPreferences.servings, 4, 'older task contracts must not discard newly saved condition settings')
+  assert.strictEqual(stored.generationPreferences.servings, 4, 'generated conditions must match the explicitly confirmed task input')
   assert.strictEqual(stored.generationPreferences.maxCookingMinutes, 45)
   assert.deepStrictEqual(stored.generationPreferences.pantryItems, [{ name: '虚构食材', quantity: 120, unit: 'g' }])
   assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, {
@@ -2362,6 +2365,20 @@ test('finalize conflicts when the latest generation preferences changed', async 
     selectedDay: 2, checkedShoppingIds: ['ingredient-keep'],
   })
   await assertFinalizeConflict(30, 9, baseline, latest)
+})
+
+test('late cooking-condition changes conflict without replacing meals, checks or other users', async () => {
+  for (const patch of [{ servings: 3 }, { maxCookingMinutes: 45 },
+    { pantryItems: [{ name: '番茄', quantity: 200, unit: 'g' }] }]) {
+    reset()
+    const baseline = stateWithPlans({ stateRevision: 0 })
+    const latest = stateWithPlans({ stateRevision: 1,
+      generationPreferences: { ...input, ...patch }, selectedDay: 2, checkedShoppingIds: ['ingredient-keep'] })
+    const other = stateWithPlans({ stateRevision: 12 })
+    put('meal_user_states', 'synthetic-other-cooking-user', other)
+    await assertFinalizeConflict(32, 11, baseline, latest)
+    assert.deepStrictEqual(get('meal_user_states', 'synthetic-other-cooking-user'), other)
+  }
 })
 
 test('invalid cancel revision remains a public client error', () => {

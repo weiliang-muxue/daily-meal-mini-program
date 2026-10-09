@@ -20,8 +20,9 @@ function prepareGroups(groups) {
     name: group.name || '其他食材',
     items: group.items.map((item) => ({
       ...item,
-      key: item.itemId,
+      key: item.itemId || item.id,
       amountText: amountText(item),
+      stockText: item.pantryQuantity > 0 ? `共需 ${item.requiredQuantity} ${item.unit} · 已有可用 ${item.pantryQuantity} ${item.unit}` : '',
     })),
   }))
 }
@@ -63,6 +64,7 @@ const shoppingPage = {
   data: {
     viewState: 'loading',
     groups: [],
+    coveredGroups: [], unusedPantry: [], hasPantry: false,
     total: 0,
     checked: 0,
     remaining: 0,
@@ -178,6 +180,10 @@ const shoppingPage = {
     this.setData({
       viewState,
       groups: prepareGroups(shopping.groups),
+      coveredGroups: prepareGroups(shopping.coveredGroups || []),
+      unusedPantry: shopping.unusedPantry || [],
+      hasPantry: Boolean(state.activePlan && state.activePlan.generationBasis && Array.isArray(state.activePlan.generationBasis.pantryItems)
+        && state.activePlan.generationBasis.pantryItems.length),
       total: shopping.totalCount,
       checked: shopping.checkedCount,
       remaining: shopping.remainingCount,

@@ -5,6 +5,7 @@ const { userStore } = require('../../services/user-store')
 const replacementView = require('../../services/meal-replacement-view')
 const { assertRequest: assertReplacementRequest } = require('../../services/meal-replacement')
 const { normalizeConditions } = require('../../services/meal-conditions')
+const cookingForm = require('../../utils/cooking-form')
 const {
   aiPlanner,
   createClientRequestId,
@@ -234,6 +235,10 @@ function summaryRows(preferences) {
   return [
     { label: '餐次', value: mealLabels.join('、') || '尚未选择' },
     { label: '周期', value: `${preferences.durationDays} 天，${preferences.startDate} 至 ${endDate}` },
+    { label: '就餐人数', value: `${preferences.servings} 人，食材显示总用量` },
+    { label: '做饭时间', value: `每餐最多 ${preferences.maxCookingMinutes} 分钟（含备料；AI 耗时仅为估计）` },
+    { label: '已有食材', value: preferences.pantryItems.length
+      ? preferences.pantryItems.map(item => `${item.name} ${item.quantity} ${item.unit}`).join('；') : '不扣减已有食材' },
     { label: '目标', value: preferences.goals.join('、') || '未选择' },
     { label: '想吃 / 补充', value: preferences.customGoal || '未填写' },
     { label: '风格', value: preferences.styles.join('、') || '未选择' },
@@ -324,6 +329,8 @@ Page({
     durationDaysFeedback: '',
     durationAtMin: true,
     durationAtMax: false,
+    servingsInput: '1', cookingMinutesInput: '30', servingsError: '', cookingMinutesError: '',
+    pantryRows: [], pantryUnits: cookingForm.UNITS,
     mealOptions: selectedOptions(MEAL_OPTIONS, []),
     goalOptions: GOAL_OPTIONS.map((label) => ({ label, checked: false })),
     styleOptions: STYLE_OPTIONS.map((label) => ({ label, checked: false })),
@@ -472,6 +479,7 @@ Page({
     this.clearFormControlBlurTimer()
     if (this.data.formControlFocused) this.setData({ formControlFocused: false })
     this.stopTaskLoop()
+    this.commitCookingDraft()
     this.flushPreferenceDraft()
     if (this.currentTask && (isActiveTask(this.currentTask) || this.currentTask.status === 'succeeded')) {
       this.setData({ generating: false })
@@ -493,6 +501,7 @@ Page({
     this.stopTaskLoop()
     clearTimeout(this.preferenceSaveTimer)
     this.preferenceSaveTimer = null
+    this.commitCookingDraft()
     this.flushPreferenceDraft()
   },
 
@@ -507,6 +516,10 @@ Page({
         return
       }
       const state = await userStore.init({ force })
+      if (this.formNamespace !== userStore.namespace) {
+        this.cookingDraft = null
+        this.cookingErrors = null
+      }
       this.formNamespace = userStore.namespace
       this.replacementContext = this.replacementScope ? replacementView.createContext(state, this.replacementScope) : null
       const context = this.replacementContext
@@ -617,6 +630,7 @@ Page({
     const durationInputErrors = this.exerciseDurationInputErrors || {}
     this.setData({
       preferences,
+      ...cookingForm.view(this.cookingDraft || cookingForm.fromPreferences(preferences, this.data.pantryRows), this.cookingErrors || {}),
       durationDaysInput: this.durationDaysDraft === undefined
         ? String(preferences.durationDays) : this.durationDaysDraft,
       durationDaysError: this.durationDaysInputError || '',
@@ -645,16 +659,99 @@ Page({
   },
 
   updatePreferences(patch) {
+    const namespace = this.formNamespace || userStore.namespace
+    if (namespace && namespace !== userStore.namespace) {
+      this.setData({ pageError: '登录身份已变化，请重新打开定制页', aiDataConsentAccepted: false })
+      return
+    }
     const preferences = normalizePreferences({ ...this.data.preferences, ...patch })
     if (this.data.aiDataConsentAccepted) this.setData({ aiDataConsentAccepted: false })
     this.renderPreferences(preferences)
     if (this.replacementContext) return
-    Promise.resolve().then(() => userStore.patch({ generationPreferences: preferences }, { localOnly: true })).then(() => {
+    Promise.resolve().then(() => {
+      if (namespace && namespace !== userStore.namespace) throw new Error('登录身份已变化，本次选择未保存，请重新打开定制页')
+      return userStore.patch({ generationPreferences: preferences }, { localOnly: true })
+    }).then(() => {
       clearTimeout(this.preferenceSaveTimer)
+      if (namespace && namespace !== userStore.namespace) return
+      if (!this.pageActive) return this.flushPreferenceDraft()
       this.preferenceSaveTimer = setTimeout(() => this.flushPreferenceDraft(), 700)
     }).catch((error) => {
       this.setData({ stepError: errorMessage(error, '无法保存本次选择') })
     })
+  },
+
+  editCookingDraft(change) {
+    if (this.data.generating || this.data.taskVisible || this.data.pageError) return
+    if (this.formNamespace && this.formNamespace !== userStore.namespace) {
+      this.setData({ pageError: '登录身份已变化，请返回后重新打开定制页', aiDataConsentAccepted: false })
+      return
+    }
+    const draft = this.cookingDraft || cookingForm.fromPreferences(this.data.preferences, this.data.pantryRows)
+    this.cookingDraft = change(draft)
+    this.cookingErrors = null
+    this.setData({ aiDataConsentAccepted: false, stepError: '', ...cookingForm.view(this.cookingDraft) })
+  },
+
+  inputCookingNumber(event) {
+    const field = event.currentTarget.dataset.field
+    if (!['servings', 'maxCookingMinutes'].includes(field)) return
+    this.editCookingDraft(draft => ({ ...draft, [field]: String(event.detail.value || '') }))
+  },
+
+  addPantryItem() {
+    if (this.replacementContext) return
+    if (this.data.pantryRows.length >= cookingForm.MAX_PANTRY_ITEMS) {
+      this.setData({ stepError: '最多填写 30 项已有食材' })
+      return
+    }
+    this.pantryRowSequence = (this.pantryRowSequence || 0) + 1
+    this.editCookingDraft(draft => ({ ...draft, rows: [...draft.rows,
+      { id: `new-${this.pantryRowSequence}`, name: '', quantity: '', unit: 'g' }] }))
+  },
+
+  inputPantryItem(event) {
+    if (this.replacementContext) return
+    const { id, field } = event.currentTarget.dataset
+    if (!['name', 'quantity', 'unit'].includes(field)) return
+    const value = field === 'unit' ? cookingForm.UNITS[Number(event.detail.value)] : String(event.detail.value || '')
+    if (value === undefined) return
+    this.editCookingDraft(draft => ({ ...draft,
+      rows: draft.rows.map(row => row.id === id ? { ...row, [field]: value } : row) }))
+    if (field === 'unit') this.commitCookingDraft()
+  },
+
+  removePantryItem(event) {
+    if (this.replacementContext) return
+    const id = event.currentTarget.dataset.id
+    this.editCookingDraft(draft => ({ ...draft, rows: draft.rows.filter(row => row.id !== id) }))
+    this.commitCookingDraft()
+  },
+
+  commitCookingDraft() {
+    if (!this.cookingDraft) return ''
+    if (this.formNamespace && this.formNamespace !== userStore.namespace) {
+      this.cookingDraft = null
+      this.cookingErrors = null
+      this.setData({ aiDataConsentAccepted: false })
+      return '登录身份已变化，请重新打开定制页'
+    }
+    const result = cookingForm.validate(this.cookingDraft)
+    this.cookingErrors = result.errors
+    this.setData(cookingForm.view(this.cookingDraft, result.errors))
+    if (result.message) return result.message
+    const changed = JSON.stringify(result.value) !== JSON.stringify(normalizeConditions(this.data.preferences))
+    this.cookingDraft = null
+    this.cookingErrors = null
+    if (changed) this.updatePreferences(result.value)
+    else this.renderPreferences(this.data.preferences)
+    return ''
+  },
+
+  commitCookingInput() {
+    const message = this.commitCookingDraft()
+    this.setData({ stepError: message })
+    this.onFormControlBlur()
   },
 
   flushPreferenceDraft() {
@@ -839,6 +936,10 @@ Page({
 
   validateStep(step) {
     const preferences = this.data.preferences
+    if (step === 2) {
+      const error = this.commitCookingDraft()
+      if (error) return error
+    }
     if (step === 0 && preferences.mealTypes.length === 0) return '请至少选择一个餐次'
     if (step === 1) {
       const inputError = durationInputError(this.data.durationDaysInput)

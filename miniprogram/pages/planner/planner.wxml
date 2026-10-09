@@ -82,7 +82,52 @@
       <view class="field-block">
         <text class="field-label">这次想吃什么（可选）</text>
         <textarea maxlength="160" value="{{preferences.customGoal}}" bindinput="inputCustomGoal" bindfocus="onFormControlFocus" bindblur="onFormControlBlur" cursor-spacing="104" placeholder="例如：想吃番茄牛腩、面条；家里有鸡蛋和西兰花，希望清淡一点" aria-label="这次想吃什么，也可填写现有食材和补充目标，最多160字" auto-height="false" />
-        <text class="field-counter">可填菜名、食材或补充目标，最多 160 字；过敏与忌口请在下一步填写。</text>
+        <text class="field-counter">可填菜名或补充目标，最多 160 字；要扣减采购量，请在下方填写已有食材的数量和单位。过敏与忌口请在下一步填写。</text>
+      </view>
+      <view class="cooking-section">
+        <text class="field-label">就餐与做饭条件</text>
+        <text class="field-counter">显示已保存的设置，请先核对；首次默认为 1 人、30 分钟。修改条件后需重新勾选 AI 发送同意。</text>
+        <view class="cooking-numbers">
+          <view class="cooking-field">
+            <label for="cooking-servings" class="field-label">就餐人数（1–12 人）</label>
+            <input id="cooking-servings" type="number" maxlength="3" value="{{servingsInput}}" data-field="servings" bindinput="inputCookingNumber" bindfocus="onFormControlFocus" bindblur="commitCookingInput" cursor-spacing="104" aria-label="就餐人数，1至12人" />
+            <text wx:if="{{servingsError}}" class="field-error" aria-live="polite">{{servingsError}}</text>
+          </view>
+          <view class="cooking-field">
+            <label for="cooking-minutes" class="field-label">每餐最多几分钟（5–180）</label>
+            <input id="cooking-minutes" type="number" maxlength="4" value="{{cookingMinutesInput}}" data-field="maxCookingMinutes" bindinput="inputCookingNumber" bindfocus="onFormControlFocus" bindblur="commitCookingInput" cursor-spacing="104" aria-label="每餐总备料与做饭时间上限，5至180分钟" />
+            <text wx:if="{{cookingMinutesError}}" class="field-error" aria-live="polite">{{cookingMinutesError}}</text>
+          </view>
+        </view>
+        <text class="field-counter">食材按人数显示总用量；时间包括这批人数的备料与烹饪，仅为估计，不保证实际耗时。</text>
+        <text class="field-label group-label">已有食材（可选）</text>
+        <text class="field-counter">整份餐单共用这些数量，仅相同名称和单位扣减一次，不自动换算或消耗库存。不完整的输入尚未保存，请补齐或移除。</text>
+        <text wx:if="{{replacementMode}}" class="field-counter">只换一餐沿用原餐单的已有食材，不在这里改变整份餐单的库存预算。</text>
+        <text wx:if="{{!pantryRows.length}}" class="field-counter">未填写已有食材，采购将按完整需求计算。</text>
+        <view wx:for="{{pantryRows}}" wx:key="id" class="pantry-row">
+          <block wx:if="{{replacementMode}}">
+            <text class="pantry-readonly">{{item.name}} · {{item.quantity}} {{item.unit}}</text>
+          </block>
+          <block wx:else>
+            <label for="pantry-name-{{item.id}}" class="field-label">食材 {{index + 1}} 名称</label>
+            <input id="pantry-name-{{item.id}}" maxlength="50" value="{{item.name}}" data-id="{{item.id}}" data-field="name" bindinput="inputPantryItem" bindfocus="onFormControlFocus" bindblur="commitCookingInput" cursor-spacing="104" placeholder="例如：番茄" aria-label="第{{index + 1}}项食材名称" />
+            <view class="pantry-amount">
+              <view class="cooking-field">
+                <label for="pantry-quantity-{{item.id}}" class="field-label">已有数量</label>
+                <input id="pantry-quantity-{{item.id}}" type="digit" maxlength="12" value="{{item.quantity}}" data-id="{{item.id}}" data-field="quantity" bindinput="inputPantryItem" bindfocus="onFormControlFocus" bindblur="commitCookingInput" cursor-spacing="104" placeholder="例如：300" aria-label="第{{index + 1}}项已有数量，最多三位小数" />
+              </view>
+              <view class="cooking-field">
+                <text class="field-label">单位</text>
+                <picker range="{{pantryUnits}}" value="{{item.unitIndex}}" data-id="{{item.id}}" data-field="unit" bindchange="inputPantryItem" aria-label="第{{index + 1}}项单位 {{item.unit}}">
+                  <view class="pantry-unit">{{item.unit}}<text class="field-action">选择</text></view>
+                </picker>
+              </view>
+            </view>
+            <text wx:if="{{item.error}}" class="field-error" aria-live="polite">{{item.error}}</text>
+            <button class="pantry-action" data-id="{{item.id}}" bindtap="removePantryItem" hover-class="button-hover" aria-label="移除第{{index + 1}}项已有食材">移除这项</button>
+          </block>
+        </view>
+        <button wx:if="{{!replacementMode}}" class="pantry-action" bindtap="addPantryItem" disabled="{{pantryRows.length >= 30}}" hover-class="button-hover">添加已有食材（{{pantryRows.length}}/30）</button>
       </view>
       <text class="field-label group-label">目标</text>
       <checkbox-group class="choice-grid" bindchange="onGoalsChange">
@@ -227,7 +272,7 @@
             <text class="privacy-intro">点击生成后，以下“会发送”内容将交给 {{providerDisplayName}}，仅用于生成本次候选餐单。</text>
             <view class="privacy-scope send-scope">
               <text class="privacy-scope-label">会发送</text>
-              <text class="privacy-scope-copy">本次选择的餐次、日期、目标、风格，以及你主动填写的饮食约束与运动安排。</text>
+              <text class="privacy-scope-copy">本次选择的餐次、日期、目标、风格、就餐人数、做饭时间、已有食材的名称数量和单位，以及你主动填写的饮食约束与运动安排。</text>
             </view>
             <view class="privacy-scope protected-scope">
               <text class="privacy-scope-label">不会发送</text>

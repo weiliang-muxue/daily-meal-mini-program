@@ -132,7 +132,7 @@ function throwsCode(callback, code) {
 
 const empty = defaults()
 assert.strictEqual(CURRENT_SCHEMA, 11)
-assert.strictEqual(CURRENT_AI_CONTRACT, 2)
+assert.strictEqual(CURRENT_AI_CONTRACT, 3)
 assert.strictEqual(empty.schemaVersion, 11)
 assert.strictEqual(empty.stateRevision, 0)
 assert.strictEqual(empty.activePlan, null)
@@ -141,7 +141,7 @@ assert.deepStrictEqual(empty.planHistory, [])
 assert.deepStrictEqual(empty.planUiStateByPlan, {})
 assert.strictEqual(empty.generationPreferences.durationDays, 1)
 assert.deepStrictEqual(empty.generationPreferences.mealTypes, [])
-assert.strictEqual(empty.generationPreferences.contractVersion, 2)
+assert.strictEqual(empty.generationPreferences.contractVersion, 3)
 assert.strictEqual(empty.generationPreferences.exerciseIntent, '', '新用户运动意图必须保持未确认')
 assert.deepStrictEqual(empty.settings, { calciumAnchorReminder: false, vitaminDReminder: false })
 assert.deepStrictEqual(empty.waterReminder, {
@@ -242,7 +242,7 @@ const legacySamples = [
 legacySamples.forEach(({ version, state, assertState }) => {
   const result = migrate(state, { legacyPlan: legacyPlan(), preserveUnknownFrom: state })
   assert.strictEqual(result.schemaVersion, 11, `schema v${version} should migrate to v11`)
-  assert.strictEqual(result.generationPreferences.contractVersion, 2)
+  assert.strictEqual(result.generationPreferences.contractVersion, 3)
   assert.strictEqual(result.activePlan.id, 'week-legacy-1')
   assert.strictEqual(result.activePlan.source, 'legacy')
   assert.deepStrictEqual(result.settings, state.settings)
@@ -338,7 +338,7 @@ schemaV6.planUiStateByPlan = {
 const schemaV7 = migrate(schemaV6, { preserveUnknownFrom: schemaV6 })
 assert.strictEqual(schemaV7.schemaVersion, 11)
 assert.strictEqual(schemaV7.stateRevision, 24)
-assert.strictEqual(schemaV7.generationPreferences.contractVersion, 2,
+assert.strictEqual(schemaV7.generationPreferences.contractVersion, 3,
   'schema v6 preferences must migrate to the current request contract')
 assert.strictEqual(schemaV7.generationPreferences.durationDays, 14)
 assert.strictEqual(schemaV7.activePlan.contractVersion, 1,

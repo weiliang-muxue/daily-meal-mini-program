@@ -4,7 +4,7 @@ const CURRENT_SCHEMA = 11
 const mealShopping = require('./meal-shopping')
 const mealReplacement = require('./meal-replacement')
 const mealConditions = require('./meal-conditions')
-const CURRENT_AI_CONTRACT = 2
+const CURRENT_AI_CONTRACT = 3
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
 const MAX_STATE_BYTES = 900 * 1024
@@ -502,6 +502,13 @@ function sanitizePlan(raw, field = 'plan') {
   if (raw.replacementTarget !== undefined) {
     result.replacementTarget = mealReplacement.sanitizeTarget(raw.replacementTarget)
     mealReplacement.assertSingleMealDraft(result)
+  }
+  if (result.source === 'ai' && result.contractVersion === 3) {
+    const conditions = mealConditions.normalizeConditions(result.generationBasis, { required: true })
+    if (days.some(day => day.meals.some(meal => meal.quantityBasis !== 'total' || meal.servings !== conditions.servings
+      || !Number.isSafeInteger(meal.estimatedCookingMinutes) || meal.estimatedCookingMinutes > conditions.maxCookingMinutes))) {
+      fail('新餐单的总份量或预计时间与生成条件不一致')
+    }
   }
   assertPlanSize(result, field)
   return result

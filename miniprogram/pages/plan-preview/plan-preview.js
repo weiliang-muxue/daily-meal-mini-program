@@ -88,6 +88,10 @@ function generationBasisRows(plan) {
   const basis = plan.generationBasis || {}
   const mealTypes = Array.isArray(basis.mealTypes) ? basis.mealTypes.map((type) => MEAL_LABELS[type] || type) : []
   const rows = [
+    { label: '就餐人数', value: basis.servings ? `${basis.servings} 人，食材为总用量` : '' },
+    { label: '时间上限', value: basis.maxCookingMinutes ? `每餐 ${basis.maxCookingMinutes} 分钟（含备料，AI 估计不保证实际耗时）` : '' },
+    { label: '已有食材', value: Array.isArray(basis.pantryItems)
+      ? basis.pantryItems.map(item => `${item.name} ${item.quantity} ${item.unit}`).join('；') || '不扣减已有食材' : '' },
     { label: '生成餐次', value: mealTypes.join('、') || '未记录' },
     { label: '晚餐方案', value: basis.doubleDinner ? '运动与不运动两套' : '单一方案' },
     { label: '饮食目标', value: [...(basis.goals || []), basis.customGoal].filter(Boolean).join('、') },

@@ -482,7 +482,40 @@ async function testConflictRetryDoesNotClaimNewerEditsSynced() {
   assert.strictEqual(page.scheduledSyncs.at(-1), 80)
 }
 
+function testPantryProjectionAndIdentity() {
+  resetState()
+  const stock = [{ name: '番茄', quantity: 300, unit: 'g' }, { name: '菠菜', quantity: 100, unit: 'g' }]
+  const ingredient = { name: '番茄', quantity: 200, unit: 'g', category: '蔬菜' }
+  const activePlan = { ...plan('pantry-fixture', 'tomato'),
+    generationBasis: { servings: 2, maxCookingMinutes: 30, pantryItems: stock },
+    days: [{ id: 'pantry-day', meals: [{ id: 'pantry-meal', type: 'breakfast', scenario: 'default', ingredients: [ingredient] }] }],
+    shoppingGroups: [{ id: 'vegetables', name: '蔬菜', items: [{ id: 'tomato', ...ingredient }] }] }
+  userStore.data = { activePlan, activePlanId: activePlan.id, checkedShoppingIds: [] }
+  const page = pageInstance()
+  page.render()
+  assert.strictEqual(page.data.viewState, 'empty')
+  assert.strictEqual(page.data.hasPantry, true)
+  assert.strictEqual(page.data.total, 0)
+  assert.strictEqual(page.data.coveredGroups[0].items[0].key, 'tomato')
+  assert.strictEqual(page.data.coveredGroups[0].items[0].requiredQuantity, 200)
+  assert.strictEqual(page.data.unusedPantry.find(item => item.name === '番茄').quantity, 100)
+  activePlan.days[0].meals[0].ingredients[0].quantity = 500
+  page.render()
+  assert.strictEqual(page.data.viewState, 'ready')
+  assert.strictEqual(page.data.groups[0].items[0].quantity, 200)
+  assert(page.data.groups[0].items[0].stockText.includes('共需 500 g'))
+  assert.strictEqual(page.data.coveredGroups.length, 0)
+  userStore.data = { activePlan: null, checkedShoppingIds: [] }
+  membershipStore.switchTo(namespaceB)
+  page.render()
+  assert.deepStrictEqual(page.data.coveredGroups, [])
+  assert.deepStrictEqual(page.data.unusedPantry, [])
+  assert.strictEqual(page.data.hasPantry, false, '新身份不能残留已有食材')
+  assert(shoppingMarkup.includes('已有食材可覆盖') && shoppingMarkup.includes('本餐单未用到的已有数量'))
+}
+
 async function main() {
+  testPantryProjectionAndIdentity()
   await testNamespaceSwitchDropsOnlyPageOperations()
   await testPlanSwitchDropsOldPlanOperations()
   await testLateSaveCannotClearNewScope()
@@ -498,7 +531,7 @@ async function main() {
   await testRemotePlanChangeEndsOldPlanStatus()
   await testNewEditsRemainPendingAfterEarlierSave()
   await testConflictRetryDoesNotClaimNewerEditsSynced()
-  console.log('shopping operation scope and sync recovery tests passed (15 scenarios)')
+  console.log('shopping operation scope, pantry display and sync recovery tests passed (16 scenarios)')
 }
 
 main().catch((error) => {
