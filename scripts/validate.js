@@ -560,6 +560,7 @@ const testScripts = [
   'scripts/deploy-production-function.test.js',
   'shared/user-state.test.js',
   'shared/meal-replacement.test.js',
+  'shared/meal-conditions.test.js',
   'cloudfunctions/userData/index.test.js',
   'shared/image-file.test.js',
   'shared/image-source.test.js',
