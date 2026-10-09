@@ -396,7 +396,7 @@ class UserStore {
     if (this.initPromise && !options.force) return this.initPromise
     const initEpoch = ++this.initEpoch
     this.state = 'loading'
-    const request = callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
+    const request = callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace, clientSchemaVersion: CURRENT_SCHEMA })
       .then(async (data) => {
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         if (initEpoch !== this.initEpoch) return this.data
@@ -562,7 +562,7 @@ class UserStore {
     this.state = 'saving'
     const resolveLegacyReplacement = async () => {
       if (!this.pending.legacyMealOverridesReplacement) return
-      const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
+      const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace, clientSchemaVersion: CURRENT_SCHEMA })
       if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
       this.replaceFromCloud(latest, namespace)
     }
@@ -581,7 +581,7 @@ class UserStore {
       } catch (error) {
         if (!this.isCurrentNamespace(namespace)) throw error
         if (!isRevisionConflict(error) || conflictRetries < 1) throw error
-        const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace })
+        const latest = await callFunction('userData', 'bootstrap', { expectedCacheNamespace: namespace, clientSchemaVersion: CURRENT_SCHEMA })
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         this.replaceFromCloud(latest, namespace)
         return write(conflictRetries - 1)
@@ -632,7 +632,9 @@ class UserStore {
     if (!validPlanId(expectedDraftPlanId)) throw new Error('候选餐单标识无效，请刷新后重试')
     const namespace = this.requireNamespace()
     await this.flush()
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     const data = await callFunction('userData', 'confirmDraft', {
+      clientSchemaVersion: CURRENT_SCHEMA,
       expectedDraftPlanId,
       expectedStateRevision: this.data.stateRevision,
       expectedCacheNamespace: namespace,
@@ -644,7 +646,9 @@ class UserStore {
     if (!validPlanId(expectedDraftPlanId)) throw new Error('候选餐单标识无效，请刷新后重试')
     const namespace = this.requireNamespace()
     await this.flush()
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     const data = await callFunction('userData', 'discardDraft', {
+      clientSchemaVersion: CURRENT_SCHEMA,
       expectedDraftPlanId,
       expectedStateRevision: this.data.stateRevision,
       expectedCacheNamespace: namespace,
@@ -663,6 +667,7 @@ class UserStore {
       throw error
     }
     const data = await callFunction('userData', 'confirmMealReplacement', {
+      clientSchemaVersion: CURRENT_SCHEMA,
       expectedDraftPlanId, expectedStateRevision, expectedCacheNamespace: namespace,
     })
     return this.replaceFromCloud(data, namespace)
@@ -671,7 +676,9 @@ class UserStore {
   async restoreHistory(planId) {
     const namespace = this.requireNamespace()
     await this.flush()
+    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     const data = await callFunction('userData', 'restoreHistory', {
+      clientSchemaVersion: CURRENT_SCHEMA,
       planId,
       expectedStateRevision: this.data.stateRevision,
       expectedCacheNamespace: namespace,

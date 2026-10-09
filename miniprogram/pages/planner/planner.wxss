@@ -81,7 +81,7 @@
 .duration-symbol { display: block; width: 100%; color: inherit; font-size: 24px; line-height: 48px; text-align: center; }
 .duration-button[disabled] { color: var(--muted); opacity: .48; }
 .duration-input-wrap { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8rpx; border-left: 1rpx solid var(--line); border-right: 1rpx solid var(--line); }
-.duration-input { width: 42px; min-height: 48px; padding: 0; color: var(--ink); font-size: 20px; line-height: 1.2; font-weight: 750; text-align: right; font-variant-numeric: tabular-nums; }
+.duration-input { width: 48px; min-width: 48px; min-height: 48px; padding: 0; color: var(--ink); font-size: 20px; line-height: 1.2; font-weight: 750; text-align: right; font-variant-numeric: tabular-nums; }
 .duration-unit { color: var(--muted-strong); font-size: 14px; line-height: 1.4; font-weight: 650; }
 .duration-help { display: block; min-height: 42rpx; margin-top: 10rpx; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .duration-help.error { color: var(--danger); font-weight: 650; }

@@ -40,7 +40,13 @@ require.cache[cloudModulePath] = {
   filename: cloudModulePath,
   loaded: true,
   exports: {
-    callFunction: (...args) => cloudHandler(...args),
+    callFunction: (...args) => {
+      if (args[0] === 'userData') {
+        assert.strictEqual(args[2] && args[2].clientSchemaVersion, 13,
+          `${args[1]} must carry the client schema, including conflict and legacy recovery reads`)
+      }
+      return cloudHandler(...args)
+    },
     wxLogin: (...args) => loginHandler(...args),
   },
 }
@@ -1614,7 +1620,7 @@ async function testSingleMealConfirmationNamespaceAndRevision() {
   const pending = store.confirmMealReplacement('draft-single', 7)
   await new Promise(resolve => setImmediate(resolve))
   assert.deepStrictEqual(calls, [{ name: 'userData', action: 'confirmMealReplacement', payload: {
-    expectedDraftPlanId: 'draft-single', expectedStateRevision: 7, expectedCacheNamespace: namespaceA,
+    expectedDraftPlanId: 'draft-single', expectedStateRevision: 7, expectedCacheNamespace: namespaceA, clientSchemaVersion: 13,
   } }])
   memberStore.switchTo(namespaceB)
   const nextIdentity = JSON.stringify(store.data)
@@ -1699,7 +1705,50 @@ async function testFavoritesCacheAndLateIdentityResponses() {
   assert.deepStrictEqual(storage.get(key).favoriteRecipes, favorite.favoriteRecipes)
 }
 
+async function testPlanActionsCannotCrossIdentityWhileFlushing() {
+  const operations = [
+    ['confirmDraft', store => store.confirmDraft('test-draft')],
+    ['discardDraft', store => store.discardDraft('test-draft')],
+    ['restoreHistory', store => store.restoreHistory('test-history')],
+    ['confirmMealReplacement', store => store.confirmMealReplacement('test-draft', 7)],
+    ['addFavorite', store => store.changeFavorite('addFavorite', { mealId: 'test-meal', expectedPlanId: 'test-plan' }, 7)],
+  ]
+  for (const [action, invoke] of operations) {
+    for (const switchAfterDispatch of [false, true]) {
+      storage.clear()
+      storage.set(`meal_user_state_v3_${namespaceA}`, { ...defaults(), stateRevision: 7 })
+      const member = new FakeMembershipStore(namespaceA)
+      const store = new UserStore(member)
+      store.bindNamespace()
+      const calls = []
+      let finish
+      cloudHandler = (name, sentAction, payload) => {
+        calls.push({ name, action: sentAction, payload })
+        if (switchAfterDispatch) return new Promise(resolve => { finish = resolve })
+        return Promise.resolve({ ...defaults(), stateRevision: 8 })
+      }
+      const operation = invoke(store)
+      const rejected = assert.rejects(operation, /身份已变化/)
+      if (switchAfterDispatch) {
+        await new Promise(resolve => setImmediate(resolve))
+        assert.strictEqual(calls.length, 1)
+        assert.strictEqual(calls[0].action, action)
+        assert.strictEqual(calls[0].payload.expectedCacheNamespace, namespaceA)
+      }
+      member.switchTo(namespaceB)
+      const otherState = JSON.stringify(store.data)
+      const priorWrites = storageWrites.length
+      if (switchAfterDispatch) finish({ ...defaults(), stateRevision: 8, customReminders: ['test response must not leak'] })
+      await rejected
+      assert.strictEqual(calls.length, switchAfterDispatch ? 1 : 0, `${action}: identity change before dispatch must make no request`)
+      assert.strictEqual(JSON.stringify(store.data), otherState, `${action}: late result must not replace the new identity`)
+      assert.strictEqual(storageWrites.length, priorWrites, `${action}: rejected result must not change either cache`)
+    }
+  }
+}
+
 async function main() {
+  await testPlanActionsCannotCrossIdentityWhileFlushing()
   await testFavoritesCacheAndLateIdentityResponses()
   await testCookingPreferencesOfflineRecoveryAndIsolation()
   await testSingleMealConfirmationNamespaceAndRevision()

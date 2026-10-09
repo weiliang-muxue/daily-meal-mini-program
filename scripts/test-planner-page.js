@@ -58,6 +58,8 @@ let statusResponse = {
 }
 let statusImplementation = async () => statusResponse
 let startImplementation = async () => ({ task: activeTask })
+let patchWaitImplementation = async () => {}
+let requestIdImplementation = async () => 'req_page_test_1234567890abcdef'
 let modalPromise = Promise.resolve()
 const scrollCalls = []
 const switchTabCalls = []
@@ -90,7 +92,7 @@ const userStore = {
   patch(partial, options) {
     calls.patches.push({ partial, options })
     userStore.data = { ...userStore.data, ...partial }
-    return Promise.resolve(userStore.data)
+    return patchWaitImplementation().then(() => userStore.data)
   },
   flush() {
     calls.flush += 1
@@ -154,7 +156,7 @@ require.cache[aiPlannerPath] = {
   loaded: true,
   exports: {
     aiPlanner,
-    createClientRequestId: async () => 'req_page_test_1234567890abcdef',
+    createClientRequestId: () => requestIdImplementation(),
     isActiveTask,
     taskPresentation,
     failurePolicy,
@@ -185,6 +187,7 @@ function makePage() {
     ...pageDefinition,
     data: JSON.parse(JSON.stringify(pageDefinition.data)),
     pageActive: true,
+    formNamespace: userStore.namespace,
     connected: false,
     taskLoopToken: 0,
     taskLoopTimer: null,
@@ -228,9 +231,12 @@ function resetMocks() {
   }
   statusImplementation = async () => statusResponse
   startImplementation = async () => ({ task: activeTask })
+  patchWaitImplementation = async () => {}
+  requestIdImplementation = async () => 'req_page_test_1234567890abcdef'
   modalPromise = Promise.resolve()
   userStore.data = { stateRevision: 7, generationPreferences: null }
   userStore.state = 'ready'
+  userStore.namespace = 'a'.repeat(32)
 }
 
 function testSecondaryPageNavigation() {
@@ -1830,7 +1836,72 @@ async function testIndependentDislikesAndConsent() {
   assert(wxml.includes('aria-label="不喜欢或尽量少用的食物'))
 }
 
+async function testGenerationStartIdentityBoundaries() {
+  const failures = []
+  for (const stage of ['before', 'saving', 'request-id', 'retry', 'retry-rebound', 'hide-return']) {
+    resetMocks()
+    const page = makePage()
+    page.renderPreferences({ ...page.data.preferences, mealTypes: ['breakfast'], goals: ['均衡饮食'], exerciseIntent: 'none' })
+    page.setData({ currentStep: 5, aiStatus: 'ready', providerRevision: TEST_PROVIDER_REVISION, aiDataConsentAccepted: true })
+    const delayed = deferred()
+    if (stage === 'saving') patchWaitImplementation = () => delayed.promise
+    if (stage === 'request-id' || stage === 'hide-return') requestIdImplementation = () => delayed.promise
+    if (stage.startsWith('retry')) {
+      startImplementation = async () => { throw new Error('synthetic network interruption') }
+      await page.generatePlan()
+      assert(page.pendingStart, 'unknown send result retains the same request for a same-account retry')
+      calls.start = 0
+    }
+    if (stage === 'before' || stage.startsWith('retry')) userStore.namespace = 'b'.repeat(32)
+    if (stage === 'retry-rebound') page.formNamespace = userStore.namespace
+    const pending = stage.startsWith('retry') ? page.retryTask() : page.generatePlan()
+    await tick()
+    if (stage === 'saving' || stage === 'request-id') userStore.namespace = 'b'.repeat(32)
+    if (stage === 'hide-return') { page.onHide(); page.onShow() }
+    delayed.resolve('req_page_test_1234567890abcdef')
+    await pending
+    page.stopTaskLoop()
+    if (calls.start !== 0 || (stage === 'before' && calls.patches.length !== 0)) failures.push(stage)
+    assert.strictEqual(navigateToCalls.length, 0, 'stale starts must not navigate')
+    clearTimeout(page.preferenceSaveTimer)
+  }
+  assert.deepStrictEqual(failures, [], 'generation must not start across changed identity or an abandoned preparation')
+}
+
+async function testDispatchedStartResponseBoundaries() {
+  for (const stage of ['identity', 'unload', 'hide']) {
+    resetMocks()
+    const page = makePage(), response = deferred()
+    page.renderPreferences({ ...page.data.preferences, mealTypes: ['breakfast'], goals: ['均衡饮食'], exerciseIntent: 'none' })
+    page.setData({ currentStep: 5, aiStatus: 'ready', providerRevision: TEST_PROVIDER_REVISION, aiDataConsentAccepted: true })
+    userStore.data.activePlan = { id: 'fixture-retained-plan' }
+    startImplementation = () => response.promise
+    const pending = page.generatePlan()
+    await tick()
+    assert.strictEqual(calls.start, 1)
+    const before = JSON.stringify(userStore.data.activePlan)
+    if (stage === 'identity') userStore.namespace = 'b'.repeat(32)
+    else if (stage === 'unload') page.onUnload()
+    else page.onHide()
+    let unloadedUpdates = 0
+    const originalSetData = page.setData
+    page.setData = function (patch) { if (this.unloaded) unloadedUpdates++; originalSetData.call(this, patch) }
+    response.resolve({ task: activeTask })
+    await pending
+    assert.strictEqual(calls.start, 1, 'leaving does not send a duplicate request')
+    assert.strictEqual(JSON.stringify(userStore.data.activePlan), before)
+    assert.strictEqual(unloadedUpdates, 0)
+    assert.deepStrictEqual(navigateToCalls, [])
+    assert.deepStrictEqual(calls.clearedTasks, [], 'dispatched tasks stay recoverable in their original cache')
+    if (stage === 'hide') assert.strictEqual(page.currentTask.taskId, activeTask.taskId)
+    else assert.strictEqual(page.currentTask, null)
+    page.stopTaskLoop()
+  }
+}
+
 async function main() {
+  await testGenerationStartIdentityBoundaries()
+  await testDispatchedStartResponseBoundaries()
   await testIndependentDislikesAndConsent()
   await testCookingIdentityAndHide()
   await testCookingInputsAndConsent()

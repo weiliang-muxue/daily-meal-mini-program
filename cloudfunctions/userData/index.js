@@ -33,6 +33,11 @@ const BUSINESS_ERROR_CODES = new Set([
 ])
 const CACHE_NAMESPACE_PATTERN = /^[a-f0-9]{32}$/
 const MAX_LEGACY_PLAN_INJECTION_SCHEMA = 5
+// Bootstrap can migrate persisted state, so reads need the same version gate as writes.
+const VERSIONED_ACTIONS = new Set([
+  'bootstrap', 'saveState', 'confirmDraft', 'confirmMealReplacement', 'restoreHistory', 'discardDraft',
+  'addFavorite', 'removeFavorite', 'applyFavorite',
+])
 
 function stateFields(value) { return Object.fromEntries(STATE_FIELDS.map((key) => [key, value[key]])) }
 function atomicStateFields(value) {
@@ -253,11 +258,13 @@ exports.main = async (event = {}) => {
   if (!OPENID) return { success: false, code: 'IDENTITY_REQUIRED', message: '无法识别当前微信用户' }
   try {
     await requireMember(OPENID)
+    if (VERSIONED_ACTIONS.has(event.action) && event.clientSchemaVersion !== CURRENT_SCHEMA) {
+      return { success: false, code: 'STATE_SCHEMA_UNSUPPORTED', message: '当前版本与数据服务不兼容，请更新小程序后重试；原有数据已保留' }
+    }
     if (event.action === 'bootstrap') {
       return { success: true, data: await bootstrap(OPENID, event.expectedCacheNamespace) }
     }
     if (event.action === 'saveState') {
-      if (event.clientSchemaVersion !== CURRENT_SCHEMA) return { success: false, code: 'STATE_SCHEMA_UNSUPPORTED', message: '请更新小程序后再保存，原有数据不会丢失' }
       return {
         success: true,
         data: await saveState(OPENID, event.state, event.expectedStateRevision, event.expectedCacheNamespace),
@@ -267,7 +274,6 @@ exports.main = async (event = {}) => {
       return { success: true, data: await changePlan(OPENID, event.action, event) }
     }
     if (['addFavorite', 'removeFavorite', 'applyFavorite'].includes(event.action)) {
-      if (event.clientSchemaVersion !== CURRENT_SCHEMA) return { success: false, code: 'STATE_SCHEMA_UNSUPPORTED', message: '请更新小程序后再使用收藏，原有数据不会丢失' }
       return { success: true, data: await changeFavorite(OPENID, event.action, event) }
     }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的数据操作' }

@@ -138,7 +138,8 @@ async function installProbe(miniProgram, preferences, ownerToken, processInstanc
         const action = data && data.action
         return (name === 'aiPlanner' && (['start', 'advance', 'cancel', 'current'].includes(action)
           || (action === 'status' && Boolean(data.taskId))))
-          || (name === 'userData' && ['bootstrap', 'saveState', 'confirmDraft', 'restoreHistory', 'discardDraft'].includes(action))
+          || (name === 'userData' && ['bootstrap', 'saveState', 'confirmDraft', 'restoreHistory', 'discardDraft',
+            'confirmMealReplacement', 'addFavorite', 'removeFavorite', 'applyFavorite'].includes(action))
       }
       const state = {
         installed: true,
@@ -462,7 +463,7 @@ async function startProbe(miniProgram, ownerToken, processInstanceId) {
       return 'OK'
     }
     const bootstrap = () => call('userData', {
-      action: 'bootstrap', expectedCacheNamespace: state.namespace,
+      action: 'bootstrap', clientSchemaVersion: state.releaseCompatibility.stateSchemaVersion, expectedCacheNamespace: state.namespace,
     })
     const reconcileTestSave = async (beforeRevision, retryWhenBaseline) => {
       const observed = await bootstrap()
@@ -1008,7 +1009,7 @@ async function cleanupProbe(miniProgram, ownerToken, processInstanceId) {
       return 'OK'
     }
     const bootstrap = () => call('userData', {
-      action: 'bootstrap', expectedCacheNamespace: state.namespace,
+      action: 'bootstrap', clientSchemaVersion: state.releaseCompatibility.stateSchemaVersion, expectedCacheNamespace: state.namespace,
     })
     const fail = (code, flags = {}) => ({ ok: false, code, ...flags })
     if (!state || !state.installed) return fail('PROBE_NOT_INSTALLED')
@@ -1189,7 +1190,7 @@ async function cleanupProbe(miniProgram, ownerToken, processInstanceId) {
         }
         const beforeRevision = latest.stateRevision
         state.discard.request = {
-          action: 'discardDraft', expectedDraftPlanId: state.draftPlanId,
+          action: 'discardDraft', clientSchemaVersion: state.releaseCompatibility.stateSchemaVersion, expectedDraftPlanId: state.draftPlanId,
           expectedStateRevision: beforeRevision, expectedCacheNamespace: state.namespace,
         }
         state.discard.attempted = true

@@ -21,19 +21,21 @@ async function guard(miniProgram) {
   }
   throw Object.assign(Error('Fixture not initialized'), { code: 'FIXTURE_NOT_READY' })
 }
-async function waitDiscardCancelled(miniProgram, { timeoutMs = 10000 } = {}) {
+async function waitModalCancelled(miniProgram, flag, { timeoutMs = 10000 } = {}) {
   const deadline = Date.now() + timeoutMs
   do {
-    const finished = await call('DISCARD_CALLBACK_FINISHED', () => miniProgram.evaluate(() => {
+    const finished = await call('MODAL_CALLBACK_FINISHED', () => miniProgram.evaluate(pendingFlag => {
       const page = getCurrentPages().slice(-1)[0]
-      return Boolean(page && page.route === 'pages/meal-edit/meal-edit' && page.discardPromptPending === false)
-    }))
+      return Boolean(page && page.route === 'pages/meal-edit/meal-edit' && page[pendingFlag] === false)
+    }, flag))
     if (finished === true) return
     if (Date.now() >= deadline) break
     await new Promise(resolve => setTimeout(resolve, 100))
   } while (Date.now() <= deadline)
-  throw Object.assign(Error('Native cancel returned without a verified discard callback'), { code: 'NATIVE_MODAL_NO_EFFECT' })
+  throw Object.assign(Error('Native cancel returned without a verified modal callback'), { code: 'NATIVE_MODAL_NO_EFFECT' })
 }
+const waitDiscardCancelled = (miniProgram, options) => waitModalCancelled(miniProgram, 'discardPromptPending', options)
+const waitResetCancelled = (miniProgram, options) => waitModalCancelled(miniProgram, 'resetPromptPending', options)
 async function runScenario(miniProgram, directory, record) {
   await guard(miniProgram)
   // These controls exist only in the generated memory fixture. Never load a real store.
@@ -176,6 +178,7 @@ async function runScenario(miniProgram, directory, record) {
   record('native-discard-confirm-drops-only-unsaved-draft', {})
   await tap(page, '.reset')
   await modal(false)
+  await waitResetCancelled(miniProgram)
   await current(EDIT)
   assert.equal(await data(page, 'hasOverride'), true)
   assert.deepEqual(await snapshot(), after)
@@ -230,4 +233,4 @@ async function main() {
   if (errorCode) process.exitCode = 1
 }
 if (require.main === module) main().catch(() => { console.error('MEAL_EDIT_UI_RUN_FAILED'); process.exitCode = 1 })
-module.exports = { guard, runScenario, waitDiscardCancelled }
+module.exports = { guard, runScenario, waitDiscardCancelled, waitResetCancelled }

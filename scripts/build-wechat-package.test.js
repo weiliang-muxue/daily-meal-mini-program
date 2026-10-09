@@ -27,10 +27,46 @@ put('project.private.config.json', '{}')
 put('cloudfunctions/membership/index.js', 'exports.main = async () => ({})\n')
 put('cloudfunctions/membership/package-lock.json', JSON.stringify({ name: 'membership-fixture', lockfileVersion: 3 }))
 put('cloudfunctions/ownerBootstrapOnce/index.js', 'throw new Error("do not deploy")\n')
-put('release-manifest.json', JSON.stringify({ workingVersion: '0.2.1' }))
+const releaseManifest = { workingVersion: '0.2.1', releaseStatus: 'release-candidate' }
+put('release-manifest.json', JSON.stringify(releaseManifest))
 put('.gitignore', '.local/\n')
 const git = (...args) => execFileSync('git', args, { cwd: source, stdio: 'ignore' })
 git('init'); git('add', '.'); git('-c', 'user.name=Package Test', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture')
+// Development source must not replace the formal import package or even read
+// local deployment configuration. All inputs here are temporary fake files.
+const existingPackage = path.join(folder, '微信导入包')
+fs.mkdirSync(existingPackage)
+const retainedFiles = {
+  'wechat-import-manifest.json': '{"kind":"generated-wechat-import-package"}\n',
+  'keep-current-package.txt': 'current import package must remain unchanged\n',
+}
+for (const [file, content] of Object.entries(retainedFiles)) fs.writeFileSync(path.join(existingPackage, file), content)
+const privateConfigPaths = new Set(['project.config.json', 'project.private.config.json', 'miniprogram/config.js'].map((file) => path.resolve(source, file)))
+for (const invalidManifest of [
+  JSON.stringify({ workingVersion: '0.3.0-dev.0', releaseStatus: 'unreleased' }),
+  JSON.stringify({ workingVersion: '0.3.0', releaseStatus: 'unreleased' }),
+  ...['release-candidate', 'released'].flatMap((releaseStatus) => ['0.3.0-dev.0', 'v0.3.0', '01.2.3', '0.3', '0.3.0\n', 3, null].map((workingVersion) => JSON.stringify({ workingVersion, releaseStatus }))),
+  JSON.stringify({ workingVersion: '0.3.0', releaseStatus: 'unknown' }),
+  JSON.stringify({ workingVersion: '0.3.0' }),
+  '{}', '[]', 'null', '{invalid json', undefined,
+]) {
+  if (invalidManifest === undefined) fs.unlinkSync(path.join(source, 'release-manifest.json'))
+  else put('release-manifest.json', invalidManifest)
+  const originalRead = fs.readFileSync
+  let privateConfigReads = 0
+  fs.readFileSync = function (file, ...args) {
+    if (typeof file === 'string' && privateConfigPaths.has(path.resolve(file))) privateConfigReads++
+    return originalRead.call(this, file, ...args)
+  }
+  try {
+    assert.throws(() => buildPackage(source, { skipSafetyForTest: true }), /PACKAGE_RELEASE_(?:NOT_READY|MANIFEST_INVALID)/)
+  } finally { fs.readFileSync = originalRead }
+  assert.strictEqual(privateConfigReads, 0)
+  assert.strictEqual(fs.existsSync(path.join(source, '.local')), false)
+  assert.deepStrictEqual(fs.readdirSync(existingPackage).sort(), Object.keys(retainedFiles).sort())
+  for (const [file, content] of Object.entries(retainedFiles)) assert.strictEqual(fs.readFileSync(path.join(existingPackage, file), 'utf8'), content)
+}
+put('release-manifest.json', JSON.stringify(releaseManifest))
 const result = buildPackage(source, { skipSafetyForTest: true })
 assert.strictEqual(result.fileCount, 3)
 assert.strictEqual(JSON.parse(fs.readFileSync(path.join(result.destination, 'cloudfunctions/membership/package-lock.json'), 'utf8')).lockfileVersion, 3)
@@ -39,6 +75,7 @@ assert.strictEqual(fs.existsSync(path.join(result.destination, '.git')), false)
 assert.strictEqual(fs.readFileSync(path.join(result.destination, 'miniprogram/app.js'), 'utf8'), 'App({})\n')
 fs.writeFileSync(path.join(result.destination, 'manual-note.txt'), 'preserve me')
 put('miniprogram/app.js', 'App({ updated: true })\n')
+put('release-manifest.json', JSON.stringify({ ...releaseManifest, releaseStatus: 'released' }))
 const next = buildPackage(source, { skipSafetyForTest: true })
 assert.strictEqual(next.previousPackageRetained, true)
 const backups = fs.readdirSync(path.join(source, '.local/import-backups'))
@@ -69,4 +106,4 @@ try {
   process.chdir(folder)
   assert.strictEqual(buildPackage(source).fileCount, 3)
 } finally { process.chdir(originalCwd) }
-console.log('WeChat package tests passed: runtime allowlist, private config guard, contained paths, source-bound scan, recoverable replacement, no bootstrap')
+console.log('WeChat package tests passed: release manifest gate before config reads/writes, runtime allowlist, private config guard, contained paths, source-bound scan, recoverable replacement, no bootstrap')

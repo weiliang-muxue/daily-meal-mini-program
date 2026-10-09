@@ -87,10 +87,99 @@ async function run() {
   p.render(); p.search({ detail: { value: lastIngredient } }); p.select(event(ID))
   assert.strictEqual(p.data.filtered.length, 1, 'search includes ingredients beyond the short text summary')
   assert(p.data.selected.recipe.displayIngredients.includes(lastIngredient), 'review must display every structured ingredient')
+  const originalInit = store.init
+  const deferred = () => {
+    let resolve, reject
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+  }
+  try {
+    p = await page()
+    let pendingLoad = deferred()
+    store.init = () => pendingLoad.promise
+    let loading = p.load(); await Promise.resolve()
+    p.onHide(); pendingLoad.resolve(store.data); await loading; p.onShow()
+    assert.strictEqual(p.data.loading, false, 'a load completed while hidden must not freeze the returned page')
+    assert.strictEqual(p.data.count, 1)
+    assert.strictEqual(writes.length, 0)
+
+    pendingLoad = deferred(); loading = p.load(); await Promise.resolve()
+    p.onHide(); p.onShow()
+    assert.strictEqual(p.data.loading, true, 'returning before sync completes must not expose ready controls')
+    pendingLoad.resolve(store.data); await loading
+    assert.strictEqual(p.data.loading, false)
+
+    pendingLoad = deferred(); loading = p.load(); await Promise.resolve()
+    p.onHide(); pendingLoad.reject(new Error('synthetic hidden failure')); await loading; p.onShow()
+    assert.strictEqual(p.data.loading, false)
+    assert(p.data.error.includes('重试'))
+    store.init = originalInit; await p.load()
+    assert.strictEqual(p.data.error, '')
+
+    const oldLoad = deferred(), newLoad = deferred()
+    let loads = 0
+    store.init = () => (++loads === 1 ? oldLoad.promise : newLoad.promise)
+    const firstLoad = p.load(); await Promise.resolve()
+    const secondLoad = p.load(); await Promise.resolve()
+    oldLoad.reject(new Error('synthetic stale failure')); await firstLoad
+    assert.strictEqual(p.data.loading, true, 'an old failure cannot finish the newer refresh')
+    assert.strictEqual(p.data.error, '', 'an old failure cannot replace newer feedback')
+    newLoad.resolve(store.data); await secondLoad
+    assert.strictEqual(p.data.loading, false)
+
+    pendingLoad = deferred(); store.init = () => pendingLoad.promise
+    loading = p.load(); await Promise.resolve(); p.onUnload()
+    const unloadedData = copy(p.data)
+    pendingLoad.resolve(store.data); await loading
+    assert.deepStrictEqual(p.data, unloadedData, 'loading completion cannot update an unloaded page')
+  } finally { store.init = originalInit }
+  const originalModal = wx.showModal
+  try {
+    for (const confirmed of [false, true]) {
+      p = await page(); p.select(event(ID))
+      let modal
+      wx.showModal = options => { modal = options }
+      const pending = p.removeFavorite()
+      assert.strictEqual(p.data.busy, true)
+      p.onHide(); p.onShow()
+      assert.strictEqual(p.data.busy, false, 'leaving a pending prompt cannot lock the returned page')
+      modal.success({ confirm: confirmed }); await pending
+      assert.strictEqual(writes.length, 0, 'a prompt from before leaving cannot remove a favorite')
+      assert.strictEqual(p.data.count, 1)
+    }
+    p = await page(); p.select(event(ID))
+    wx.showModal = () => { throw new Error('synthetic modal startup failure') }
+    await assert.doesNotReject(p.removeFavorite())
+    assert.strictEqual(p.data.busy, false)
+    assert(p.data.error.includes('重试'))
+    assert.strictEqual(writes.length, 0)
+    p = await page(); p.select(event(ID))
+    wx.showModal = options => options.fail({ errMsg: 'synthetic failure' })
+    await p.removeFavorite()
+    assert.strictEqual(p.data.busy, false)
+    assert(p.data.error.includes('重试'))
+    assert.strictEqual(writes.length, 0)
+    // A late old callback must not unlock or confirm a newer visible prompt.
+    p = await page(); p.select(event(ID))
+    const prompts = []
+    wx.showModal = options => prompts.push(options)
+    const first = p.removeFavorite()
+    p.onHide(); p.onShow()
+    const second = p.removeFavorite()
+    assert.strictEqual(prompts.length, 2)
+    prompts[0].success({ confirm: true }); await first
+    assert.strictEqual(p.data.busy, true)
+    assert.strictEqual(writes.length, 0)
+    prompts[1].success({ confirm: false }); await second
+    assert.strictEqual(p.data.busy, false)
+    assert.strictEqual(writes.length, 0)
+  } finally { wx.showModal = originalModal }
   let finish
   p = await page({ mealId: 'meal-0-breakfast' }, false)
   write = () => new Promise(resolve => { finish = resolve })
   const waiting = p.saveFavorite(); await p.saveFavorite(); assert.strictEqual(writes.length, 1, 'double tap is blocked')
+  p.onHide(); p.onShow()
+  assert.strictEqual(p.data.busy, true, 'leaving an already dispatched write must not unlock another write')
   p.onUnload(); finish(store.data); await waiting; assert.strictEqual(p.data.notice, '', 'late callback after unload must not claim success')
   const source = fs.readFileSync(path.resolve(__dirname, '../miniprogram/pages/recipe-library/recipe-library.wxml'), 'utf8')
   const css = fs.readFileSync(path.resolve(__dirname, '../miniprogram/pages/recipe-library/recipe-library.wxss'), 'utf8')

@@ -26,6 +26,7 @@ Page({
     this.unsubscribe = membershipStore.onCacheNamespaceChange(namespace => {
       if (!this.namespace || namespace === this.namespace) return
       this.identityChanged = true
+      this.removePrompt = null
       this.previewState = null
       if (!this.unloaded) this.setData({ favorites: [], filtered: [], capture: null, selected: null, targets: [], preview: null,
         count: 0, query: '', reviewed: false, loading: false, busy: false, notice: '', error: '账号已变化，请返回餐单后重新进入' })
@@ -33,8 +34,14 @@ Page({
     return this.load()
   },
   onShow() { this.active = true; this.refreshNavigation(); if (this.namespace && !this.data.loading && this.current()) this.render() },
-  onHide() { this.active = false; this.previewState = null; this.setData({ preview: null, reviewed: false }) },
-  onUnload() { this.unloaded = true; this.active = false; if (this.unsubscribe) this.unsubscribe() },
+  onHide() {
+    this.active = false; this.previewState = null
+    // Abandon only an unanswered prompt, not a write already sent to the server.
+    const wasPrompting = Boolean(this.removePrompt)
+    this.removePrompt = null
+    this.setData({ preview: null, reviewed: false, ...(wasPrompting ? { busy: false } : {}) })
+  },
+  onUnload() { this.unloaded = true; this.active = false; this.removePrompt = null; if (this.unsubscribe) this.unsubscribe() },
   current() { return !this.unloaded && !this.identityChanged && this.active && userStore.isCurrentNamespace(this.namespace) },
   async load() {
     if (this.identityChanged || this.data.busy) return
@@ -49,8 +56,13 @@ Page({
       if (!this.current() || epoch !== this.loadEpoch) return
       this.render()
     } catch (error) {
+      if (this.unloaded || this.identityChanged || epoch !== this.loadEpoch) return
       if (this.current()) { this.render(); this.setData({ error: error.message || '收藏暂时无法加载，请重试' }) }
       else if (!this.unloaded && !this.identityChanged) this.setData({ loading: false, error: '收藏暂时无法加载，请返回重试' })
+    } finally {
+      // A hidden page may finish syncing without rendering. Release only this
+      // load so onShow can render it; stale loads must not unlock a newer one.
+      if (!this.unloaded && !this.identityChanged && epoch === this.loadEpoch) this.setData({ loading: false })
     }
   },
   render() {
@@ -95,12 +107,22 @@ Page({
   async removeFavorite() {
     if (!this.data.selected || this.data.busy || !this.current() || this.data.offline) return
     const selected = this.data.selected, revision = userStore.data.stateRevision
-    this.setData({ busy: true })
-    const confirmed = await new Promise(resolve => wx.showModal({ title: '移除这条收藏？',
-      content: '只移除收藏副本，已经安排的餐食和历史记录不受影响。', confirmText: '移除收藏',
-      success: result => resolve(result.confirm), fail: () => resolve(false) }))
+    const prompt = {}; this.removePrompt = prompt
+    this.setData({ busy: true, error: '' })
+    let failed = false
+    const confirmed = await new Promise(resolve => {
+      const fail = () => { failed = true; resolve(false) }
+      try { wx.showModal({ title: '移除这条收藏？',
+        content: '只移除收藏副本，已经安排的餐食和历史记录不受影响。', confirmText: '移除收藏',
+        success: result => resolve(Boolean(result && result.confirm)), fail }) } catch (_) { fail() }
+    })
+    // Leaving and returning, identity changes and a newer prompt invalidate this
+    // response. An old callback must neither write nor unlock another action.
+    if (this.removePrompt !== prompt) return
+    this.removePrompt = null
     if (!this.current()) return
     this.setData({ busy: false })
+    if (failed) { this.setData({ error: '暂时无法打开确认，请重试' }); return }
     if (confirmed) await this.write('removeFavorite', { favoriteId: selected.id }, revision, '收藏已移除')
   },
   previewFavorite() {

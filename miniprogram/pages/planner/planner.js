@@ -427,6 +427,8 @@ Page({
   },
 
   onLoad(options = {}) {
+    this.unloaded = false
+    this.generationEpoch = 0
     try { this.replacementScope = replacementView.routeScope(options) }
     catch (error) { this.replacementRouteError = error.message }
     this.refreshPageNavigation()
@@ -477,6 +479,7 @@ Page({
   },
 
   onHide() {
+    this.generationEpoch = Number(this.generationEpoch || 0) + 1
     this.pageActive = false
     this.formControlActive = false
     this.keyboardHeight = 0
@@ -492,6 +495,8 @@ Page({
   },
 
   onUnload() {
+    this.unloaded = true
+    this.generationEpoch = Number(this.generationEpoch || 0) + 1
     this.pageActive = false
     this.formControlActive = false
     this.keyboardHeight = 0
@@ -523,6 +528,7 @@ Page({
       if (this.formNamespace !== userStore.namespace) {
         this.cookingDraft = null
         this.cookingErrors = null
+        this.pendingStart = null
       }
       this.formNamespace = userStore.namespace
       this.replacementContext = this.replacementScope ? replacementView.createContext(state, this.replacementScope) : null
@@ -1313,8 +1319,38 @@ Page({
     }
   },
 
+  captureStartContext() {
+    const context = { namespace: this.formNamespace, epoch: Number(this.generationEpoch || 0) }
+    this.assertStartContext(context)
+    return context
+  },
+
+  assertStartContext(context, dispatched = false) {
+    if (!context || !context.namespace || context.namespace !== this.formNamespace
+      || context.namespace !== userStore.namespace || (!dispatched
+        && (!this.pageActive || this.unloaded || context.epoch !== Number(this.generationEpoch || 0)))) {
+      const error = new Error('页面或登录身份已变化，请重新进入定制页并确认；当前餐单没有改变。')
+      error.code = 'GENERATION_CONTEXT_CHANGED'
+      throw error
+    }
+  },
+
+  handleStartError(error) {
+    if (error && error.code === 'GENERATION_CONTEXT_CHANGED') {
+      this.pendingStart = null
+      this.stopTaskLoop()
+      if (!this.unloaded) this.setData({ generating: false, canceling: false,
+        aiDataConsentAccepted: false, taskCanRetry: false, pageError: error.message })
+      return
+    }
+    if (!this.unloaded) this.markTaskInterrupted(error)
+  },
+
   async generatePlan() {
     if (this.data.generating || this.replacementRouteError || this.data.pageError) return
+    let startContext
+    try { startContext = this.captureStartContext() }
+    catch (error) { this.handleStartError(error); return }
     if (this.replacementContext && userStore.data.draftPlan) return wx.navigateTo({ url: PREVIEW_URL })
     for (let step = 0; step < STEP_TITLES.length - 1; step += 1) {
       const error = this.validateStep(step)
@@ -1348,10 +1384,13 @@ Page({
       const preferences = normalizePreferences(this.data.preferences)
       const saved = this.replacementContext ? await userStore.flush()
         : await userStore.patch({ generationPreferences: preferences }, { immediate: true })
+      this.assertStartContext(startContext)
       if (this.replacementContext) this.assertReplacementStart(saved, preferences)
       const clientRequestId = await createClientRequestId()
+      this.assertStartContext(startContext)
       if (this.replacementContext) this.assertReplacementStart(userStore.data, preferences)
       this.pendingStart = {
+        namespace: startContext.namespace,
         preferences,
         expectedStateRevision: saved.stateRevision,
         clientRequestId,
@@ -1367,10 +1406,12 @@ Page({
         this.pendingStart.providerRevision,
         ...(this.pendingStart.replacement ? [this.pendingStart.replacement] : []),
       )
+      this.assertStartContext(startContext, true)
       this.pendingStart = null
+      if (this.unloaded) return
       await this.applyTaskResponse(response)
     } catch (error) {
-      this.markTaskInterrupted(error)
+      this.handleStartError(error)
     }
   },
 
@@ -1385,6 +1426,10 @@ Page({
       }
       this.setData({ generating: true, taskInterrupted: false, taskCanRetry: false })
       try {
+        const startContext = this.captureStartContext()
+        if (this.pendingStart.namespace !== startContext.namespace) {
+          this.assertStartContext({ namespace: this.pendingStart.namespace })
+        }
         if (this.pendingStart.replacement) this.assertReplacementStart(userStore.data, this.pendingStart.preferences)
         const response = await aiPlanner.start(
           this.pendingStart.preferences,
@@ -1394,10 +1439,12 @@ Page({
           this.pendingStart.providerRevision,
           ...(this.pendingStart.replacement ? [this.pendingStart.replacement] : []),
         )
+        this.assertStartContext(startContext, true)
         this.pendingStart = null
+        if (this.unloaded) return
         await this.applyTaskResponse(response)
       } catch (error) {
-        this.markTaskInterrupted(error)
+        this.handleStartError(error)
       }
       return
     }

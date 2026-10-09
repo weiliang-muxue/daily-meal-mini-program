@@ -683,7 +683,64 @@ async function testPrivateFavoritesTransactions() {
   } finally { cloudStub.getWXContext = originalContext }
 }
 
+async function testPublicSchemaHandshake() {
+  const actions = ['bootstrap', 'saveState', 'confirmDraft', 'confirmMealReplacement', 'restoreHistory',
+    'discardDraft', 'addFavorite', 'removeFavorite', 'applyFavorite']
+  const originalContext = cloudStub.getWXContext
+  const originalTransaction = database.runTransaction
+  let transactions = 0
+  cloudStub.getWXContext = () => ({ OPENID: owner })
+  database.runTransaction = callback => { transactions += 1; return originalTransaction(callback) }
+  try {
+    for (const storedSchema of [null, 8, 13]) {
+      for (const action of actions) {
+        for (const version of [undefined, null, 0, 8, 9, 10, 11, 12, 14, '13', 13.1, true]) {
+          reset({ ...currentState(7), schemaVersion: storedSchema })
+          if (storedSchema === null) collectionStore('meal_user_states').delete(owner)
+          const before = get('meal_user_states', owner)
+          const count = transactions
+          const reply = await userData.main({ action, clientSchemaVersion: version,
+            expectedCacheNamespace: cacheNamespace, expectedStateRevision: 7,
+            expectedDraftPlanId: 'draft', planId: 'history', state: { selectedDay: 1 } })
+          assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED', `${action}: incompatible client must be rejected`)
+          assert.strictEqual(transactions, count, `${action}: incompatible client must not enter a state transaction`)
+          assert.deepStrictEqual(get('meal_user_states', owner), before, `${action}: state must remain untouched`)
+        }
+      }
+    }
+    const source = { ...currentState(7), schemaVersion: 8 }
+    reset(source)
+    const first = await userData.main({ action: 'bootstrap', clientSchemaVersion: 13, expectedCacheNamespace: cacheNamespace })
+    assert.strictEqual(first.success, true)
+    assert.strictEqual(first.data.schemaVersion, 13)
+    assert.strictEqual(first.data.stateRevision, 7)
+    assertNestedFuture(first.data)
+    assert.deepStrictEqual(first.data.activePlan, userData._test.migrateStored(source).activePlan)
+    assert.deepStrictEqual(first.data.planHistory, userData._test.migrateStored(source).planHistory)
+    const migrated = get('meal_user_states', owner)
+    const again = await userData.main({ action: 'bootstrap', clientSchemaVersion: 13, expectedCacheNamespace: cacheNamespace })
+    assert.strictEqual(again.success, true)
+    assert.deepStrictEqual(get('meal_user_states', owner), migrated, 'current-client bootstrap must remain idempotent')
+    for (const action of ['confirmDraft', 'discardDraft', 'restoreHistory']) {
+      reset(currentState(7))
+      const reply = await userData.main({ action, clientSchemaVersion: 13,
+        expectedCacheNamespace: cacheNamespace, expectedStateRevision: 7,
+        expectedDraftPlanId: 'draft', planId: 'history' })
+      assert.strictEqual(reply.success, true, `${action}: supported client remains usable`)
+      assert.strictEqual(reply.data.stateRevision, 8)
+    }
+    const unsupported = await userData.main({ action: 'unknown' })
+    assert.strictEqual(unsupported.code, 'UNSUPPORTED_ACTION')
+    cloudStub.getWXContext = () => ({})
+    assert.strictEqual((await userData.main({ action: 'bootstrap', clientSchemaVersion: 13 })).code, 'IDENTITY_REQUIRED')
+  } finally {
+    cloudStub.getWXContext = originalContext
+    database.runTransaction = originalTransaction
+  }
+}
+
 ;(async () => {
+  await testPublicSchemaHandshake()
   await testIndependentDietaryPreferenceTransactions()
   await testPrivateFavoritesTransactions()
   await testCookingConditionsAndPantryTransactions()

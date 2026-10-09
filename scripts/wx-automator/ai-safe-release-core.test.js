@@ -205,6 +205,16 @@ test('pins the release probe contract and carries the public provider revision i
   assert.equal(RELEASE_COMPATIBILITY.stateSchemaVersion, require('../../shared/user-state').CURRENT_SCHEMA)
   assert.equal((probeSource.match(/action: 'saveState', clientSchemaVersion: state\.releaseCompatibility\.stateSchemaVersion/g) || []).length, 3,
     'probe test-save, retry and cleanup must send the state schema marker')
+  assert.equal((probeSource.match(/action: 'bootstrap', clientSchemaVersion: state\.releaseCompatibility\.stateSchemaVersion/g) || []).length, 2,
+    'worker and recovery reads must send the schema marker before any migration')
+  assert.equal((probeSource.match(/action: 'discardDraft', clientSchemaVersion: state\.releaseCompatibility\.stateSchemaVersion/g) || []).length, 1,
+    'cleanup must bind the schema to the persisted discard request')
+  const mutationGuard = /name === 'userData' && \[([\s\S]*?)\]\.includes\(action\)/.exec(probeSource)
+  assert.ok(mutationGuard)
+  for (const action of ['bootstrap', 'saveState', 'confirmDraft', 'restoreHistory', 'discardDraft',
+    'confirmMealReplacement', 'addFavorite', 'removeFavorite', 'applyFavorite']) {
+    assert.ok(mutationGuard[1].includes(`'${action}'`), `concurrent ${action} must stop the probe`)
+  }
   assert.match(probeSource, /baseline\.data\.schemaVersion !== state\.releaseCompatibility\.stateSchemaVersion/)
   assert.match(probeSource, /state\.providerRevision = service\.data\.providerRevision/)
   assert.match(probeSource, /providerRevision:\s*state\.providerRevision/)

@@ -58,6 +58,26 @@ function assertNoCredentials(bytes) {
   }
 }
 
+function readReleaseManifest(source) {
+  let manifest
+  try {
+    manifest = JSON.parse(fs.readFileSync(assertPlainFile(source, 'release-manifest.json'), 'utf8'))
+  } catch (_) { throw new Error('PACKAGE_RELEASE_MANIFEST_INVALID') }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error('PACKAGE_RELEASE_MANIFEST_INVALID')
+  }
+  // This destination carries the real local environment configuration. Use
+  // isolated UI fixtures for development, never this formal import package.
+  // This is a minimum guard, not evidence of cloud/device acceptance or release.
+  if (!['release-candidate', 'released'].includes(manifest.releaseStatus)
+    || typeof manifest.workingVersion !== 'string'
+    || manifest.workingVersion.trim() !== manifest.workingVersion
+    || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(manifest.workingVersion)) {
+    throw new Error('PACKAGE_RELEASE_NOT_READY')
+  }
+  return manifest
+}
+
 function buildPackage(sourceRoot, options = {}) {
   const source = fs.realpathSync(path.resolve(sourceRoot))
   if (path.basename(source) !== '源码仓库') throw new Error('PACKAGE_SOURCE_DIRECTORY_REQUIRED')
@@ -66,6 +86,9 @@ function buildPackage(sourceRoot, options = {}) {
   if (fs.existsSync(destination) && fs.readdirSync(destination).length && !fs.existsSync(path.join(destination, MARKER))) {
     throw new Error('PACKAGE_TARGET_NOT_GENERATED')
   }
+  // Fail before scanning/copying configuration, creating staging directories,
+  // or moving the existing package. Test-only safety skipping cannot skip this.
+  const manifest = readReleaseManifest(source)
   // Refuse to read/copy unreviewed public source. Local deployment config is
   // handled separately and remains outside Git and the public manifest digest.
   if (!options.skipSafetyForTest) {
@@ -79,7 +102,6 @@ function buildPackage(sourceRoot, options = {}) {
   const files = git('ls-files', '-z', '--cached', '--others', '--exclude-standard')
     .split('\0').filter(runtimeFile).sort()
   const uniqueFiles = [...new Set(files)]
-  const manifest = JSON.parse(fs.readFileSync(path.join(source, 'release-manifest.json'), 'utf8'))
   const runId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
   const staging = path.join(source, '.local', 'package-builds', runId)
   const backup = path.join(source, '.local', 'import-backups', runId)
