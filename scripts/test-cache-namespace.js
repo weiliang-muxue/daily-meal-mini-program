@@ -1561,7 +1561,43 @@ async function testWaterReminderPendingRetriesWithoutVersionInflation() {
   assert.strictEqual(Object.prototype.hasOwnProperty.call(storage.get(pending).fields, 'waterReminder'), false)
 }
 
+async function testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits() {
+  const key = `meal_user_state_v3_${namespaceA}`, pendingKey = `meal_user_pending_v1_${namespaceA}`
+  const activePlan = userPlan('structured-edit', 'structured-oats', 1)
+  activePlan.shoppingGroups = [{ id: 'structured-group', name: '其他', items: [{ id: 'structured-oats', name: 'Ingredient', amount: '1 item' }] }]
+  const mealId = activePlan.days[0].meals[0].id
+  storage.set(key, { ...stateWithPlan(activePlan), checkedShoppingIds: ['structured-oats'] })
+  storage.delete(pendingKey)
+  const store = new UserStore(new FakeMembershipStore(namespaceA))
+  store.bindNamespace()
+  const before = JSON.parse(JSON.stringify(store.data))
+  const invalid = { ...mealOverride('Invalid'), ingredientItems: [{ name: 'Ingredient', quantity: 0, unit: 'item', category: '其他' }] }
+  await assert.rejects(async () => store.setMealOverride(mealId, invalid, { localOnly: true }))
+  assert.deepStrictEqual(store.data, before, 'invalid writes must not reset current state to defaults')
+  const value = { ...mealOverride('Edited'), ingredientItems: [{ name: 'Ingredient', quantity: 2, unit: 'item', category: '其他' }] }
+  cloudHandler = async () => { throw new Error('offline') }
+  await assert.rejects(store.setMealOverride(mealId, value), /offline/)
+  assert.deepStrictEqual(store.data.checkedShoppingIds, [])
+  assert.deepStrictEqual(storage.get(pendingKey).mealOverrideOperations[mealId].value.ingredientItems, value.ingredientItems)
+  const restarted = new UserStore(new FakeMembershipStore(namespaceA))
+  restarted.bindNamespace()
+  assert.deepStrictEqual(restarted.data.mealOverrides[mealId].ingredientItems, value.ingredientItems)
+  // A second edit with the same timestamp must still produce a new pending operation.
+  const revised = { ...value, ingredientItems: [{ ...value.ingredientItems[0], quantity: 3 }] }
+  await restarted.setMealOverride(mealId, revised, { localOnly: true })
+  assert.strictEqual(storage.get(pendingKey).mealOverrideOperations[mealId].value.ingredientItems[0].quantity, 3)
+  cloudHandler = async (_name, action, payload) => {
+    assert.strictEqual(action, 'saveState')
+    assert.strictEqual(payload.clientSchemaVersion, 9)
+    return { ...restarted.data, ...payload.state, stateRevision: 1 }
+  }
+  await restarted.flush()
+  assert.strictEqual(Object.keys(storage.get(pendingKey).mealOverrideOperations).length, 0)
+  assert.strictEqual(restarted.data.mealOverrides[mealId].ingredientItems[0].quantity, 3)
+}
+
 async function main() {
+  await testStructuredOverrideSurvivesOfflineRestartAndInvalidEdits()
   await testColdStartRequiresOnlineStatus()
   await testVerifiedIdentityReconcilesOnlyStalePrivateCaches()
   await testLatestIdentityResponseWins()

@@ -377,20 +377,20 @@ async function testMigrations() {
     raw.settings.futureServerSetting = { fromSchema: schemaVersion }
     raw.generationPreferences.futureServerPreference = { fromSchema: schemaVersion }
     const migrated = userData._test.migrateStored(raw)
-    assert.strictEqual(migrated.schemaVersion, 8)
+    assert.strictEqual(migrated.schemaVersion, 9)
     assert.strictEqual(migrated.waterReminder.enabled, false)
     assert.deepStrictEqual(migrated.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(migrated.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     reset(raw)
     const bootstrapped = await userData._test.bootstrap(owner, cacheNamespace)
     const stored = get('meal_user_states', owner)
-    assert.strictEqual(bootstrapped.schemaVersion, 8)
+    assert.strictEqual(bootstrapped.schemaVersion, 9)
     assert.strictEqual(bootstrapped.waterReminder.enabled, false)
     assert.deepStrictEqual(stored.settings.futureServerSetting, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.generationPreferences.futureServerPreference, { fromSchema: schemaVersion })
     assert.deepStrictEqual(stored.activePlan.futurePlanField, { value: 'active-future' })
   }
-  const unsupported = { ...currentState(), schemaVersion: 9 }
+  const unsupported = { ...currentState(), schemaVersion: 10 }
   reset(unsupported)
   await assert.rejects(
     userData._test.bootstrap(owner, cacheNamespace),
@@ -476,7 +476,42 @@ async function testCacheNamespaceGenerationGuard() {
   })
 }
 
+async function testStructuredMealShoppingSave() {
+  const source = currentState(4)
+  source.activePlan.shoppingGroups = [{ id: 'test-group', name: '其他', items: [
+    { id: 'oats', name: 'Oats', amount: '280 g' }, { id: 'eggs', name: 'Eggs', amount: '1 个' },
+  ] }]
+  source.activePlan.days[0].meals[0].ingredients.push({ name: 'Eggs', quantity: 1, unit: '个', category: '其他' })
+  source.checkedShoppingIds = ['oats', 'eggs']
+  reset(source)
+  const value = { title: 'Changed', ingredients: 'Oats 80 g', method: 'Cook', tag: '', updatedAt: '2026-10-09T00:00:00.000Z',
+    ingredientItems: [{ name: 'Oats', quantity: 80, unit: 'g', category: '其他' }, { name: 'Eggs', quantity: 1, unit: '个', category: '其他' }] }
+  const saved = await userData._test.saveState(owner, { mealOverrides: { 'active-meal-0': value }, checkedShoppingIds: ['oats', 'eggs'] }, 4, cacheNamespace)
+  assert.deepStrictEqual(saved.checkedShoppingIds, ['eggs'], 'server independently resets affected marks even when client sends old checked IDs')
+  assert.deepStrictEqual(saved.activePlan, userData._test.migrateStored(source).activePlan)
+  assert.deepStrictEqual(saved.planHistory, userData._test.migrateStored(source).planHistory)
+  assert.deepStrictEqual(saved.mealOverrides['active-meal-0'].ingredientItems, value.ingredientItems)
+  assertNestedFuture(saved)
+  const beforeInvalid = get('meal_user_states', owner)
+  await assert.rejects(userData._test.saveState(owner, { mealOverrides: { 'active-meal-0': { ...value, ingredientItems: [{ ...value.ingredientItems[0], quantity: -1 }] } } }, 5, cacheNamespace))
+  assert.deepStrictEqual(get('meal_user_states', owner), beforeInvalid)
+
+  const originalContext = cloudStub.getWXContext
+  cloudStub.getWXContext = () => ({ OPENID: owner })
+  try {
+    for (const clientSchemaVersion of [undefined, 8, 10]) {
+      const reply = await userData.main({ action: 'saveState', clientSchemaVersion, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
+      assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED')
+      assert.deepStrictEqual(get('meal_user_states', owner), beforeInvalid)
+    }
+    const reply = await userData.main({ action: 'saveState', clientSchemaVersion: 9, expectedStateRevision: 5, expectedCacheNamespace: cacheNamespace, state: { mealOverrides: {} } })
+    assert.strictEqual(reply.success, true)
+    assert.deepStrictEqual(reply.data.checkedShoppingIds, ['eggs'])
+  } finally { cloudStub.getWXContext = originalContext }
+}
+
 ;(async () => {
+  await testStructuredMealShoppingSave()
   await testBootstrapAndSave()
   await testDurationPersistenceBoundaries()
   await testPlanActions()

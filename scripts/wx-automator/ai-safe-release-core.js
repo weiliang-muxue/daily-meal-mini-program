@@ -13,6 +13,7 @@ const RECOVERY_JOURNAL_KEYS = [
   'recoveryAttempt', 'schemaVersion', 'updatedAtMs',
 ]
 const RELEASE_COMPATIBILITY = Object.freeze({
+  stateSchemaVersion: 9,
   contractVersion: 2,
   plannerVersion: '7',
   aiDataConsentVersion: 2,

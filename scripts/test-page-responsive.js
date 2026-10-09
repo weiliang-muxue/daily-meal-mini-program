@@ -302,4 +302,19 @@ assert.strictEqual(historyTitle['overflow-wrap'], 'anywhere', '历史餐单长�
 assert.strictEqual(sourceBadge['max-width'], '100%', '历史餐单来源徽标不得撑宽卡片')
 assert.strictEqual(sourceBadge['overflow-wrap'], 'anywhere', '历史餐单来源徽标必须允许安全换行')
 
+for (const viewport of [...portraitViewports, landscapeViewport]) {
+  const ingredientInput = computedStyle(pageRules.mealEdit, '.ingredient-editor input', viewport)
+  const ingredientCell = computedStyle(pageRules.mealEdit, '.ingredient-input-cell', viewport)
+  assert(lengthToPx(ingredientInput['min-height'], viewport.width) >= 48, '食材编辑输入必须保留 48px 高度')
+  assert.strictEqual(ingredientInput['box-sizing'], 'border-box', '食材输入边框及内边距不得额外撑宽')
+  assert.strictEqual(ingredientCell['min-width'], '0', '数量和单位列必须允许窄屏收缩')
+  for (const selector of ['.ingredient-remove', '.ingredient-add']) {
+    assert(lengthToPx(computedStyle(pageRules.mealEdit, selector, viewport)['min-height'], viewport.width) >= 48)
+  }
+}
+for (const field of ['name', 'quantity', 'unit', 'category']) {
+  assert(mealEditMarkup.includes(`data-field="${field}"`), `食材编辑必须暴露 ${field}`)
+}
+assert(mealEditMarkup.includes('bindtap="confirmSave"') && mealEditMarkup.includes('bindtap="cancelPreview"'))
+
 console.log('page responsive container tests passed')

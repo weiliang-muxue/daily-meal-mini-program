@@ -1,7 +1,8 @@
 'use strict'
 
 const { callFunction } = require('../utils/cloud')
-const { defaults, migrate, sanitizeGenerationPreferences, sanitizeWaterReminder } = require('./user-state-core')
+const { CURRENT_SCHEMA, defaults, migrate, sanitizeGenerationPreferences, sanitizeWaterReminder } = require('./user-state-core')
+const { reconcileChecks } = require('./meal-shopping')
 const { membershipStore } = require('./membership-store')
 
 const CACHE_PREFIX = 'meal_user_state_v3_'
@@ -101,6 +102,7 @@ function sameMealOverride(left, right) {
   if (!left || !right) return left === right
   return ['title', 'ingredients', 'method', 'tag', 'updatedAt']
     .every((key) => left[key] === right[key])
+    && JSON.stringify(left.ingredientItems || null) === JSON.stringify(right.ingredientItems || null)
 }
 
 function normalizeMealOverrideOperations(source, cachedState) {
@@ -463,8 +465,10 @@ class UserStore {
     if (allowed.generationPreferences) allowed.generationPreferences = sanitizeGenerationPreferences(allowed.generationPreferences)
     if (allowed.waterReminder) allowed.waterReminder = sanitizeWaterReminder(allowed.waterReminder)
     if (!Object.keys(allowed).length) return Promise.resolve(this.data)
-    const before = normalize(this.data)
-    this.data = normalize({ ...before, ...allowed, updatedAt: new Date().toISOString() })
+    // Reject an invalid edit before touching memory/cache/pending operations.
+    // Falling back to defaults here would silently discard a valid current plan.
+    const before = normalizeStrict(this.data)
+    this.data = normalizeStrict({ ...before, ...allowed, updatedAt: new Date().toISOString() })
     this.localRevision += 1
     const revision = this.localRevision
     PENDING_VALUE_FIELDS.forEach((key) => {
@@ -567,6 +571,7 @@ class UserStore {
       const savedLocalRevision = this.localRevision
       try {
         const data = await callFunction('userData', 'saveState', {
+          clientSchemaVersion: CURRENT_SCHEMA,
           state: editableSnapshot(snapshot),
           expectedStateRevision: snapshot.stateRevision,
           expectedCacheNamespace: namespace,
@@ -605,7 +610,8 @@ class UserStore {
     const mealOverrides = { ...(this.data.mealOverrides || {}) }
     if (value === null) delete mealOverrides[mealId]
     else mealOverrides[mealId] = value
-    return this.patch({ mealOverrides }, options)
+    const next = reconcileChecks(this.data, { ...this.data, mealOverrides })
+    return this.patch({ mealOverrides, checkedShoppingIds: next.checkedShoppingIds, planUiStateByPlan: next.planUiStateByPlan }, options)
   }
 
   async confirmDraft(expectedDraftPlanId) {

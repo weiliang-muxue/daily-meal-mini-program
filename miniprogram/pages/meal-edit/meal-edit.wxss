@@ -40,3 +40,15 @@
 .contract-copy { display: block; margin-top: 6rpx; }
 .save { margin-top: 28rpx; }
 .reset { margin-top: 18rpx; }
+.ingredient-editor { margin-top: 24rpx; padding-top: 24rpx; border-top: 1rpx solid var(--line); }
+.ingredient-editor label { display: block; margin: 12rpx 0; font-size: 14px; color: var(--ink); }
+.ingredient-editor input { box-sizing: border-box; width: 100%; min-height: 48px; padding: 12rpx 16rpx; border: 1rpx solid var(--line-strong); border-radius: var(--radius-control); background: var(--input-surface); color: var(--ink); font-size: 16px; }
+.ingredient-input-row { display: flex; gap: 16rpx; }
+.ingredient-input-cell { flex: 1; min-width: 0; }
+.ingredient-remove, .ingredient-add { margin-top: 20rpx; min-height: 48px; white-space: normal; }
+.legacy-note { display: block; margin-top: 16rpx; color: var(--muted-strong); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.preview-card { margin-top: 24rpx; padding: 24rpx; }
+.preview-change { padding: 16rpx 0; border-bottom: 1rpx solid var(--line); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.inline-error { display: block; margin-top: 20rpx; padding: 20rpx; border: 1rpx solid var(--danger-line); color: var(--danger); background: var(--danger-soft); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.field input, .field textarea { box-sizing: border-box; }
+@media (prefers-reduced-motion: reduce) { .ingredient-editor, .preview-card { transition: none; } }

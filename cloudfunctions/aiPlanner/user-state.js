@@ -1,6 +1,7 @@
 'use strict'
 
-const CURRENT_SCHEMA = 8
+const CURRENT_SCHEMA = 9
+const mealShopping = require('./meal-shopping')
 const CURRENT_AI_CONTRACT = 2
 const MAX_HISTORY = 64
 const MAX_PLAN_BYTES = 128 * 1024
@@ -565,16 +566,17 @@ function planDayIds(plan) {
   return new Set(plan ? plan.days.map((day) => day.id) : [])
 }
 
-function planShoppingIds(plan) {
+function planShoppingIds(plan, overrides) {
   const ids = new Set()
   if (plan) plan.shoppingGroups.forEach((group) => group.items.forEach((item) => ids.add(item.id)))
+  if (plan) mealShopping.shoppingIds(plan, overrides).forEach(id => ids.add(id))
   return ids
 }
 
-function sanitizePlanUiState(raw, plan, field) {
+function sanitizePlanUiState(raw, plan, field, overrides) {
   const value = isObject(raw) ? raw : {}
   const allowedDays = planDayIds(plan)
-  const allowedShopping = planShoppingIds(plan)
+  const allowedShopping = planShoppingIds(plan, overrides)
   const selectedDay = finiteInteger(value.selectedDay, `${field}.selectedDay`, 0, 31, 0)
   const fallbackDay = plan && plan.days[Math.max(0, Math.min(plan.days.length - 1, selectedDay))]
   const selectedDayId = cleanText(value.selectedDayId, `${field}.selectedDayId`, 120)
@@ -592,7 +594,7 @@ function sanitizePlanUiState(raw, plan, field) {
   }
 }
 
-function sanitizePlanUiStateByPlan(raw, plans) {
+function sanitizePlanUiStateByPlan(raw, plans, overrides) {
   if (raw !== undefined && raw !== null && !isObject(raw)) fail('planUiStateByPlan must be an object')
   const source = isObject(raw) ? raw : {}
   const byId = new Map(plans.filter(Boolean).map((plan) => [plan.id, plan]))
@@ -601,7 +603,7 @@ function sanitizePlanUiStateByPlan(raw, plans) {
   Object.entries(source).forEach(([rawPlanId, value], index) => {
     const planId = cleanText(rawPlanId, `planUiStateByPlan key ${index}`, 120, { required: true })
     const plan = byId.get(planId)
-    if (plan) result[planId] = sanitizePlanUiState(value, plan, `planUiStateByPlan.${planId}`)
+    if (plan) result[planId] = sanitizePlanUiState(value, plan, `planUiStateByPlan.${planId}`, overrides)
   })
   return result
 }
@@ -625,13 +627,21 @@ function sanitizeMealOverrides(raw, plans) {
   return Object.fromEntries(retained.map(([key, item], index) => {
     const id = cleanText(key, `mealOverrides key ${index}`, 120, { required: true })
     if (!isObject(item)) fail(`mealOverrides.${id} must be an object`)
-    return [id, {
+    const result = {
       title: cleanText(item.title, `mealOverrides.${id}.title`, 50),
       ingredients: cleanText(item.ingredients, `mealOverrides.${id}.ingredients`, 500),
       method: cleanText(item.method, `mealOverrides.${id}.method`, 500),
       tag: cleanText(item.tag, `mealOverrides.${id}.tag`, 80),
       updatedAt: optionalTimestamp(item.updatedAt, `mealOverrides.${id}.updatedAt`),
-    }]
+    }
+    if (item.ingredientItems !== undefined) {
+      if (!Array.isArray(item.ingredientItems) || !item.ingredientItems.length || item.ingredientItems.length > 30) fail('个人食材需要 1–30 项')
+      const plan = plans.filter(Boolean).find(p => mealShopping.allMeals(p).some(m => m.id === id))
+      if (!plan || mealShopping.allMeals(plan).some(m => !Array.isArray(m.ingredients))) fail('旧餐单缺少食材份量，请先使用新版定制餐单')
+      result.ingredientItems = item.ingredientItems.map((ingredient, i) => sanitizeIngredient(ingredient, `mealOverrides.${id}.ingredientItems[${i}]`))
+      if (result.ingredientItems.some(i => i.quantity <= 0)) fail('食材数量至少为 0.001')
+    }
+    return [id, result]
   }))
 }
 
@@ -684,7 +694,8 @@ function sanitizeState(raw, options = {}) {
   const planHistory = sanitizeHistory(value.planHistory)
   const plans = [activePlan, draftPlan, ...planHistory]
   const activePlanId = activePlan ? activePlan.id : cleanText(value.activePlanId, 'activePlanId', 120)
-  const planUiStateByPlan = sanitizePlanUiStateByPlan(value.planUiStateByPlan, plans)
+  const mealOverrides = sanitizeMealOverrides(value.mealOverrides, plans)
+  const planUiStateByPlan = sanitizePlanUiStateByPlan(value.planUiStateByPlan, plans, mealOverrides)
   if (activePlan) {
     planUiStateByPlan[activePlan.id] = sanitizePlanUiState({
       selectedDayId: value.selectedDayId,
@@ -692,7 +703,7 @@ function sanitizeState(raw, options = {}) {
       defaultDinnerMode: value.defaultDinnerMode === 'workout' || value.dinnerMode === 'workout' ? 'workout' : 'rest',
       dinnerModeByDay: value.dinnerModeByDay,
       checkedShoppingIds,
-    }, activePlan, `planUiStateByPlan.${activePlan.id}`)
+    }, activePlan, `planUiStateByPlan.${activePlan.id}`, mealOverrides)
   }
   const activeUi = activePlan ? planUiStateByPlan[activePlan.id] : {
     selectedDayId: cleanText(value.selectedDayId, 'selectedDayId', 120),
@@ -701,7 +712,6 @@ function sanitizeState(raw, options = {}) {
     dinnerModeByDay: sanitizeModes(value.dinnerModeByDay),
     checkedShoppingIds,
   }
-  const mealOverrides = sanitizeMealOverrides(value.mealOverrides, plans)
   Object.assign(result, {
     schemaVersion: CURRENT_SCHEMA,
     stateRevision: finiteInteger(value.stateRevision, 'stateRevision', 0, Number.MAX_SAFE_INTEGER - 1, 0),
@@ -737,7 +747,7 @@ function migrate(raw = {}, options = {}) {
     fail('User state was created by a newer app version; update before continuing', 'STATE_SCHEMA_UNSUPPORTED')
   }
   const candidate = { ...value, schemaVersion: CURRENT_SCHEMA }
-  if (sourceSchema < CURRENT_SCHEMA) {
+  if (sourceSchema < 8) {
     candidate.waterReminder = defaultWaterReminder()
     const legacyPreferences = isObject(value.generationPreferences) ? value.generationPreferences : {}
     candidate.generationPreferences = {
@@ -789,7 +799,7 @@ function prependHistory(history, plan, excludedId) {
 
 function activatePlanUiState(state, plan) {
   const saved = state.planUiStateByPlan[plan.id]
-  const next = sanitizePlanUiState(saved || {}, plan, `planUiStateByPlan.${plan.id}`)
+  const next = sanitizePlanUiState(saved || {}, plan, `planUiStateByPlan.${plan.id}`, state.mealOverrides)
   return {
     planUiStateByPlan: { ...state.planUiStateByPlan, [plan.id]: next },
     selectedDayId: next.selectedDayId,

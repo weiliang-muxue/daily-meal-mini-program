@@ -2,6 +2,7 @@
 
 const { userStore } = require('../../services/user-store')
 const { membershipStore } = require('../../services/membership-store')
+const editor = require('../../services/meal-editor')
 
 const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' }
 const SCENARIO_LABELS = { default: '', rest: '不运动备选', workout: '运动备选' }
@@ -129,9 +130,19 @@ Page({
     hasOverride: false,
     saving: false,
     resetting: false,
+    ingredientRows: [], loadedIngredientRows: [], baseIngredientRows: [],
+    canSyncIngredients: false, legacyIngredientNote: '', inlineError: '',
+    previewing: false, previewChanges: [], previewResetCount: 0,
   },
 
   async onLoad(options) {
+    this.unloaded = false
+    this.namespace = membershipStore.cacheNamespace
+    if (typeof membershipStore.onCacheNamespaceChange === 'function') this.unsubscribeIdentity = membershipStore.onCacheNamespaceChange(() => {
+      if (!this.namespace || this.namespace === membershipStore.cacheNamespace) return
+      this.pendingOverride = undefined
+      if (!this.unloaded) this.setData({ loading: false, error: '账号已变化，请返回餐单后重新进入', errorAction: 'back', base: {}, form: {}, loadedForm: {}, ingredientRows: [], loadedIngredientRows: [], baseIngredientRows: [], originalIngredients: [], legacyIngredientNote: '', previewChanges: [], previewing: false })
+    })
     this.refreshPageNavigation()
     await this.load(options)
   },
@@ -140,7 +151,7 @@ Page({
     this.refreshPageNavigation()
   },
 
-  onUnload() { this.setUnloadAlert(false) },
+  onUnload() { this.unloaded = true; if (this.unsubscribeIdentity) this.unsubscribeIdentity(); this.setUnloadAlert(false) },
 
   refreshPageNavigation() {
     const canGoBack = canNavigateBack()
@@ -151,7 +162,8 @@ Page({
   },
 
   hasUnsavedChanges() {
-    return !this.data.loading && !this.data.error && !sameForm(this.data.form, this.data.loadedForm)
+    return !this.data.loading && !this.data.error && (!sameForm(this.data.form, this.data.loadedForm)
+      || editor.rowSnapshot(this.data.ingredientRows) !== editor.rowSnapshot(this.data.loadedIngredientRows))
   },
   setUnloadAlert(enabled) {
     if (enabled === this.unloadAlertEnabled) return
@@ -214,11 +226,16 @@ Page({
     this.setData({ loading: true, error: '', errorAction: 'retry', mealId })
     try {
       const member = await membershipStore.init({ force })
+      if (this.unloaded || this.data.error) return
       if (!member || member.status !== 'active') {
         wx.reLaunch({ url: '/pages/access/access' })
         return
       }
+      const namespace = membershipStore.cacheNamespace
+      this.namespace = namespace
       await userStore.init({ force })
+      if (this.unloaded || namespace !== membershipStore.cacheNamespace) return
+      this.namespace = namespace
       const found = findPlanMeal(userStore.data.activePlan, mealId)
       if (!found) throw new Error('当前计划中没有这份餐食，计划可能已更新')
       const base = baseForm(found.meal)
@@ -227,6 +244,10 @@ Page({
         ? userStore.data.mealOverrides : {}
       const override = overrides[mealId]
       const form = override ? sanitizedForm({ ...base, ...override }) : base
+      this.existingOverride = override
+      this.loadedOverrideSignature = JSON.stringify(override || null)
+      const canSyncIngredients = found.plan.days.every(day => day.meals.every(meal => Array.isArray(meal.ingredients)))
+      const rows = structuredIngredients(override && override.ingredientItems || found.meal.ingredients)
       const type = MEAL_LABELS[found.meal.type] || cleanText(found.meal.label, 30) || '餐食'
       const scenario = SCENARIO_LABELS[found.meal.scenario || 'default'] || ''
       const date = cleanText(found.day.date, 10)
@@ -239,6 +260,9 @@ Page({
         form,
         loadedForm: { ...form },
         formDirty: false,
+        ingredientRows: rows, loadedIngredientRows: rows.map(row => ({ ...row })), baseIngredientRows: structuredIngredients(found.meal.ingredients),
+        canSyncIngredients, legacyIngredientNote: override && !override.ingredientItems ? override.ingredients || '' : '',
+        inlineError: '', previewing: false,
         originalIngredients: structuredIngredients(found.meal.ingredients),
         hasStructuredIngredients: Array.isArray(found.meal.ingredients),
         mealLabel: type,
@@ -248,7 +272,7 @@ Page({
         hasOverride: Boolean(override),
       })
     } catch (error) {
-      this.setData({ loading: false, error: error.message || '暂时无法打开这份餐食' })
+      if (!this.unloaded && !this.data.error) this.setData({ loading: false, error: error.message || '暂时无法打开这份餐食' })
     }
   },
 
@@ -262,51 +286,97 @@ Page({
   },
 
   input(event) {
+    if (this.data.saving || this.data.resetting || this.data.previewing) return
     const field = event.currentTarget.dataset.field
     if (!EDITABLE_FIELDS.includes(field)) return
     this.setData({ [`form.${field}`]: event.detail.value }, () => this.refreshDirtyState())
   },
 
+  inputIngredient(event) {
+    if (this.data.saving || this.data.resetting || this.data.previewing) return
+    const { index, field } = event.currentTarget.dataset
+    if (!['name', 'quantity', 'unit', 'category'].includes(field) || !this.data.ingredientRows[index]) return
+    const rows = this.data.ingredientRows.map((row, i) => i === Number(index) ? { ...row, [field]: event.detail.value } : row)
+    this.setData({ ingredientRows: rows, inlineError: '' }, () => this.refreshDirtyState())
+  },
+  addIngredient() {
+    if (this.data.saving || this.data.resetting || this.data.previewing || this.data.ingredientRows.length >= 30) return
+    this.rowSequence = (this.rowSequence || 0) + 1
+    this.setData({ ingredientRows: [...this.data.ingredientRows, { id: `new-${this.rowSequence}`, name: '', quantity: '', unit: 'g', category: '其他' }], inlineError: '' }, () => this.refreshDirtyState())
+  },
+  removeIngredient(event) {
+    if (this.data.saving || this.data.resetting || this.data.previewing || this.data.ingredientRows.length <= 1) return
+    this.setData({ ingredientRows: this.data.ingredientRows.filter((_, i) => i !== Number(event.currentTarget.dataset.index)), inlineError: '' }, () => this.refreshDirtyState())
+  },
+  cancelPreview() { if (!this.data.saving) this.setData({ previewing: false, inlineError: '' }) },
+
+  currentContext() {
+    const state = userStore.data, plan = state.activePlan
+    return !this.unloaded && this.namespace === membershipStore.cacheNamespace && plan && plan.id === this.data.planId
+      && Boolean(findPlanMeal(plan, this.data.mealId))
+  },
+  previewSnapshot() {
+    const state = userStore.data
+    return JSON.stringify([state.stateRevision, state.mealOverrides, state.checkedShoppingIds, state.dinnerModeByDay, state.defaultDinnerMode])
+  },
   async save() {
-    if (this.data.saving || this.data.resetting) return
+    if (this.data.saving || this.data.resetting || this.data.previewing) return
     const form = sanitizedForm(this.data.form)
-    if (!form.title || !form.ingredients || !form.method) {
-      wx.showToast({ title: '名称、食材和做法不能为空', icon: 'none' })
-      return
+    if (!form.title || !form.ingredients || !form.method) { this.setData({ inlineError: '名称、食材和做法不能为空' }); return }
+    if (!this.currentContext()) { this.setData({ error: '账号或当前餐单已经变化，请返回后重新打开餐食', errorAction: 'back' }); return }
+    if (JSON.stringify(userStore.data.mealOverrides[this.data.mealId] || null) !== this.loadedOverrideSignature) {
+      this.setData({ inlineError: '这餐已在其他操作中修改，请重新读取后再编辑' }); return
     }
-    const currentPlan = userStore.data.activePlan
-    if (!currentPlan || currentPlan.id !== this.data.planId || !findPlanMeal(currentPlan, this.data.mealId)) {
-      this.setData({ error: '当前计划已经变化，请返回后重新打开餐食' })
-      return
+    try {
+      const rowsChanged = this.data.canSyncIngredients && editor.rowSnapshot(this.data.ingredientRows) !== editor.rowSnapshot(this.data.loadedIngredientRows)
+      this.pendingOverride = editor.draftOverride(form, this.data.base, this.data.ingredientRows, this.data.baseIngredientRows, this.existingOverride, rowsChanged)
+      const preview = editor.previewChange(userStore.data, this.data.mealId, this.pendingOverride)
+      this.previewState = this.previewSnapshot()
+      this.setData({ previewing: true, previewChanges: preview.changes, previewResetCount: preview.checkedReset, inlineError: '' })
+    } catch (error) { this.setData({ inlineError: error.message || '请检查食材和数量后重试' }) }
+  },
+  async confirmSave() {
+    if (!this.data.previewing || this.data.saving || this.data.resetting || this.pendingOverride === undefined) return
+    if (!this.currentContext() || this.previewState !== this.previewSnapshot()) {
+      this.setData({ previewing: false, inlineError: '餐单或采购状态已变化，请重新预览后确认' }); return
     }
-    this.setData({ saving: true })
-    const override = sameForm(form, this.data.base) ? null : { ...form, updatedAt: new Date().toISOString() }
+    const override = this.pendingOverride
+    this.setData({ saving: true, inlineError: '' })
     try {
       await userStore.setMealOverride(this.data.mealId, override)
+      if (!this.currentContext()) return
       this.setUnloadAlert(false)
-      this.setData({ loadedForm: { ...form }, formDirty: false })
-      wx.showToast({ title: sameForm(form, this.data.base) ? '已恢复原计划' : '个人调整已保存', icon: 'success' })
-      setTimeout(() => returnFromSecondaryPage(), 500)
+      this.setData({ loadedForm: { ...this.data.form }, loadedIngredientRows: this.data.ingredientRows.map(row => ({ ...row })), formDirty: false })
+      wx.showToast({ title: '个人调整已保存', icon: 'success' })
+      setTimeout(() => { if (this.currentContext()) returnFromSecondaryPage() }, 500)
     } catch (error) {
-      wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
-      this.setData({ saving: false }, () => this.refreshDirtyState())
+      if (!this.currentContext()) return
+      this.setData({ saving: false, inlineError: userStore.state === 'offline'
+        ? '尚未同步到云端，本机调整已保留；联网后可重试确认。' : error.message || '保存失败，请检查后重试' }, () => this.refreshDirtyState())
+      this.loadedOverrideSignature = JSON.stringify(userStore.data.mealOverrides[this.data.mealId] || null)
+      this.existingOverride = userStore.data.mealOverrides[this.data.mealId]
+      this.previewState = this.previewSnapshot()
     }
   },
 
   reset() {
-    if (this.data.saving || this.data.resetting) return
-    wx.showModal({ title: '恢复原计划内容？', content: '只删除这份餐食的个人显示调整，不修改已确认计划和采购清单。', confirmText: '恢复', success: async ({ confirm }) => {
+    if (this.data.saving || this.data.resetting || this.data.previewing) return
+    wx.showModal({ title: '恢复原计划内容？', content: '只恢复这一餐；采购清单将按原食材重新计算，受影响项需重新勾选，其他勾选保留。', confirmText: '恢复', success: async ({ confirm }) => {
       if (!confirm) return
+      if (!this.currentContext() || JSON.stringify(userStore.data.mealOverrides[this.data.mealId] || null) !== this.loadedOverrideSignature) { this.setData({ inlineError: '餐食已变化，请重新读取后再恢复' }); return }
       this.setData({ resetting: true })
       try {
         await userStore.setMealOverride(this.data.mealId, null)
+        if (!this.currentContext()) return
         this.setUnloadAlert(false)
         this.setData({ loadedForm: { ...this.data.base }, form: { ...this.data.base }, formDirty: false })
         wx.showToast({ title: '已恢复原计划', icon: 'success' })
-        setTimeout(() => returnFromSecondaryPage(), 400)
+        setTimeout(() => { if (this.currentContext()) returnFromSecondaryPage() }, 400)
       } catch (error) {
-        wx.showToast({ title: error.message || '恢复失败，请重试', icon: 'none' })
-        this.setData({ resetting: false }, () => this.refreshDirtyState())
+        if (!this.currentContext()) return
+        this.loadedOverrideSignature = JSON.stringify(userStore.data.mealOverrides[this.data.mealId] || null)
+        this.setData({ resetting: false, inlineError: userStore.state === 'offline'
+          ? '恢复操作尚未同步到云端，本机已保留；联网后可重试。' : error.message || '恢复失败，请重试' }, () => this.refreshDirtyState())
       }
     } })
   },

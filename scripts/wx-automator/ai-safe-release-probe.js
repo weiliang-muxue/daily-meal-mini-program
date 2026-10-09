@@ -473,7 +473,7 @@ async function startProbe(miniProgram, ownerToken, processInstanceId) {
       }
       if (classification !== 'baseline' || !retryWhenBaseline) return 'REVISION_CHANGED'
       const retried = await call('userData', {
-        action: 'saveState', state: { generationPreferences: clone(testPreferences()) },
+        action: 'saveState', clientSchemaVersion: state.releaseCompatibility.stateSchemaVersion, state: { generationPreferences: clone(testPreferences()) },
         expectedStateRevision: beforeRevision, expectedCacheNamespace: state.namespace,
       })
       if (retried.ok && acceptTestSave(retried.data, beforeRevision)) return 'OK'
@@ -512,6 +512,7 @@ async function startProbe(miniProgram, ownerToken, processInstanceId) {
 
         const baseline = await bootstrap()
         if (!baseline.ok || !baseline.data) return fail(baseline.ok ? 'PREFLIGHT_FAILED' : baseline.code)
+        if (!state.releaseCompatibility || baseline.data.schemaVersion !== state.releaseCompatibility.stateSchemaVersion) return fail('PREFLIGHT_FAILED')
         if (baseline.data.draftPlan) return fail('EXISTING_DRAFT')
         if (!validRevision(baseline.data.stateRevision)) return fail('PREFLIGHT_FAILED')
         state.originalPreferences = clone(baseline.data.generationPreferences)
@@ -548,7 +549,7 @@ async function startProbe(miniProgram, ownerToken, processInstanceId) {
         state.testSave.attempted = true
         state.testSave.beforeRevision = state.baseRevision
         const saveTest = await call('userData', {
-          action: 'saveState', state: { generationPreferences: clone(testPreferences()) },
+          action: 'saveState', clientSchemaVersion: state.releaseCompatibility.stateSchemaVersion, state: { generationPreferences: clone(testPreferences()) },
           expectedStateRevision: state.baseRevision, expectedCacheNamespace: state.namespace,
         })
         if (saveTest.ok) {
@@ -1246,7 +1247,7 @@ async function cleanupProbe(miniProgram, ownerToken, processInstanceId) {
       if (!restored) {
         if (!state.restore.request) {
           state.restore.request = {
-            action: 'saveState', state: { generationPreferences: clone(state.originalPreferences) },
+            action: 'saveState', clientSchemaVersion: state.releaseCompatibility.stateSchemaVersion, state: { generationPreferences: clone(state.originalPreferences) },
             expectedStateRevision: latest.stateRevision, expectedCacheNamespace: state.namespace,
           }
           state.restore.attempted = true

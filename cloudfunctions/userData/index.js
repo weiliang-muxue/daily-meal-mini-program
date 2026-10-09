@@ -4,6 +4,7 @@ const cloud = require('wx-server-sdk')
 const { CURRENT_SCHEMA, MAX_HISTORY, defaults, migrate, sanitizeState, confirmDraft, restoreHistory } = require('./user-state')
 const { catalog, plans, shoppingGroups } = require('./legacy-plan')
 const { notFound } = require('./not-found')
+const { reconcileChecks } = require('./meal-shopping')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -101,14 +102,6 @@ function assertExpectedRevision(current, value) {
   }
 }
 
-function currentShoppingIds(plan) {
-  const ids = new Set()
-  if (plan && Array.isArray(plan.shoppingGroups)) {
-    plan.shoppingGroups.forEach((group) => (group.items || []).forEach((item) => ids.add(item.id)))
-  }
-  return ids
-}
-
 function constrainUiState(state) {
   return sanitizeState(state, { preserveUnknownFrom: state })
 }
@@ -147,9 +140,10 @@ async function saveState(openid, incoming, expectedStateRevision, expectedCacheN
     assertExpectedRevision(current, expectedStateRevision)
     const value = incoming && typeof incoming === 'object' ? incoming : {}
     const editable = Object.fromEntries(CLIENT_EDITABLE_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(value, key)).map((key) => [key, value[key]]))
-    const next = constrainUiState(sanitizeState({
+    const sanitized = sanitizeState({
       ...current, ...editable, stateRevision: current.stateRevision + 1,
-    }, { preserveUnknownFrom: current }))
+    }, { preserveUnknownFrom: current })
+    const next = constrainUiState(reconcileChecks(current, sanitized))
     await reference.update({ data: { ...atomicStateFields(next), updatedAt: db.serverDate() } })
     return publicState(next, new Date().toISOString())
   })
@@ -230,6 +224,7 @@ exports.main = async (event = {}) => {
       return { success: true, data: await bootstrap(OPENID, event.expectedCacheNamespace) }
     }
     if (event.action === 'saveState') {
+      if (event.clientSchemaVersion !== CURRENT_SCHEMA) return { success: false, code: 'STATE_SCHEMA_UNSUPPORTED', message: '请更新小程序后再保存，原有数据不会丢失' }
       return {
         success: true,
         data: await saveState(OPENID, event.state, event.expectedStateRevision, event.expectedCacheNamespace),
