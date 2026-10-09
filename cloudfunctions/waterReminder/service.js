@@ -37,6 +37,9 @@ function createService({ db, send, env = () => process.env, now = Date.now,
         state.credits = 0
         state.longTermAccepted = false
         state.intent = null
+        // Fence a previous in-flight send. It cannot be recalled, but its late
+        // result must not replace this explicit stop. Keep lastSlot consumed.
+        state.attempt = null
         state.lastOutcome = 'stopped'
       } else {
         if (!config.ready) fail('WATER_NOT_CONFIGURED')
@@ -58,6 +61,10 @@ function createService({ db, send, env = () => process.env, now = Date.now,
           if (config.type === 'once') state.credits = Math.min(MAX_CREDITS, state.credits + 1)
           else state.longTermAccepted = true
           state.authorizedAt = timestamp
+          // A new explicit grant supersedes the previous delivery attempt;
+          // neither its late failure nor crash recovery may revoke this grant.
+          // Do not refund its credit or clear lastSlot (no replay).
+          state.attempt = null
           state.lastOutcome = ''
         }
       }

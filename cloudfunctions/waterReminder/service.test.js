@@ -152,6 +152,60 @@ async function main() {
     f.setSender(async () => { delete f.db.docs.meal_water_push.alpha; f.db.docs.meal_members.alpha.status = 'deleting'; return { errCode: 0 } })
     await f.service.tick(); assert(!f.state())
   })
+  await check('late delivery outcomes cannot overwrite an explicit stop', async () => {
+    for (const outcome of ['sent', 'rejected', 'unknown']) {
+      const f = fixture(); await grant(f); f.setTime('2026-10-09T09:00:00')
+      let stopped
+      f.setSender(async () => {
+        await f.call('stop'); stopped = clone(f.state())
+        if (outcome === 'unknown') throw Error('synthetic transport timeout')
+        return { errCode: outcome === 'sent' ? 0 : 43101 }
+      })
+      await f.service.tick()
+      assert.deepEqual(f.state(), stopped, outcome)
+      assert.equal((await f.call('status')).lastOutcome, 'stopped')
+      f.setTime('2026-10-09T10:00:00'); await f.service.tick()
+      assert.equal(f.sent.length, 1)
+    }
+  })
+  await check('late outcomes cannot revoke a newer explicit subscription', async () => {
+    for (const type of ['once', 'longterm']) for (const stopFirst of [false, true]) {
+      for (const outcome of ['sent', 'rejected', 'unknown']) {
+        const f = fixture(); f.env.WATER_PUSH_TEMPLATE_TYPE = type; await grant(f)
+        const privateBefore = clone(f.db.docs.meal_user_states)
+        f.setTime('2026-10-09T09:00:00')
+        let renewed
+        f.setSender(async () => {
+          if (stopFirst) await f.call('stop')
+          f.setTime('2026-10-09T09:00:30'); await grant(f); renewed = clone(f.state())
+          if (outcome === 'unknown') throw Error('synthetic transport timeout')
+          return { errCode: outcome === 'sent' ? 0 : 43101 }
+        })
+        await f.service.tick()
+        assert.deepEqual(f.state(), renewed, `${type}/${stopFirst}/${outcome}`)
+        assert((await f.call('status')).enabled)
+        assert.equal(f.state().credits, type === 'once' ? 1 : 0)
+        // No refund or replay for the attempt already handed to the platform.
+        await f.service.tick(); assert.equal(f.sent.length, 1)
+        f.setSender(async () => ({ errCode: 0 }))
+        f.setTime('2026-10-09T10:00:00'); await f.service.tick()
+        assert.equal(f.sent.length, 2)
+        assert.deepEqual(f.db.docs.meal_user_states, privateBefore)
+      }
+    }
+  })
+  await check('fresh subscription retires a crashed claim without refund or replay', async () => {
+    const f = fixture(); await grant(f); f.setTime('2026-10-09T09:00:00')
+    await f.service.claim('alpha', core.configuration(f.env))
+    assert.equal(f.state().credits, 0)
+    const claimedSlot = f.state().lastSlot
+    f.setTime('2026-10-09T09:00:30'); await grant(f)
+    assert.equal(f.state().credits, 1); assert.equal(f.state().lastSlot, claimedSlot)
+    f.setTime('2026-10-09T09:03:00'); await f.service.tick()
+    assert((await f.call('status')).enabled); assert.equal(f.sent.length, 0)
+    f.setTime('2026-10-09T10:00:00'); await f.service.tick()
+    assert.equal(f.sent.length, 1); assert.equal(f.state().credits, 0)
+  })
   await check('template/type/config change invalidates authorization', async () => {
     const f = fixture(); await grant(f); f.env.WATER_PUSH_TEMPLATE_TYPE = 'longterm'; f.setTime('2026-10-09T09:00:00')
     assert(!(await f.call('status')).enabled); await f.service.tick(); assert.equal(f.sent.length, 0)
