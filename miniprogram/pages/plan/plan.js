@@ -94,6 +94,9 @@ Page({
   buildSyncStatus() {
     const state = userStore.state
     if (state === 'saving') return { state: 'saving', text: '正在保存你的选择…' }
+    if (state === 'offline' && userStore.cloudSchemaMismatch) {
+      return { state: 'offline', text: userStore.error || '云端正在更新，请稍后刷新；现有内容已保留' }
+    }
     if (this.data.localSaveNotice && (state === 'offline' || state === 'error')) {
       return { state: 'offline', text: this.data.localSaveNotice }
     }

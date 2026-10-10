@@ -240,6 +240,14 @@ async function testPlanPageRecovery() {
   assert.strictEqual(page.data.error, '')
   assert.strictEqual(page.data.syncState, 'offline')
   assert.strictEqual(page.data.syncText, '尚未同步，修改已安全保存')
+  userStore.cloudSchemaMismatch = true
+  userStore.error = '云端正在更新，已有餐单和本机修改已保留；请稍后刷新再保存'
+  page.render()
+  assert.strictEqual(page.data.hasPlan, true)
+  assert.strictEqual(page.data.syncText, userStore.error)
+  userStore.cloudSchemaMismatch = false
+  userStore.error = 'cloud unavailable'
+  page.render()
   const oneWeek = page.buildWeeks(page.data.days.slice(0, 7))
   assert.strictEqual(oneWeek.length, 1)
   assert.strictEqual(oneWeek[0].label, '第1周')

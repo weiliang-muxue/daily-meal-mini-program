@@ -611,6 +611,7 @@ const testScripts = [
   'scripts/test-meal-replacement-page.js',
   'scripts/test-shopping-scope.js',
   'scripts/test-cache-namespace.js',
+  'scripts/test-cloud-schema-transition.js',
   'scripts/test-water-reminder.js',
   'cloudfunctions/waterReminder/service.test.js',
   'cloudfunctions/waterReminder/index.test.js',

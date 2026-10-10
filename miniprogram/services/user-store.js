@@ -37,6 +37,12 @@ function namespaceChangedError() {
   return error
 }
 
+function serviceUpgradeError() {
+  const error = new Error('云端正在更新，已有餐单和本机修改已保留；请稍后刷新再保存')
+  error.code = 'STATE_SERVICE_UPGRADE_REQUIRED'
+  return error
+}
+
 function normalize(raw) {
   const value = raw && typeof raw === 'object' ? raw : {}
   try { return { ...migrate(value), updatedAt: value.updatedAt || null } }
@@ -329,6 +335,7 @@ class UserStore {
     this.membershipStore = memberStore
     this.data = normalize()
     this.cloudState = null
+    this.cloudSchemaVersion = null
     this.state = 'idle'
     this.error = ''
     this.initPromise = null
@@ -360,6 +367,7 @@ class UserStore {
     this.pending = emptyPending()
     this.data = normalize()
     this.cloudState = null
+    this.cloudSchemaVersion = null
     this.state = 'idle'
     this.error = ''
     return nextNamespace
@@ -401,7 +409,7 @@ class UserStore {
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         if (initEpoch !== this.initEpoch) return this.data
         this.replaceFromCloud(data, namespace)
-        if (hasPending(this.pending)) await this.flush()
+        if (hasPending(this.pending) && this.cloudSchemaVersion === CURRENT_SCHEMA) await this.flush()
         return this.data
       })
       .catch((error) => {
@@ -440,6 +448,12 @@ class UserStore {
   replaceFromCloud(value, namespace = this.requireNamespace({ loadCache: false }), options = {}) {
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     const cloudState = normalizeCloud(value)
+    // A local migration does not prove the remote writer speaks this schema.
+    // In particular, a legacy save response must never clear pending edits.
+    this.cloudSchemaVersion = value && Number.isSafeInteger(value.schemaVersion) ? value.schemaVersion : 0
+    if (options.requireCurrentCloudSchema === true || Number.isSafeInteger(options.confirmedLocalRevision)) {
+      this.assertCloudSchemaCompatible()
+    }
     if (cloudState.stateRevision >= this.data.stateRevision) this.cloudState = cloudState
     if (Number.isSafeInteger(options.confirmedLocalRevision)) {
       this.confirmedLocalRevision = Math.max(this.confirmedLocalRevision, options.confirmedLocalRevision)
@@ -450,11 +464,25 @@ class UserStore {
     const base = this.cloudState || this.data
     materializeLegacyMealOverrides(this.pending, base)
     this.data = applyPending(base, this.pending)
-    this.state = hasPending(this.pending) ? 'saving' : 'ready'
-    this.error = ''
+    const compatible = this.cloudSchemaVersion === CURRENT_SCHEMA
+    this.state = compatible ? (hasPending(this.pending) ? 'saving' : 'ready') : 'offline'
+    this.error = compatible ? '' : serviceUpgradeError().message
     this.persistCache()
     this.persistPending()
     return this.data
+  }
+
+  get cloudSchemaMismatch() {
+    return this.cloudSchemaVersion !== null && this.cloudSchemaVersion !== CURRENT_SCHEMA
+  }
+
+  assertCloudSchemaCompatible() {
+    if (this.cloudSchemaMismatch) {
+      const error = serviceUpgradeError()
+      this.state = 'offline'
+      this.error = error.message
+      throw error
+    }
   }
 
   patch(partial, options = {}) {
@@ -547,7 +575,7 @@ class UserStore {
     clearTimeout(this.saveTimer)
     this.saveTimer = null
     let namespace
-    try { namespace = this.requireNamespace() }
+    try { namespace = this.requireNamespace(); this.assertCloudSchemaCompatible() }
     catch (error) { return Promise.reject(error) }
     const waitForTarget = () => {
       if (!this.isCurrentNamespace(namespace)) return Promise.reject(namespaceChangedError())
@@ -567,6 +595,7 @@ class UserStore {
       this.replaceFromCloud(latest, namespace)
     }
     const write = async (conflictRetries) => {
+      this.assertCloudSchemaCompatible()
       const snapshot = normalizeStrict(this.data)
       const savedLocalRevision = this.localRevision
       try {
@@ -613,10 +642,11 @@ class UserStore {
     if (!Number.isSafeInteger(expectedStateRevision) || this.data.stateRevision !== expectedStateRevision) {
       const error = new Error('餐单或收藏已变化，请刷新后重新确认'); error.code = 'STATE_REVISION_CONFLICT'; throw error
     }
+    this.assertCloudSchemaCompatible()
     const data = await callFunction('userData', action, {
       ...payload, expectedStateRevision, expectedCacheNamespace: namespace, clientSchemaVersion: CURRENT_SCHEMA,
     })
-    return this.replaceFromCloud(data, namespace)
+    return this.replaceFromCloud(data, namespace, { requireCurrentCloudSchema: true })
   }
 
   setMealOverride(mealId, value, options = { immediate: true }) {
@@ -633,13 +663,14 @@ class UserStore {
     const namespace = this.requireNamespace()
     await this.flush()
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    this.assertCloudSchemaCompatible()
     const data = await callFunction('userData', 'confirmDraft', {
       clientSchemaVersion: CURRENT_SCHEMA,
       expectedDraftPlanId,
       expectedStateRevision: this.data.stateRevision,
       expectedCacheNamespace: namespace,
     })
-    return this.replaceFromCloud(data, namespace)
+    return this.replaceFromCloud(data, namespace, { requireCurrentCloudSchema: true })
   }
 
   async discardDraft(expectedDraftPlanId) {
@@ -647,13 +678,14 @@ class UserStore {
     const namespace = this.requireNamespace()
     await this.flush()
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    this.assertCloudSchemaCompatible()
     const data = await callFunction('userData', 'discardDraft', {
       clientSchemaVersion: CURRENT_SCHEMA,
       expectedDraftPlanId,
       expectedStateRevision: this.data.stateRevision,
       expectedCacheNamespace: namespace,
     })
-    return this.replaceFromCloud(data, namespace)
+    return this.replaceFromCloud(data, namespace, { requireCurrentCloudSchema: true })
   }
 
   async confirmMealReplacement(expectedDraftPlanId, expectedStateRevision) {
@@ -666,24 +698,26 @@ class UserStore {
       error.code = 'STATE_REVISION_CONFLICT'
       throw error
     }
+    this.assertCloudSchemaCompatible()
     const data = await callFunction('userData', 'confirmMealReplacement', {
       clientSchemaVersion: CURRENT_SCHEMA,
       expectedDraftPlanId, expectedStateRevision, expectedCacheNamespace: namespace,
     })
-    return this.replaceFromCloud(data, namespace)
+    return this.replaceFromCloud(data, namespace, { requireCurrentCloudSchema: true })
   }
 
   async restoreHistory(planId) {
     const namespace = this.requireNamespace()
     await this.flush()
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    this.assertCloudSchemaCompatible()
     const data = await callFunction('userData', 'restoreHistory', {
       clientSchemaVersion: CURRENT_SCHEMA,
       planId,
       expectedStateRevision: this.data.stateRevision,
       expectedCacheNamespace: namespace,
     })
-    return this.replaceFromCloud(data, namespace)
+    return this.replaceFromCloud(data, namespace, { requireCurrentCloudSchema: true })
   }
 }
 
