@@ -739,7 +739,98 @@ async function testPublicSchemaHandshake() {
   }
 }
 
+async function testReleasedClientCoexistence() {
+  const legacyState = require('./legacy-v8/user-state')
+  const originalContext = cloudStub.getWXContext
+  cloudStub.getWXContext = () => ({ OPENID: owner })
+  const payload = { expectedCacheNamespace: cacheNamespace }
+  try {
+    // Exact released client payload has no clientSchemaVersion property.
+    reset()
+    collectionStore('meal_user_states').delete(owner)
+    const created = await userData.main({ action: 'bootstrap', ...payload })
+    assert.strictEqual(created.success, true)
+    assert.strictEqual(created.data.schemaVersion, 8)
+    assert.strictEqual(get('meal_user_states', owner).schemaVersion, 8)
+
+    const legacy = legacyState.sanitizeState({ ...currentState(7), schemaVersion: 8 })
+    reset(legacy)
+    const other = clone(legacy)
+    put('meal_user_states', 'other-fictional-owner', other)
+    const read = await userData.main({ action: 'bootstrap', ...payload })
+    assert.strictEqual(read.success, true)
+    assert.strictEqual(read.data.schemaVersion, 8)
+    assert.deepStrictEqual(get('meal_user_states', owner), legacy, 'old reads do not migrate existing v8 users')
+    const saved = await userData.main({ action: 'saveState', ...payload,
+      expectedStateRevision: 7, state: { customReminders: [{ id: 'legacy-note', text: '虚构提醒', done: false }] } })
+    assert.strictEqual(saved.success, true)
+    assert.strictEqual(saved.data.schemaVersion, 8)
+    assert.strictEqual(saved.data.stateRevision, 8)
+    assert.strictEqual(saved.data.customReminders[0].id, 'legacy-note')
+    assert.deepStrictEqual(saved.data.activePlan, legacy.activePlan)
+    assert.deepStrictEqual(saved.data.planHistory, legacy.planHistory)
+    assert.deepStrictEqual(get('meal_user_states', 'other-fictional-owner'), other)
+
+    for (const action of ['confirmDraft', 'restoreHistory', 'discardDraft']) {
+      reset(legacy)
+      const result = await userData.main({ action, ...payload, expectedStateRevision: 7,
+        expectedDraftPlanId: 'draft', planId: 'history' })
+      assert.strictEqual(result.success, true, `released ${action} remains available for v8`)
+      assert.strictEqual(result.data.schemaVersion, 8)
+      assert.strictEqual(result.data.stateRevision, 8)
+    }
+
+    reset(legacy)
+    put('meal_user_states', 'other-fictional-owner', other)
+    const upgraded = await userData.main({ action: 'bootstrap', ...payload, clientSchemaVersion: 13 })
+    assert.strictEqual(upgraded.success, true)
+    assert.strictEqual(upgraded.data.schemaVersion, 13)
+    assert.deepStrictEqual(upgraded.data.activePlan, legacy.activePlan)
+    assert.deepStrictEqual(upgraded.data.planHistory, legacy.planHistory)
+    const before = get('meal_user_states', owner)
+    for (const action of ['confirmMealReplacement', 'addFavorite', 'removeFavorite', 'applyFavorite']) {
+      assert.strictEqual((await userData.main({ action, ...payload })).code, 'STATE_SCHEMA_UNSUPPORTED')
+      assert.deepStrictEqual(get('meal_user_states', owner), before)
+    }
+    for (const action of ['bootstrap', 'saveState', 'confirmDraft', 'restoreHistory', 'discardDraft']) {
+      const refused = await userData.main({ action, ...payload, expectedStateRevision: 7,
+        expectedDraftPlanId: 'draft', planId: 'history', state: legacy })
+      assert.strictEqual(refused.code, 'STATE_SCHEMA_UNSUPPORTED')
+      assert.match(refused.message, /更新小程序/)
+      assert.deepStrictEqual(get('meal_user_states', owner), before, 'late old requests cannot downgrade upgraded state')
+    }
+    assert.deepStrictEqual(get('meal_user_states', 'other-fictional-owner'), other)
+    const invalidNamespace = await userData.main({ action: 'bootstrap', expectedCacheNamespace: rotatedCacheNamespace })
+    assert.strictEqual(invalidNamespace.code, 'STALE_DATA_GENERATION')
+    assert.deepStrictEqual(get('meal_user_states', owner), before)
+    put('meal_members', owner, { status: 'deleting', cacheNamespace })
+    assert.strictEqual((await userData.main({ action: 'bootstrap', ...payload })).code, 'MEMBERSHIP_REQUIRED')
+    assert.deepStrictEqual(get('meal_user_states', owner), before)
+    for (const malformed of [null, [], 'bootstrap', 13]) {
+      assert.strictEqual((await userData.main(malformed)).code, 'UNSUPPORTED_ACTION')
+    }
+    // A v8 request can wait while another request upgrades the same document.
+    // It must re-read inside its transaction, not rely on preflight schema.
+    reset(legacy)
+    const originalTransaction = database.runTransaction
+    const concurrentlyUpgraded = { ...before, stateRevision: before.stateRevision + 1 }
+    database.runTransaction = callback => {
+      put('meal_user_states', owner, concurrentlyUpgraded)
+      return originalTransaction(callback)
+    }
+    try {
+      const late = await userData.main({ action: 'saveState', ...payload,
+        expectedStateRevision: 7, state: legacy })
+      assert.strictEqual(late.code, 'STATE_SCHEMA_UNSUPPORTED')
+      assert.deepStrictEqual(get('meal_user_states', owner), concurrentlyUpgraded)
+    } finally { database.runTransaction = originalTransaction }
+    cloudStub.getWXContext = () => ({})
+    assert.strictEqual((await userData.main({ action: 'bootstrap', ...payload })).code, 'IDENTITY_REQUIRED')
+  } finally { cloudStub.getWXContext = originalContext }
+}
+
 ;(async () => {
+  await testReleasedClientCoexistence()
   await testPublicSchemaHandshake()
   await testIndependentDietaryPreferenceTransactions()
   await testPrivateFavoritesTransactions()

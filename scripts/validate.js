@@ -292,6 +292,7 @@ const requiredFiles = [
   'cloudfunctions/membership/index.js', 'cloudfunctions/membership/core.js', 'cloudfunctions/membership/core.test.js',
   'cloudfunctions/auth/index.js', 'cloudfunctions/userData/index.js',
   'cloudfunctions/userData/index.test.js',
+  'scripts/test-legacy-user-data-source.js',
   'cloudfunctions/aiPlanner/index.js', 'cloudfunctions/aiPlanner/lib.js', 'cloudfunctions/aiPlanner/lib.test.js',
   'cloudfunctions/aiPlanner/task-core.js', 'cloudfunctions/aiPlanner/task-core.test.js',
   'cloudfunctions/aiPlanner/provider-config.js', 'cloudfunctions/aiPlanner/provider-config.test.js',

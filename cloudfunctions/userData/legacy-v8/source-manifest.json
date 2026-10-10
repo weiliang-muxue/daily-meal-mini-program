@@ -1,0 +1,12 @@
+{
+  "releaseVersion": "0.2.1",
+  "sourceCommit": "d5eb53382ad37d34cf0e14d57a33f42c1a45578b",
+  "stateSchemaVersion": 8,
+  "normalization": "LF",
+  "files": {
+    "index.js": "121c532177ba86da4d0682af7dca51c08672189d3ce9b72a5e5502fb78f398d3",
+    "user-state.js": "bdd379e27916779c87a5a6cda0b7d7b8b4f2bab529c42b466b907df01557d427",
+    "legacy-plan.js": "614e19c6680bed372c6bd16378ab193c257f8e33a6be1948051a2042da192441",
+    "not-found.js": "e95845f2c25339ea9d707caea43770908aa110fecd47f9d56fffb086017838cf"
+  }
+}
