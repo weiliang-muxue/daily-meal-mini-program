@@ -34,6 +34,9 @@
 .phone-value { min-width: 0; flex: 1; color: var(--muted); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
 .phone-button { width: 72px; min-width: 72px; max-width: 72px; min-height: 48px; margin: 0; padding: 0 12px; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 9rpx; background: var(--surface); color: var(--primary); font-size: 14px; font-weight: 680; }
 .phone-button[disabled] { opacity: .48; }
+.phone-visibility { padding: 12px 0; border-top: 1rpx solid var(--line); }
+.phone-visibility-button { width: 100%; min-height: 48px; margin: 0 0 12px; padding: 10px 16px; border: 1rpx solid var(--line-strong); border-radius: 9rpx; background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+.phone-visibility-button[disabled] { opacity: .48; }
 .profile-info-hint { display: block; margin: 0 0 16rpx; color: var(--muted); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .phone-error { display: block; margin: 0 0 20rpx; padding: 16rpx 18rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .profile-save { margin-top: 18rpx; }

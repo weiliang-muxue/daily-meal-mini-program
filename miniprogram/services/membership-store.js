@@ -1,6 +1,6 @@
 const { callFunction, wxLogin } = require('../utils/cloud')
 const { reconcilePrivateCaches } = require('./private-cache')
-const { hasCurrentLegalConsent, legalConsentPayload } = require('../utils/legal-consent')
+const { LEGAL_CONSENT_VERSION, hasServiceLegalConsent, legalConsentPayload } = require('../utils/legal-consent')
 
 function normalizeCacheNamespace(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value) ? value : ''
@@ -23,7 +23,7 @@ function staleIdentityError() {
 }
 
 function memberForAccess(member, options = {}) {
-  if (member && member.status === 'active' && !hasCurrentLegalConsent(member) && !options.allowUnconsented) {
+  if (member && member.status === 'active' && !hasServiceLegalConsent(member) && !options.allowUnconsented) {
     return { ...member, status: 'consent_required' }
   }
   return member
@@ -55,7 +55,7 @@ class MembershipStore {
     this.state = 'connecting'
     const requestRevision = ++this.identityRequestRevision
     const request = wxLogin()
-      .then(() => callFunction('membership', 'status'))
+      .then(() => callFunction('membership', 'status', { legalConsentVersion: LEGAL_CONSENT_VERSION }))
       .then((member) => {
         if (requestRevision !== this.identityRequestRevision) throw staleIdentityError()
         return this.save(member)
@@ -135,7 +135,7 @@ class MembershipStore {
 
   runIdentityAction(action, payload) {
     const requestRevision = ++this.identityRequestRevision
-    return callFunction('membership', action, payload).then((member) => {
+    return callFunction('membership', action, { ...payload, legalConsentVersion: LEGAL_CONSENT_VERSION }).then((member) => {
       if (requestRevision !== this.identityRequestRevision) throw staleIdentityError()
       return this.save(member)
     })
@@ -156,6 +156,17 @@ class MembershipStore {
     return this.runIdentityAction('acceptLegalConsent', { legalConsent, cacheNamespace })
   }
   createInvite(label) { return callFunction('membership', 'createInvite', { label }) }
+  setPhoneVisibility(allowed) {
+    if (typeof allowed !== 'boolean' || !this.verifiedInRuntime || !this.cacheNamespace
+      || !hasServiceLegalConsent(this.member) || this.member.phoneVisibilitySupported !== true
+      || !Number.isSafeInteger(this.member.phoneVisibilityRevision) || this.member.phoneVisibilityRevision < 0) {
+      return Promise.reject(staleIdentityError())
+    }
+    return this.runIdentityAction('setPhoneVisibility', {
+      allowed, phoneVisibilityVersion: 1, cacheNamespace: this.cacheNamespace,
+      expectedRevision: this.member.phoneVisibilityRevision,
+    })
+  }
   listMembers() { return callFunction('membership', 'listMembers') }
   setMemberNote(memberRef, note) { return callFunction('membership', 'setMemberNote', { memberRef, note }) }
   revokeInvite(inviteRef) { return callFunction('membership', 'revokeInvite', { inviteRef }) }

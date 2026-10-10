@@ -10,10 +10,16 @@ function hasCurrentLegalConsent(member) {
     && member.legalConsentAccepted === true)
 }
 
+function hasServiceLegalConsent(member) {
+  if (!member || member.status !== 'active' || ![1, LEGAL_CONSENT_VERSION].includes(member.legalConsentVersion)) return false
+  return member.legalConsentAccepted === true
+    || (member.legalConsentVersion === LEGAL_CONSENT_VERSION && member.serviceConsentAccepted === true)
+}
+
 function legalConsentPayload(value) {
   if (!value || value.version !== LEGAL_CONSENT_VERSION
     || value.privacyRead !== true || value.agreementRead !== true || value.accepted !== true) return null
   return { version: LEGAL_CONSENT_VERSION, privacyRead: true, agreementRead: true, accepted: true }
 }
 
-module.exports = { LEGAL_CONSENT_VERSION, hasCurrentLegalConsent, legalConsentPayload }
+module.exports = { LEGAL_CONSENT_VERSION, hasCurrentLegalConsent, hasServiceLegalConsent, legalConsentPayload }

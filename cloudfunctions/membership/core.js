@@ -180,24 +180,36 @@ function isInviteRef(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
 }
 
-function assertLegalConsent(value) {
+function assertLegalConsentVersion(version) {
+  if (version !== 1 && version !== LEGAL_CONSENT_VERSION) {
+    fail('协议版本暂不支持，请更新小程序后重试', 'LEGAL_CONSENT_VERSION_UNSUPPORTED')
+  }
+  return version
+}
+
+function assertLegalConsent(value, version = LEGAL_CONSENT_VERSION) {
+  assertLegalConsentVersion(version)
   const fields = ['version', 'privacyRead', 'agreementRead', 'accepted']
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).length !== fields.length
     || !fields.every((field) => Object.prototype.hasOwnProperty.call(value, field))
-    || value.version !== LEGAL_CONSENT_VERSION
+    || value.version !== version
     || value.privacyRead !== true || value.agreementRead !== true || value.accepted !== true) {
     fail('请阅读隐私政策和用户协议后明确同意', 'LEGAL_CONSENT_REQUIRED')
   }
 }
 
-function hasAcceptedLegalConsent(member) {
+function hasAcceptedLegalConsent(member, version = LEGAL_CONSENT_VERSION) {
+  // Strict current-version default is also used by private phone projections.
+  // Legacy access may accept a known newer consent, never an unknown future one.
+  if (version !== 1 && version !== LEGAL_CONSENT_VERSION) return false
   const consent = member && member.legalConsent
   if (!consent || typeof consent !== 'object' || Array.isArray(consent)
     || Object.keys(consent).length !== 2
     || !Object.prototype.hasOwnProperty.call(consent, 'version')
     || !Object.prototype.hasOwnProperty.call(consent, 'acceptedAt')
-    || consent.version !== LEGAL_CONSENT_VERSION) return false
+    || (consent.version !== 1 && consent.version !== LEGAL_CONSENT_VERSION)
+    || consent.version < version) return false
   const acceptedAt = consent.acceptedAt instanceof Date
     ? consent.acceptedAt.getTime() : consent.acceptedAt
   return typeof acceptedAt === 'number' && Number.isFinite(acceptedAt) && acceptedAt > 0
@@ -256,6 +268,7 @@ module.exports = {
   isMemberRef,
   isInviteRef,
   assertLegalConsent,
+  assertLegalConsentVersion,
   hasAcceptedLegalConsent,
   publicMember,
   publicInvite,

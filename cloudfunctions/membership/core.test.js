@@ -139,6 +139,21 @@ for (const legalConsent of [
 assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: LEGAL_CONSENT_VERSION, acceptedAt: 123 } }), true)
 assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: LEGAL_CONSENT_VERSION, acceptedAt: new Date(123) } }), true)
 
+assert.doesNotThrow(() => assertLegalConsent({ ...accepted, version: 1 }, 1))
+assert.throws(() => assertLegalConsent(accepted, 1), (error) => error.code === 'LEGAL_CONSENT_REQUIRED')
+for (const version of [null, 0, 3, '1', '2', true, [], {}]) {
+  assert.throws(() => assertLegalConsent(accepted, version), (error) => error.code === 'LEGAL_CONSENT_VERSION_UNSUPPORTED')
+  assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: 2, acceptedAt: 123 } }, version), false)
+}
+for (const version of [1, 2]) {
+  assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version, acceptedAt: 123 } }, 1), true)
+  assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version, acceptedAt: new Date(123) } }, 1), true)
+}
+for (const legalConsent of [
+  { version: 3, acceptedAt: 123 }, { version: '1', acceptedAt: 123 },
+  { version: 1, acceptedAt: 0 }, { version: 1, acceptedAt: 123, accepted: true },
+]) assert.strictEqual(hasAcceptedLegalConsent({ legalConsent }, 1), false, '旧版兼容不接受未知版本或无效同意记录')
+
 const fs = require('fs')
 const path = require('path')
 assert.strictEqual(

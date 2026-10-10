@@ -8,7 +8,7 @@ const {
   assertOperationalControl, reviseOperationalControl,
   capacityExceeded, assertReactivationAllowed, controlFromSnapshot,
   isMemberRef, isInviteRef, publicMember, publicInvite,
-  LEGAL_CONSENT_VERSION, assertLegalConsent, hasAcceptedLegalConsent,
+  LEGAL_CONSENT_VERSION, assertLegalConsentVersion, assertLegalConsent, hasAcceptedLegalConsent,
 } = require('./core')
 const { notFound } = require('./not-found')
 
@@ -42,7 +42,7 @@ async function queryAll(collection, criteria) {
   }
 }
 
-function safeMember(member, control) {
+function safeMember(member, control, legalVersion = LEGAL_CONSENT_VERSION) {
   if (member && member.status === 'deleting') {
     if (!isCacheNamespace(member.cacheNamespace)) {
       const error = new Error('成员清理状态异常，请联系管理员')
@@ -62,8 +62,12 @@ function safeMember(member, control) {
     inviteTtlHours: config.inviteTtlHours,
     capacityExceeded: capacityExceeded(control, config),
     cacheNamespace: active && isCacheNamespace(member.cacheNamespace) ? member.cacheNamespace : '',
-    legalConsentVersion: LEGAL_CONSENT_VERSION,
-    legalConsentAccepted: active && hasAcceptedLegalConsent(member),
+    legalConsentVersion: legalVersion,
+    legalConsentAccepted: active && hasAcceptedLegalConsent(member, legalVersion),
+    serviceConsentAccepted: active && hasAcceptedLegalConsent(member, 1),
+    phoneVisibilitySupported: true,
+    phoneVisibilityEnabled: active && phoneVisibilityAllowed(member),
+    phoneVisibilityRevision: active ? phoneVisibilityRevision(member) : 0,
   }
 }
 
@@ -248,12 +252,12 @@ async function reconcileInvites() {
   return upgradeControlConfiguration()
 }
 
-async function status(openid) {
+async function status(openid, legalVersion = LEGAL_CONSENT_VERSION) {
   assertOperationalControl(await ensureControl())
   await reconcileInvites()
   const member = await ensureMemberIdentity(openid, await readMember(openid))
   const control = assertOperationalControl(await ensureControl())
-  return safeMember(member, control)
+  return safeMember(member, control, legalVersion)
 }
 
 async function uniqueInvite() {
@@ -345,14 +349,14 @@ async function revokeInvite(openid, inviteRef) {
   })
 }
 
-async function acceptInvite(openid, code, legalConsent) {
-  assertLegalConsent(legalConsent)
+async function acceptInvite(openid, code, legalConsent, legalVersion = LEGAL_CONSENT_VERSION) {
+  assertLegalConsent(legalConsent, legalVersion)
   assertOperationalControl(await ensureControl())
   const current = await ensureMemberIdentity(openid, await readMember(openid))
   assertReactivationAllowed(current)
   await reconcileInvites()
   if (current && current.status === 'active') {
-    return safeMember(current, assertOperationalControl(await ensureControl()))
+    return safeMember(current, assertOperationalControl(await ensureControl()), legalVersion)
   }
   const hash = codeHash(code)
   const result = await invites.where({ codeHash: hash, active: true }).limit(2).get()
@@ -401,18 +405,18 @@ async function acceptInvite(openid, code, legalConsent) {
       status: 'active', role: 'member', memberRef,
       cacheNamespace, inviteId: invitation._id, displayLabel: clean(freshInvite.label, 20),
       joinSource: 'invite', inviterMemberRef,
-      legalConsent: { version: LEGAL_CONSENT_VERSION, acceptedAt: db.serverDate() },
+      legalConsent: { version: legalVersion, acceptedAt: db.serverDate() },
       joinedAt: db.serverDate(), updatedAt: db.serverDate(),
     } })
     await controlReference.update({ data: {
       ...next, inviteSlots: config.inviteSlots, inviteTtlHours: config.inviteTtlHours, updatedAt: db.serverDate(),
     } })
   })
-  return status(openid)
+  return status(openid, legalVersion)
 }
 
-async function acceptLegalConsent(openid, legalConsent, cacheNamespace) {
-  assertLegalConsent(legalConsent)
+async function acceptLegalConsent(openid, legalConsent, cacheNamespace, legalVersion = LEGAL_CONSENT_VERSION) {
+  assertLegalConsent(legalConsent, legalVersion)
   await db.runTransaction(async (transaction) => {
     const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
     const memberReference = transaction.collection('meal_members').doc(openid)
@@ -429,15 +433,15 @@ async function acceptLegalConsent(openid, legalConsent, cacheNamespace) {
       error.code = 'ACCOUNT_GENERATION_CHANGED'
       throw error
     }
-    if (!hasAcceptedLegalConsent(member)) {
-      const consent = { version: LEGAL_CONSENT_VERSION, acceptedAt: db.serverDate() }
+    if (!hasAcceptedLegalConsent(member, legalVersion)) {
+      const consent = { version: legalVersion, acceptedAt: db.serverDate() }
       const nextControl = reviseOperationalControl(control)
       await memberReference.update({ data: { legalConsent: consent, updatedAt: db.serverDate() } })
       await controlReference.update({ data: { ...nextControl, updatedAt: db.serverDate() } })
     }
   })
   // serverDate is resolved by the database only when the write commits.
-  return status(openid)
+  return status(openid, legalVersion)
 }
 
 function storedTimestamp(value) {
@@ -461,9 +465,62 @@ function isOriginalInviterGeneration(invitation, member) {
     && storedTimestamp(invitation.createdAt) >= storedTimestamp(member.joinedAt))
 }
 
+function phoneVisibilityRevision(member) {
+  if (!member || !Object.prototype.hasOwnProperty.call(member, 'phoneVisibilityConsent')) return 0
+  const consent = member.phoneVisibilityConsent
+  return consent && typeof consent === 'object' && !Array.isArray(consent)
+    && Object.keys(consent).length === 4 && consent.version === 1 && typeof consent.allowed === 'boolean'
+    && Number.isSafeInteger(consent.revision) && consent.revision > 0 && storedTimestamp(consent.updatedAt) > 0
+    ? consent.revision : -1
+}
+
+function phoneVisibilityAllowed(member) {
+  if (!member || member.status !== 'active') return false
+  if (!Object.prototype.hasOwnProperty.call(member, 'phoneVisibilityConsent')) return hasAcceptedLegalConsent(member)
+  return phoneVisibilityRevision(member) > 0 && member.phoneVisibilityConsent.allowed === true
+}
+
+async function setPhoneVisibility(openid, allowed, version, cacheNamespace, expectedRevision, legalVersion) {
+  if (typeof allowed !== 'boolean' || version !== 1 || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    const error = new Error('请确认手机尾号展示选择后重试')
+    error.code = 'PHONE_VISIBILITY_INVALID'
+    throw error
+  }
+  await db.runTransaction(async (transaction) => {
+    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
+    const reference = transaction.collection('meal_members').doc(openid)
+    const control = assertOperationalControl(await readDocument(controlReference))
+    const member = await readDocument(reference)
+    assertReactivationAllowed(member)
+    if (!member || member.status !== 'active' || !hasAcceptedLegalConsent(member, 1)) {
+      const error = new Error('请重新验证成员身份')
+      error.code = 'MEMBERSHIP_REQUIRED'
+      throw error
+    }
+    if (!isCacheNamespace(cacheNamespace) || member.cacheNamespace !== cacheNamespace) {
+      const error = new Error('账号数据状态已变化，请重新进入')
+      error.code = 'ACCOUNT_GENERATION_CHANGED'
+      throw error
+    }
+    const revision = phoneVisibilityRevision(member)
+    if (revision < 0 || revision !== expectedRevision || revision >= Number.MAX_SAFE_INTEGER) {
+      const error = new Error('尾号展示设置已变化，请刷新资料后再选择')
+      error.code = 'PHONE_VISIBILITY_CONFLICT'
+      throw error
+    }
+    if (revision > 0 && member.phoneVisibilityConsent.allowed === allowed) return
+    await reference.update({ data: {
+      phoneVisibilityConsent: { version: 1, allowed, revision: revision + 1, updatedAt: db.serverDate() },
+      updatedAt: db.serverDate(),
+    } })
+    await controlReference.update({ data: { ...reviseOperationalControl(control), updatedAt: db.serverDate() } })
+  })
+  return status(openid, legalVersion)
+}
+
 function adminPhoneProjection(profile, member, readerConsented) {
   // Never derive a suffix from unexpected/raw phone fields, or expose legacy consent.
-  if (!readerConsented || !hasAcceptedLegalConsent(member)) {
+  if (!readerConsented || !phoneVisibilityAllowed(member)) {
     return { maskedPhone: '', phoneStatus: 'consent_required' }
   }
   if (!profile || profile.phoneBound !== true) return { maskedPhone: '', phoneStatus: 'unbound' }
@@ -563,7 +620,7 @@ async function listMembers(openid) {
       inviteSlots: config.inviteSlots,
       inviteTtlHours: config.inviteTtlHours,
       capacityExceeded: capacityExceeded(control, config),
-      members: await joinedMemberProjection(transaction, ordered, rawControl, hasAcceptedLegalConsent(owner)),
+      members: await joinedMemberProjection(transaction, ordered, rawControl, hasAcceptedLegalConsent(owner, 1)),
       activeInvites: visibleInvites,
     }
   })
@@ -616,7 +673,7 @@ async function setMemberNote(openid, memberRef, note) {
   return { updated: true, memberRef: targetRef }
 }
 
-async function transferOwner(openid, memberRef, confirmed) {
+async function transferOwner(openid, memberRef, confirmed, legalVersion = LEGAL_CONSENT_VERSION) {
   if (confirmed !== true) {
     const error = new Error('请在客户端二次确认管理员转移')
     error.code = 'TRANSFER_CONFIRMATION_REQUIRED'
@@ -660,7 +717,7 @@ async function transferOwner(openid, memberRef, confirmed) {
     await targetReference.update({ data: { role: 'owner', updatedAt: db.serverDate() } })
     await controlReference.update({ data: { ...next, updatedAt: db.serverDate() } })
   })
-  return status(openid)
+  return status(openid, legalVersion)
 }
 
 function publicError(error) {
@@ -684,6 +741,9 @@ function publicError(error) {
     MEMBERSHIP_NOT_INITIALIZED: '成员服务尚未初始化，请联系管理员',
     MEMBERSHIP_BOOTSTRAP_IN_PROGRESS: '管理员初始化正在进行，请稍后重试',
     LEGAL_CONSENT_REQUIRED: '请阅读隐私政策和用户协议后明确同意',
+    LEGAL_CONSENT_VERSION_UNSUPPORTED: '协议版本暂不支持，请更新小程序后重试',
+    PHONE_VISIBILITY_INVALID: '请确认手机尾号展示选择后重试',
+    PHONE_VISIBILITY_CONFLICT: '尾号展示设置已变化，请刷新资料后再选择',
     MEMBERSHIP_REQUIRED: '请先使用有效成员身份加入',
     ACCOUNT_GENERATION_CHANGED: '账号数据状态已变化，请重新进入',
   })
@@ -699,14 +759,20 @@ exports.main = async (event = {}) => {
   const { OPENID } = cloud.getWXContext()
   if (!OPENID) return { success: false, code: 'IDENTITY_REQUIRED', message: '无法识别微信身份' }
   try {
-    if (event.action === 'status') return { success: true, data: await status(OPENID) }
-    if (event.action === 'acceptInvite') return { success: true, data: await acceptInvite(OPENID, event.code, event.legalConsent) }
-    if (event.action === 'acceptLegalConsent') return { success: true, data: await acceptLegalConsent(OPENID, event.legalConsent, event.cacheNamespace) }
+    // Released v0.2 clients omit this field and only understand consent v1.
+    // Keep negotiation request-local; it never grants phone-viewing permission.
+    const legalVersion = ['status', 'acceptInvite', 'acceptLegalConsent', 'transferOwner', 'setPhoneVisibility'].includes(event.action)
+      ? assertLegalConsentVersion(event.legalConsentVersion === undefined ? 1 : event.legalConsentVersion)
+      : LEGAL_CONSENT_VERSION
+    if (event.action === 'status') return { success: true, data: await status(OPENID, legalVersion) }
+    if (event.action === 'acceptInvite') return { success: true, data: await acceptInvite(OPENID, event.code, event.legalConsent, legalVersion) }
+    if (event.action === 'acceptLegalConsent') return { success: true, data: await acceptLegalConsent(OPENID, event.legalConsent, event.cacheNamespace, legalVersion) }
+    if (event.action === 'setPhoneVisibility') return { success: true, data: await setPhoneVisibility(OPENID, event.allowed, event.phoneVisibilityVersion, event.cacheNamespace, event.expectedRevision, legalVersion) }
     if (event.action === 'createInvite') return { success: true, data: await createInvite(OPENID, event.label) }
     if (event.action === 'listMembers') return { success: true, data: await listMembers(OPENID) }
     if (event.action === 'setMemberNote') return { success: true, data: await setMemberNote(OPENID, event.memberRef, event.note) }
     if (event.action === 'revokeInvite') return { success: true, data: await revokeInvite(OPENID, event.inviteRef) }
-    if (event.action === 'transferOwner') return { success: true, data: await transferOwner(OPENID, event.memberRef, event.confirmed) }
+    if (event.action === 'transferOwner') return { success: true, data: await transferOwner(OPENID, event.memberRef, event.confirmed, legalVersion) }
     return { success: false, code: 'UNSUPPORTED_ACTION', message: '不支持的成员操作' }
   } catch (error) {
     console.error('membership failed', { code: error && error.code, name: error && error.name })

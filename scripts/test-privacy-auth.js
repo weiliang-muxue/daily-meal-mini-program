@@ -287,8 +287,9 @@ async function testAccessAndProfileLegalRoutes() {
     '隐私说明中的 AI 来源标识必须与业务页面一致')
   for (const markup of [agreementWxml, privacyWxml]) {
     assert(markup.includes('微信平台《隐私保护指引》'), '法律页面必须统一使用微信平台正式名称')
-    assert(markup.includes('成员和当前管理员均确认本版说明后'), '两份说明必须明确双方确认后才展示尾号')
-    assert(markup.includes('未确认本版说明的旧成员不披露后四位'), '两份说明必须保留历史成员不自动披露规则')
+    assert(markup.includes('成员确认本版说明或另行允许后'), '两份说明必须明确成员授权后才展示尾号')
+    assert(markup.includes('旧成员不自动开放后四位'), '两份说明必须保留历史成员不自动披露规则')
+    assert(markup.includes('停止展示手机尾号'), '两份说明必须说明撤回方式')
     assert(markup.includes('不保存完整号码') && markup.includes('不发送给 AI'), '两份说明须保留最小保存和不向 AI 发送的边界')
     assert(markup.includes('拒绝或暂时无法绑定不会影响其他功能'), '绑定手机号仍是可选操作')
     assert(!markup.includes('不能因此查看其他成员的手机号、'), '不能保留与尾号权限冲突的旧表述')

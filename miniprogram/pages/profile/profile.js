@@ -138,6 +138,7 @@ Page({
     legalPrivacyError: '',
     authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, clearingData: false,
     bindingPhone: false, phoneError: '',
+    savingPhoneVisibility: false, phoneVisibilityError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
     waterReminderSummary: '未开启',
     nativeControlColor: '#176B46',
@@ -165,11 +166,13 @@ Page({
   },
   onHide() {
     this.memberManagementSuspended = true
+    this.invalidatePhoneVisibilityPrompt()
     this.resetMemberManagement()
   },
   onUnload() {
     this.memberManagementUnloaded = true
     this.memberManagementSuspended = true
+    this.invalidatePhoneVisibilityPrompt()
     this.resetMemberManagement()
     if (this.unsubscribeMembership) this.unsubscribeMembership()
     this.unsubscribeMembership = null
@@ -613,6 +616,72 @@ Page({
     if (this.data.profileLoading || this.data.saving) return
     const nickname = event.detail.value
     this.setData({ nickname, nicknameDirty: true, nicknameInitial: (nickname || '我').slice(0, 1) })
+  },
+
+  invalidatePhoneVisibilityPrompt() {
+    this.phoneVisibilityViewRevision = (this.phoneVisibilityViewRevision || 0) + 1
+    if (this.phoneVisibilityOperation && !this.phoneVisibilityOperation.started) {
+      this.phoneVisibilityOperation = null
+      if (!this.memberManagementUnloaded) this.setData({ savingPhoneVisibility: false })
+    }
+  },
+
+  async changePhoneVisibility() {
+    const member = membershipStore.member
+    if (this.data.profileLoading || this.data.savingPhoneVisibility || this.data.clearingData
+      || this.memberManagementSuspended || this.memberManagementUnloaded
+      || membershipStore.state !== 'ready' || !member || member.status !== 'active'
+      || member.phoneVisibilitySupported !== true || !membershipStore.cacheNamespace) return
+    const allowed = member.phoneVisibilityEnabled !== true
+    const operation = { started: false }
+    const namespace = membershipStore.cacheNamespace
+    const membershipRevision = membershipStore.membershipRevision
+    const choiceRevision = member.phoneVisibilityRevision
+    const previousAllowed = member.phoneVisibilityEnabled
+    const viewRevision = this.phoneVisibilityViewRevision || 0
+    this.phoneVisibilityOperation = operation
+    const isCurrent = () => this.phoneVisibilityOperation === operation
+      && !this.memberManagementUnloaded && !this.memberManagementSuspended
+      && (this.phoneVisibilityViewRevision || 0) === viewRevision
+      && membershipStore.cacheNamespace === namespace && membershipStore.membershipRevision === membershipRevision
+      && membershipStore.member && membershipStore.member.status === 'active'
+    this.setData({ savingPhoneVisibility: true, phoneVisibilityError: '' })
+    try {
+      const confirmed = await confirmModal(allowed ? {
+        title: '允许管理员看尾号？',
+        content: '仅向当前管理员展示已绑定手机号的后四位，用于结合昵称和备注区分成员。不保存完整号码，不发送给 AI。你可随时停止展示；不允许也能正常使用。',
+        confirmText: '允许展示', cancelText: '暂不允许',
+      } : {
+        title: '停止展示手机尾号？',
+        content: '保存成功后，管理员下次读取成员列表时将看不到你的尾号。已查看的信息无法收回；不影响手机号绑定或其他功能。',
+        confirmText: '停止展示', cancelText: '取消',
+      })
+      if (!confirmed || !isCurrent()) return
+      // A status refresh can update this choice without changing membership
+      // identity. Never apply a dialog opened against an older choice.
+      const current = membershipStore.member
+      if (membershipStore.state !== 'ready' || current.phoneVisibilitySupported !== true
+        || current.phoneVisibilityRevision !== choiceRevision
+        || current.phoneVisibilityEnabled !== previousAllowed) {
+        throw new Error('PHONE_VISIBILITY_CHANGED')
+      }
+      operation.started = true
+      const result = await membershipStore.setPhoneVisibility(allowed)
+      if (!isCurrent()) return
+      if (!result || result.phoneVisibilitySupported !== true || result.phoneVisibilityEnabled !== allowed) {
+        throw new Error('PHONE_VISIBILITY_UNCONFIRMED')
+      }
+      this.setData({ member: result, phoneVisibilityError: '' })
+      wx.showToast({ title: allowed ? '已允许展示尾号' : '已停止展示尾号', icon: 'success' })
+      if (result.role === 'owner') await this.loadMembers()
+    } catch (_) {
+      if (isCurrent()) this.setData({ phoneVisibilityError: '设置暂未确认，请刷新资料核对后重试。未确认前请勿认为已生效。' })
+    } finally {
+      if (this.phoneVisibilityOperation === operation) {
+        this.phoneVisibilityOperation = null
+        if (!this.memberManagementUnloaded) this.setData({ savingPhoneVisibility: false })
+      }
+    }
   },
 
   async onGetPhoneNumber(event) {

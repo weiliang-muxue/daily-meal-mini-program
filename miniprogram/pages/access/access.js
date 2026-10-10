@@ -4,7 +4,7 @@ const { userStore } = require('../../services/user-store')
 const { clearPrivateCache } = require('../../services/private-cache')
 const { callFunction } = require('../../utils/cloud')
 const { navigateToUserAgreement, openPrivacyContractOrLocal } = require('../../utils/privacy-auth')
-const { LEGAL_CONSENT_VERSION, hasCurrentLegalConsent, legalConsentPayload } = require('../../utils/legal-consent')
+const { LEGAL_CONSENT_VERSION, hasCurrentLegalConsent, hasServiceLegalConsent, legalConsentPayload } = require('../../utils/legal-consent')
 
 function validCacheNamespace(value) {
   return typeof value === 'string' && /^[a-f0-9]{32}$/.test(value)
@@ -83,7 +83,7 @@ Page({
     try {
       const member = await membershipStore.init({ force, allowUnconsented: true })
       this.ensureLegalScope()
-      if (hasCurrentLegalConsent(member)) return this.enter(member)
+      if (hasServiceLegalConsent(member)) return this.enter(member)
       if (member && member.status === 'active') {
         this.setData({ loading: false, needsLegalConsent: true })
         return
@@ -179,7 +179,7 @@ Page({
   },
 
   async enter(member) {
-    if (!hasCurrentLegalConsent(member)) return
+    if (!hasServiceLegalConsent(member)) return
     try { await authStore.init({ force: true }); await userStore.init({ force: true }) } catch (_) {}
     wx.switchTab({ url: '/pages/plan/plan' })
   },

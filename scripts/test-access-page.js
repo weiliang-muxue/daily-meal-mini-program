@@ -347,7 +347,7 @@ async function testNewMemberRequiresReadsAndExplicitConsent() {
 }
 
 async function testExistingMemberWithoutCurrentProofCannotSkipGate() {
-  for (const legalProof of [{}, { legalConsentVersion: 0, legalConsentAccepted: true }, { legalConsentVersion: 1, legalConsentAccepted: true }, { legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsentAccepted: false }]) {
+  for (const legalProof of [{}, { legalConsentVersion: 0, legalConsentAccepted: true }, { legalConsentVersion: 3, legalConsentAccepted: true }, { legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsentAccepted: false }]) {
     const calls = []
     installDependencies({
       membershipStore: {
@@ -442,6 +442,29 @@ async function testReadScopeResetAndStaleCallbacks() {
   assert.strictEqual(page.data.agreementRead, false, '已退出页面忽略迟到回调')
 }
 
+async function testExistingConsentNeverRequiresRepeatEntryAgreement() {
+  for (const legalProof of [
+    { legalConsentVersion: 1, legalConsentAccepted: true },
+    { legalConsentVersion: 2, legalConsentAccepted: false, serviceConsentAccepted: true },
+  ]) {
+    let writes = 0
+    const original = { status: 'active', phoneVisibilityEnabled: false, ...legalProof }
+    installDependencies({ membershipStore: {
+      init: async () => original,
+      async acceptLegalConsent() { writes += 1 }, async acceptInvite() { writes += 1 },
+    } })
+    const switches = []
+    global.wx = { switchTab: ({ url }) => switches.push(url) }
+    const page = loadPage()
+    await page.onLoad()
+    assert.deepStrictEqual(switches, ['/pages/plan/plan'])
+    assert.strictEqual(page.data.needsLegalConsent, false)
+    assert.strictEqual(page.data.legalAccepted, false, '跳过重复入口不是替用户勾选')
+    assert.strictEqual(writes, 0)
+    assert.strictEqual(original.phoneVisibilityEnabled, false)
+  }
+}
+
 async function run() {
   await testIdentityFailureCanRecoverWithoutInvite()
   await testUnregisteredIdentityOpensInviteForm()
@@ -451,6 +474,7 @@ async function run() {
   await testStorageFailureDoesNotBlockDeletionRetry()
   await testNewMemberRequiresReadsAndExplicitConsent()
   await testExistingMemberWithoutCurrentProofCannotSkipGate()
+  await testExistingConsentNeverRequiresRepeatEntryAgreement()
   await testFailedOpenAndSubmissionNeverAutoAgree()
   await testReadScopeResetAndStaleCallbacks()
   testMarkupKeepsRecoveryPrimary()
