@@ -116,12 +116,6 @@ function visibleActiveInvites(summary) {
   }, [])
 }
 
-function waterReminderSummary(value) {
-  if (!value || value.enabled !== true) return '未开启'
-  const cadence = value.cadence === 'weekdays' ? '周一至周五' : '每日'
-  return `时间已保存：${cadence} ${value.startTime || '09:00'}–${value.endTime || '18:00'}；进入查看微信订阅状态`
-}
-
 function confirmModal(options) {
   return new Promise((resolve) => wx.showModal({
     ...options,
@@ -140,7 +134,6 @@ Page({
     bindingPhone: false, phoneError: '',
     savingPhoneVisibility: false, phoneVisibilityError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
-    waterReminderSummary: '未开启',
     nativeControlColor: '#176B46',
     member: {}, memberCount: 0, occupiedCount: 0, maxMembers: DEFAULT_MAX_MEMBERS,
     inviteTtlHours: DEFAULT_INVITE_TTL_HOURS, inviteTtlText: inviteTtlText(DEFAULT_INVITE_TTL_HOURS),
@@ -469,7 +462,6 @@ Page({
       authDetail: authState === 'offline' ? authStore.error || this.data.authDetail || '网络连接不可用，请稍后重试' : '正在加载资料',
       updatedText: formatUpdatedAt(userStore.data.updatedAt),
       settings: userStore.data.settings || { calciumAnchorReminder: false, vitaminDReminder: false },
-      waterReminderSummary: waterReminderSummary(userStore.data.waterReminder),
       member: membershipStore.member || {},
     })
   },
@@ -479,7 +471,7 @@ Page({
     this.setData({
       profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
       avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false,
-      phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false }, waterReminderSummary: '未开启',
+      phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false },
       updatedText: '', member: {}, memberCount: 0, occupiedCount: 0,
       activeInvites: [], joinedMembers: [], joinedMembersState: 'idle', transferMembers: [], selectedMemberRef: '',
       inviteCode: '', inviteExpiresText: '', inviteLabel: '',
@@ -547,7 +539,6 @@ Page({
     const fail = () => { if (!this.memberManagementUnloaded) this.setData({ legalPrivacyError: '来源说明暂时无法打开，请稍后重试' }); done() }
     try { return wx.navigateTo({ url: '/pages/legal/sources', fail, complete: done }) } catch (_) { fail() }
   },
-  openWaterReminder() { return wx.navigateTo({ url: '/pages/water-reminder/water-reminder' }) },
   async openPrivacyGuide() {
     this.setData({ legalPrivacyError: '' })
     const result = await openPrivacyContractOrLocal()

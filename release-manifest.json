@@ -2,7 +2,7 @@
   "lastReleasedVersion": "0.2.1",
   "workingVersion": "0.3.0",
   "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.3.0候选：老成员保留原有协议访问，尾号展示须明确确认并可停止；首次使用仍需阅读协议并主动同意。包含餐食采购联动、单餐替换、做饭条件、收藏和菜谱库，保留既有数据。云端配套及手机验收待完成，喝水消息未启用；仅开发候选，不替换线上版。",
+  "wechatUploadDescription": "0.3.0候选：老成员保留原有协议访问，尾号展示须明确确认并可停止；首次使用仍需阅读协议并主动同意。包含餐食采购联动、单餐替换、做饭条件、收藏和菜谱库，保留既有数据。云端配套及手机验收待完成，喝水推送已取消；仅开发候选，不替换线上版。",
   "stateSchemaVersion": 13,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 4,

@@ -63,6 +63,17 @@ function migrateStored(raw) {
   })
 }
 
+function currentWritableState(raw) {
+  // Only bootstrap may upgrade persisted state, under the AI/control fence.
+  // A current request or a locally migrated cache is not proof of that upgrade.
+  if (!raw || raw.schemaVersion !== CURRENT_SCHEMA) {
+    const error = new Error('个人数据尚未完成版本切换，请返回餐单页刷新后重试；原有数据已保留')
+    error.code = 'STATE_SCHEMA_UNSUPPORTED'
+    throw error
+  }
+  return migrateStored(raw)
+}
+
 async function requireMember(openid) {
   try {
     const member = (await members.doc(openid).get()).data
@@ -128,14 +139,15 @@ async function assertMigrationTaskIdle(transaction, openid, expectedCacheNamespa
   let control = null
   try { control = (await reference.get()).data || null }
   catch (error) { if (!notFound(error)) throw error }
-  const { _id, ...retainedControl } = control || {}
+  const sameGeneration = control && control.cacheNamespace === expectedCacheNamespace
+  const { _id, ...retainedControl } = sameGeneration ? control : {}
   // AI start writes this same document. A real write (including initial creation)
   // prevents snapshot-isolation write skew between task creation and migration.
   const fence = { reference, data: { ...retainedControl, owner: openid,
     cacheNamespace: expectedCacheNamespace, stateMigrationSchema: CURRENT_SCHEMA } }
-  if (!control || !control.activeTaskId) return fence
-  // A different account-data generation cannot write this member's state.
-  if (control.cacheNamespace !== expectedCacheNamespace) return
+  // A previous generation cannot write current data, but a fresh legacy request
+  // can race this migration. Always fence; never relabel its consent or task IDs.
+  if (!sameGeneration || !control.activeTaskId) return fence
   let task = null
   try { task = (await transaction.collection('meal_ai_tasks').doc(control.activeTaskId).get()).data || null }
   catch (error) { if (!notFound(error)) throw error }
@@ -184,7 +196,7 @@ async function saveState(openid, incoming, expectedStateRevision, expectedCacheN
     assertExpectedCacheNamespace(member, expectedCacheNamespace)
     const reference = transaction.collection('meal_user_states').doc(openid)
     const raw = (await reference.get()).data || {}
-    const current = migrateStored(raw)
+    const current = currentWritableState(raw)
     assertExpectedRevision(current, expectedStateRevision)
     const value = incoming && typeof incoming === 'object' ? incoming : {}
     const editable = Object.fromEntries(CLIENT_EDITABLE_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(value, key)).map((key) => [key, value[key]]))
@@ -223,7 +235,7 @@ async function changePlan(openid, action, payload) {
     assertExpectedCacheNamespace(member, payload.expectedCacheNamespace)
     const reference = transaction.collection('meal_user_states').doc(openid)
     const raw = (await reference.get()).data || {}
-    const current = migrateStored(raw)
+    const current = currentWritableState(raw)
     let next
     if (action === 'confirmDraft' || action === 'confirmMealReplacement') {
       assertExpectedDraftPlan(current, payload.expectedDraftPlanId)
@@ -252,7 +264,7 @@ async function changeFavorite(openid, action, payload) {
     assertExpectedCacheNamespace(member, payload.expectedCacheNamespace)
     const reference = transaction.collection('meal_user_states').doc(openid)
     const raw = (await reference.get()).data || {}
-    const current = migrateStored(raw)
+    const current = currentWritableState(raw)
     assertExpectedRevision(current, payload.expectedStateRevision)
     const now = new Date().toISOString()
     let next

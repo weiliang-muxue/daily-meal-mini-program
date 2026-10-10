@@ -39,10 +39,22 @@ function assertDeletingGeneration(member, expectedCacheNamespace) {
   return member
 }
 
+// Cancelled, never-required module: keep cleanup for historic installations,
+// but do not require a new collection merely to erase a user's existing data.
+// Only the SDK's explicit missing-collection code qualifies; network, permission
+// and generic not-found errors must still fail closed.
+function cancelledCollectionMissing(collection, error) {
+  if (collection !== 'meal_water_push' || !error || typeof error !== 'object') return false
+  const codes = [error.code, error.errCode].filter(value => value !== undefined && value !== null).map(String)
+  return codes.includes('DATABASE_COLLECTION_NOT_EXIST')
+    && codes.every(code => code === 'DATABASE_COLLECTION_NOT_EXIST' || code === '-1')
+    && !/permission|denied|unauthori[sz]ed|timeout|network/i.test(`${error.message || ''} ${error.errMsg || ''}`)
+}
+
 async function getDocument(collection, id, transaction) {
   const source = transaction ? transaction.collection(collection) : db.collection(collection)
   try { return (await source.doc(id).get()).data || null }
-  catch (error) { if (notFound(error)) return null; throw error }
+  catch (error) { if (notFound(error) || cancelledCollectionMissing(collection, error)) return null; throw error }
 }
 
 async function queryAll(collection, criteria) {
@@ -113,7 +125,7 @@ async function removePrivateDocuments(openid, data, expectedCacheNamespace) {
       assertDeletingGeneration(member, expectedCacheNamespace)
       for (const target of batch) {
         try { await transaction.collection(target.collection).doc(target.id).remove() }
-        catch (error) { if (!notFound(error)) throw error }
+        catch (error) { if (!notFound(error) && !cancelledCollectionMissing(target.collection, error)) throw error }
       }
     })
   }

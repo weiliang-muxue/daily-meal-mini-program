@@ -18,6 +18,7 @@ class MemoryDatabase {
     this.tail = Promise.resolve()
     this.clock = 1000
     this.beforeQueryGet = null
+    this.beforeDocOperation = null
   }
 
   bucket(name, source = this.docs) {
@@ -41,6 +42,7 @@ class MemoryDatabase {
     const database = this
     return {
       async get() {
+        if (database.beforeDocOperation) await database.beforeDocOperation(name, 'get')
         const value = database.bucket(name, resolve()).get(id)
         if (value === undefined) throw new Error('DATABASE_DOCUMENT_NOT_FOUND')
         return { data: clone(value) }
@@ -51,7 +53,10 @@ class MemoryDatabase {
         if (!bucket.has(id)) throw new Error('DATABASE_DOCUMENT_NOT_FOUND')
         bucket.set(id, { ...clone(bucket.get(id)), ...clone(data) })
       },
-      async remove() { database.bucket(name, resolve()).delete(id) },
+      async remove() {
+        if (database.beforeDocOperation) await database.beforeDocOperation(name, 'remove')
+        database.bucket(name, resolve()).delete(id)
+      },
     }
   }
 
@@ -1103,7 +1108,36 @@ async function concurrentOwnerPreparationCannotDowngradeRecovery() {
   assert.strictEqual(database.record('meal_members', CONTROL_ID).revision, 12)
 }
 
+async function cancelledWaterCollectionIsOptionalButErrorsAreNot() {
+  const seed = () => ({ meal_members: { [CONTROL_ID]: activeControl(), owner: member('owner'), member: member() } })
+  resetEffects()
+  database.reset(seed())
+  database.beforeDocOperation = async name => {
+    if (name === 'meal_water_push') throw Object.assign(new Error('Collection does not exist'), { code: 'DATABASE_COLLECTION_NOT_EXIST' })
+  }
+  await privacy._test.clearMyData('member', CACHE_NAMESPACE)
+  assert.strictEqual(database.record('meal_members', 'member'), undefined)
+  assert.strictEqual(database.record('meal_members', 'owner').status, 'active')
+
+  for (const [collection, error] of [
+    ['meal_water_push', { code: 'PERMISSION_DENIED' }],
+    ['meal_water_push', { code: 'NETWORK_ERROR' }],
+    ['meal_water_push', { code: 'DATABASE_COLLECTION_NOT_EXIST', errCode: 'PERMISSION_DENIED' }],
+    ['meal_water_push', { code: 'DATABASE_COLLECTION_NOT_EXIST', message: 'network timeout' }],
+    ['meal_water_push', { message: 'collection not found' }],
+    ['meal_users', { code: 'DATABASE_COLLECTION_NOT_EXIST' }],
+  ]) {
+    resetEffects()
+    database.reset(seed())
+    database.beforeDocOperation = async name => { if (name === collection) throw error }
+    await assert.rejects(privacy._test.clearMyData('member', CACHE_NAMESPACE))
+    assert(database.record('meal_members', 'member'), 'uncertain deletion must retain the member for retry')
+  }
+  database.beforeDocOperation = null
+}
+
 async function run() {
+  await cancelledWaterCollectionIsOptionalButErrorsAreNot()
   resetEffects()
   database.reset({ meal_members: { [CONTROL_ID]: activeControl(), owner: member('owner'), member: member() },
     meal_water_push: { member: { owner: 'member', cacheNamespace: CACHE_NAMESPACE, enabled: true },

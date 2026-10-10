@@ -886,7 +886,79 @@ async function testMigrationWaitsForGeneration() {
   } finally { cloudStub.getWXContext = originalContext }
 }
 
+async function testMigrationFencesPreviousDataGeneration() {
+  for (const activeTaskId of ['', 'fictional-prior-generation-task']) {
+    reset({ ...currentState(4), schemaVersion: 8 })
+    const oldNamespace = 'b'.repeat(32)
+    const oldControl = { owner, cacheNamespace: oldNamespace, activeTaskId,
+      generationEpoch: 3, idempotencyEntries: [{ marker: 'old-generation-only' }], aiDataConsentAcceptedAt: 123 }
+    const task = { owner, cacheNamespace: oldNamespace, status: 'running', expiresAt: Date.now() + 60000 }
+    put('meal_ai_controls', owner, oldControl)
+    put('meal_ai_tasks', 'fictional-prior-generation-task', task)
+    const before = get('meal_user_states', owner)
+    const originalTransaction = database.runTransaction
+    database.runTransaction = callback => originalTransaction(() => callback({ collection(name) {
+      const original = collection(name)
+      if (name !== 'meal_ai_controls') return original
+      return { doc(id) { return { ...original.doc(id), async set() {
+        throw Object.assign(new Error('fictional concurrent legacy start'), { code: 'DATABASE_TRANSACTION_CONFLICT' })
+      } } } }
+    } }))
+    try {
+      await assert.rejects(userData._test.bootstrap(owner, cacheNamespace),
+        error => error.code === 'DATABASE_TRANSACTION_CONFLICT', 'every migration must fence concurrent start')
+      assert.deepStrictEqual(get('meal_user_states', owner), before)
+      assert.deepStrictEqual(get('meal_ai_controls', owner), oldControl)
+    } finally { database.runTransaction = originalTransaction }
+    const after = await userData._test.bootstrap(owner, cacheNamespace)
+    assert.strictEqual(after.schemaVersion, 13)
+    assert.deepStrictEqual(get('meal_ai_controls', owner), { owner, cacheNamespace, stateMigrationSchema: 13 },
+      'prior-generation task pointers, deduplication and consent must not cross the namespace boundary')
+    assert.deepStrictEqual(get('meal_ai_tasks', 'fictional-prior-generation-task'), task)
+    assert.strictEqual(after.activePlan.id, before.activePlan.id)
+    assert.deepStrictEqual(after.activePlan.days.map(day => day.meals), before.activePlan.days.map(day => day.meals))
+    assert.deepStrictEqual(after.planHistory.map(item => item.id), before.planHistory.map(item => item.id))
+    assertNestedFuture(after)
+  }
+}
+
+async function testCurrentMutationsCannotUpgradeState() {
+  const originalContext = cloudStub.getWXContext
+  cloudStub.getWXContext = () => ({ OPENID: owner })
+  const actions = ['saveState', 'confirmDraft', 'confirmMealReplacement', 'restoreHistory',
+    'discardDraft', 'addFavorite', 'removeFavorite', 'applyFavorite']
+  try {
+    for (const version of [8, 12, 14, '13', undefined]) {
+      for (const active of [false, true]) {
+        for (const action of actions) {
+          reset({ ...currentState(4), schemaVersion: version })
+          put('meal_user_states', 'another-fictional-member', currentState(9))
+          const control = { owner, cacheNamespace, activeTaskId: active ? 'fictional-old-task' : '' }
+          const task = { owner, cacheNamespace, status: 'running', expiresAt: Date.now() + 60000 }
+          put('meal_ai_controls', owner, control)
+          put('meal_ai_tasks', 'fictional-old-task', task)
+          const before = get('meal_user_states', owner)
+          const other = get('meal_user_states', 'another-fictional-member')
+          const reply = await userData.main({ action, clientSchemaVersion: 13,
+            expectedCacheNamespace: cacheNamespace, expectedStateRevision: 4,
+            expectedDraftPlanId: 'draft', planId: 'history', expectedPlanId: 'active',
+            mealId: 'active-meal-0', favoriteId: 'fictional-favorite',
+            state: { settings: { calciumAnchorReminder: false, vitaminDReminder: false } } })
+          assert.strictEqual(reply.success, false, `${action} must not upgrade persisted schema ${version}`)
+          assert.strictEqual(reply.code, 'STATE_SCHEMA_UNSUPPORTED')
+          assert.deepStrictEqual(get('meal_user_states', owner), before)
+          assert.deepStrictEqual(get('meal_user_states', 'another-fictional-member'), other)
+          assert.deepStrictEqual(get('meal_ai_controls', owner), control)
+          assert.deepStrictEqual(get('meal_ai_tasks', 'fictional-old-task'), task)
+        }
+      }
+    }
+  } finally { cloudStub.getWXContext = originalContext }
+}
+
 ;(async () => {
+  await testMigrationFencesPreviousDataGeneration()
+  await testCurrentMutationsCannotUpgradeState()
   await testMigrationWaitsForGeneration()
   await testReleasedClientCoexistence()
   await testPublicSchemaHandshake()

@@ -25,7 +25,6 @@ const pageSources = {
   access: read('miniprogram/pages/access/access.wxss'),
   planner: read('miniprogram/pages/planner/planner.wxss'),
   profile: read('miniprogram/pages/profile/profile.wxss'),
-  water: read('miniprogram/pages/water-reminder/water-reminder.wxss'),
   library: read('miniprogram/pages/recipe-library/recipe-library.wxss'),
 }
 const pageRules = Object.fromEntries(Object.entries(pageSources).map(([name, source]) => [name, parseWxss(source)]))
@@ -158,28 +157,6 @@ assert.strictEqual(computedStyle(pageRules.profile, '.screen', landscapeViewport
   'Profile 必须在 812x375 横屏解除窄内容上限')
 assert.strictEqual(computedStyle(pageRules.profile, '.profile-save', landscapeViewport)['min-height'], '48px',
   'Profile 横屏主操作必须保留 48px 触控区')
-assert.strictEqual(computedStyle(pageRules.water, '.screen', landscapeViewport)['max-width'], 'none',
-  '喝水提醒页必须在 812x375 横屏解除窄内容上限')
-assertSafeAreaPair(pageRules.water, '.screen', 'left')
-assertSafeAreaPair(pageRules.water, '.screen', 'right')
-for (const viewport of portraitViewports) {
-  const navigation = computedStyle(pageRules.water, '.page-navigation', viewport)
-  const segment = computedStyle(pageRules.water, '.segment', viewport)
-  const picker = computedStyle(pageRules.water, '.picker-value', viewport)
-  assert.strictEqual(navigation.width, '48px', `${viewport.width}px 喝水提醒页返回按钮宽度必须为 48px`)
-  assert.strictEqual(navigation['max-width'], '48px', `${viewport.width}px 喝水提醒页返回按钮必须限制微信默认宽度`)
-  assert.strictEqual(navigation.flex, '0 0 48px', `${viewport.width}px 喝水提醒页返回按钮必须保持固定 48px 布局占位`)
-  assert.strictEqual(navigation.height, '48px', `${viewport.width}px 喝水提醒页返回按钮高度必须为 48px`)
-  assert.strictEqual(segment['min-height'], '48px', `${viewport.width}px 提醒日期选项必须保留 48px 触控区`)
-  assert.strictEqual(picker['min-height'], '48px', `${viewport.width}px 时间与间隔选择器必须保留 48px 触控区`)
-}
-for (const viewport of [...portraitViewports, landscapeViewport]) {
-  const segment = computedStyle(pageRules.water, ['.segment', '.segmented .segment'], viewport)
-  assert.strictEqual(segment.width, '100%', `${viewport.width}px 提醒日期按钮必须填满各自网格单元`)
-  assert.strictEqual(segment['min-width'], '0', `${viewport.width}px 提醒日期按钮必须允许在网格内收缩`)
-  assert.strictEqual(segment['max-width'], '100%', `${viewport.width}px 提醒日期按钮不得以微信默认宽度撑出网格`)
-}
-
 for (const [name, selector] of [['preview', '.state-panel'], ['history', '.state-panel']]) {
   assert.strictEqual(computedStyle(pageRules[name], selector, portraitViewports[0])['min-height'], '300rpx',
     `${name} 空态必须收紧到 300rpx，避免窄屏首屏大块留白`)
@@ -190,10 +167,6 @@ assert.strictEqual(computedStyle(parseWxss(read('miniprogram/pages/guide/guide.w
   'guide 空态必须收紧到 300rpx，避免窄屏首屏大块留白')
 assert.strictEqual(computedStyle(parseWxss(read('miniprogram/pages/guide/guide.wxss')), '.guide-card-skeleton', portraitViewports[0]).height, '180rpx',
   'guide 加载骨架不得使用过高占位块')
-assert.strictEqual(computedStyle(pageRules.water, '.field-row', portraitViewports[0])['flex-direction'], 'column',
-  '320px 喝水提醒字段必须折叠为单列')
-assert.strictEqual(computedStyle(pageRules.water, '.picker-value', portraitViewports[0]).width, '100%',
-  '320px 喝水提醒选择器必须占满可用宽度')
 const plannerStepHead = computedStyle(pageRules.planner, '.step-head', portraitViewports[2])
 assert.strictEqual(plannerStepHead.position, 'sticky', 'Planner 步骤头必须在长确认页滚动时保持上下文')
 assert.strictEqual(plannerStepHead.top, '0', 'Planner 步骤头必须吸附到页面顶端')

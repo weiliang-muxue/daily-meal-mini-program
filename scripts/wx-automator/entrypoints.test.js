@@ -29,7 +29,7 @@ test('smoke collects ordinary route failures but fails fast on a closed session'
   assert.match(source, /if \(isFatalSessionError\(error\)\) throw error/)
   assert.match(source, /report\.routes\.some\(\(item\) => item\.category !== 'PASSED'\)/)
   assert.doesNotMatch(source, /item\.stage === 'CAPTURE_SCREENSHOT'\) throw error/)
-  assert.match(source, /'pages\/water-reminder\/water-reminder'/)
+  assert.doesNotMatch(source, /'pages\/water-reminder\/water-reminder'/)
 })
 
 test('route and visual smoke cover every page declared by the mini program', () => {
@@ -120,30 +120,6 @@ test('catalog detail probes use a real bundled public recipe rather than an empt
   assert.match(read('visual-regression.js'), /catalogRoute\(route\)/)
 })
 
-test('visual gate covers the complete water reminder page including its bottom actions', () => {
-  const source = read('visual-regression.js')
-  assert.match(source, /\['water-reminder', '\/pages\/water-reminder\/water-reminder'/)
-  assert.match(source, /'water-reminder': \['\.push-card', '\.save-button', '\.status-panel'\]/)
-  assert.match(source, /'water-reminder-bottom'/)
-})
-
-test('water reminder interaction changes only an unsaved draft and restores it', () => {
-  const source = read('interactive-smoke.js')
-  const step = source.match(/await step\('WATER_REMINDER_DRAFT'[\s\S]*?await step\('PROFILE_LEGAL'/)
-  assert(step, 'WATER_REMINDER_DRAFT step missing')
-  assert.match(source, /WATER_REMINDER_DRAFT: 'S'/)
-  assert.match(step[0], /tapControl\(page, '\.reminder-navigation'\)/)
-  assert.match(step[0], /tapControl\(page, '\.master-row switch'/)
-  assert.match(step[0], /tapControl\(page, '\.segment'/)
-  assert.match(step[0], /callMethod\('changeStartTime'/)
-  assert.match(step[0], /callMethod\('changeEndTime'/)
-  assert.match(step[0], /callMethod\('changeInterval'/)
-  assert.match(step[0], /String\(original\.intervalIndex\)/)
-  assert.match(step[0], /next\.intervalIndex === original\.intervalIndex/)
-  assert.match(step[0], /finally \{[\s\S]*callMethod\('updateDraft', originalDraft\)/)
-  assert.doesNotMatch(step[0], /callMethod\(['"](?:save|subscribe|submitGrant)['"]|\.save-button|\.push-button/)
-})
-
 test('personal reminder interaction waits for cloud writes and confirms cleanup', () => {
   const source = read('interactive-smoke.js')
   const step = source.match(/await writableStep\('TEST_REMINDER'[\s\S]*?await writableStep\('PROFILE_SETTINGS'/)
@@ -156,10 +132,10 @@ test('personal reminder interaction waits for cloud writes and confirms cleanup'
   assert.match(step[0], /next\.offline !== true/)
 })
 
-test('mainline includes planner boundaries and water drafts without granting its own risk opt-ins', () => {
+test('mainline includes planner boundaries without cancelled push routes or granting risk opt-ins', () => {
   const source = read('run-mainline-smoke.js')
   for (const step of [
-    'PLANNER_ENTRY', 'DRAFT_SAFE', 'PLANNER_CONTROLS', 'AI_NO_GENERATE', 'WATER_REMINDER_DRAFT', 'AVATAR_ERROR',
+    'PLANNER_ENTRY', 'DRAFT_SAFE', 'PLANNER_CONTROLS', 'AI_NO_GENERATE', 'AVATAR_ERROR',
   ]) assert.match(source, new RegExp(`'${step}'`), `${step} must remain in the mainline`)
   assert.doesNotMatch(source, /MINIPROGRAM_SMOKE_ALLOW_(?:WRITE|DANGEROUS)\s*=/)
 })

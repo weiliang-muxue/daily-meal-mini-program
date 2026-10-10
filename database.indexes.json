@@ -1,11 +1,6 @@
 {
   "indexes": [
     {
-      "collectionName": "meal_water_push",
-      "fields": [{ "fieldPath": "enabled", "order": "ASCENDING" }],
-      "purpose": "定时任务只扫描启用的个人消息提醒；每用户一个文档"
-    },
-    {
       "collectionName": "health_daily",
       "fields": [
         { "fieldPath": "owner", "order": "ASCENDING" },

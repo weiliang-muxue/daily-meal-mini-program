@@ -1,6 +1,0 @@
-{
-  "permissions": { "openapi": ["subscribeMessage.send"] },
-  "timeout": 60,
-  "memorySize": 256,
-  "triggers": [{ "name": "waterReminderMinute", "type": "timer", "config": "0 * * * * * *" }]
-}

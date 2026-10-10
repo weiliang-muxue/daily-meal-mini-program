@@ -12,7 +12,7 @@
 
 ## 集合与权限
 
-已发布版本使用前十个集合；开发线增加 `meal_water_push`。部署新模块前增量创建缺失集合，并把客户端 `read`、`write` 均设为 `false`，不要重建已有集合：
+当前业务使用以下十个集合。喝水模块已取消，不创建 `meal_water_push` 或对应索引；若历史环境已有该集合，保留拒绝客户端访问的规则和本人清理保护，不批量删除历史记录。已有业务集合不得重建：
 
 - `meal_users`
 - `meal_user_states`
@@ -24,7 +24,6 @@
 - `meal_ai_tasks`
 - `meal_ai_shards`
 - `meal_ai_controls`
-- `meal_water_push`（新模块，尚未部署）
 
 云函数使用服务端 SDK 读写。不要为了调试临时开放集合，也不要允许客户端按 openid 查询或列举用户。
 
@@ -68,7 +67,7 @@
 | `checkedShoppingIds` | string[] | 当前计划内已勾选的稳定采购 ID；兼容现有页面的镜像字段 |
 | `customReminders` | object[] | 用户主动添加的提醒与完成状态 |
 | `settings` | object | 健康提醒开关；默认关闭，用户主动开启后生效 |
-| `waterReminder` | object | 默认关闭的喝水提醒；保存日期模式、起止时间、间隔、北京时间与排程版本 |
+| `waterReminder` | object | 已取消喝水功能的兼容字段；仅保留旧值，不展示、不订阅或发送消息 |
 | `createdAt` / `updatedAt` | server date | 服务端创建及更新时间 |
 
 ### 动态计划对象
