@@ -39,7 +39,7 @@
 
     <view class="sync-status {{syncState}} {{syncState === 'offline' || syncState === 'error' ? 'touch-target' : ''}}" bindtap="{{syncState === 'offline' || syncState === 'error' ? 'retrySync' : ''}}" hover-class="{{syncState === 'offline' || syncState === 'error' ? 'strip-hover' : 'none'}}" aria-role="{{syncState === 'offline' || syncState === 'error' ? 'button' : ''}}" aria-label="{{syncText}}">
       <view wx:if="{{syncState !== 'ready'}}" class="sync-dot"></view>
-      <text>{{syncText}}</text>
+      <text class="sync-copy">{{syncText}}</text>
       <text wx:if="{{syncState === 'offline' || syncState === 'error'}}" class="retry">重试</text>
     </view>
 

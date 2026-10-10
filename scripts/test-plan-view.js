@@ -3,6 +3,15 @@ const fs = require('fs')
 const path = require('path')
 const { buildPlanView, selectDay } = require('../miniprogram/services/plan-view')
 
+// Long offline/upgrade notices wrap without squeezing the retry label. The
+// entire semantic status strip remains the accessible tap target.
+const planMarkup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/plan/plan.wxml'), 'utf8')
+const planStyles = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/plan/plan.wxss'), 'utf8')
+assert(planMarkup.includes('<text class="sync-copy">{{syncText}}</text>'))
+assert(/\.sync-copy\s*\{[^}]*flex:\s*1;[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/.test(planStyles))
+assert(/\.retry\s*\{[^}]*flex:\s*none;[^}]*white-space:\s*nowrap;/.test(planStyles))
+assert(/class="sync-status [^>]+touch-target[^>]+bindtap=[^>]+retrySync[^>]+aria-role=/.test(planMarkup))
+
 function meal(type, scenario, id) {
   return { type, scenario, id, title: `${type}-${scenario}`, ingredients: 'one', method: 'cook' }
 }

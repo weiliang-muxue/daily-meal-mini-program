@@ -28,7 +28,8 @@
 .sync-status.offline, .sync-status.error { background: var(--warm-soft); color: var(--warm-ink); }
 .sync-dot { width: 14rpx; height: 14rpx; flex: none; border-radius: 50%; background: var(--primary); }
 .offline .sync-dot, .error .sync-dot { background: var(--warm); }
-.retry { margin-left: auto; font-weight: 700; }
+.sync-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.retry { flex: none; margin-left: auto; white-space: nowrap; font-weight: 700; }
 .strip-hover { opacity: .78; }
 .empty-state { margin-top: 22rpx; overflow: hidden; border: 1rpx solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-raised); }
 .empty-image { display: block; width: 100%; height: 300rpx; }
