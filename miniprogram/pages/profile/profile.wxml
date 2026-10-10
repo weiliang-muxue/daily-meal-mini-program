@@ -1,6 +1,6 @@
 <view class="screen">
   <view class="profile-header surface">
-    <button wx:if="{{avatarPrivacyMode === 'native'}}" class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" disabled="{{profileLoading || saving}}" aria-label="更换头像">
+    <button wx:if="{{avatarPrivacyMode === 'native'}}" class="avatar-button" open-type="chooseAvatar" bindtap="onAvatarTap" bindchooseavatar="onChooseAvatar" binderror="onChooseAvatarError" disabled="{{profileLoading || saving}}" hover-class="profile-control-hover" aria-label="更换头像">
       <view class="avatar-visual">
         <image wx:if="{{avatarPreview && !avatarImageFailed}}" class="avatar" src="{{avatarPreview}}" data-src="{{avatarPreview}}" binderror="onAvatarImageError" mode="aspectFill" />
         <view wx:else class="avatar avatar-empty"><text>{{nicknameInitial}}</text></view>
@@ -18,6 +18,7 @@
     </button>
     <view class="header-copy"><text class="header-title">{{nickname || '还没有设置昵称'}}</text><text class="header-subtitle">个人资料可以跳过，以后随时修改</text></view>
   </view>
+  <text wx:if="{{avatarLocalPath}}" class="profile-info-hint avatar-draft-hint" aria-role="status">新头像尚未保存，请点击下方“保存资料”。</text>
   <view wx:if="{{avatarPrivacyError}}" class="avatar-privacy-message {{avatarPrivacyTone}}" aria-role="alert">
     <text>{{avatarPrivacyError}}</text>
     <view wx:if="{{avatarPrivacyMode !== 'native'}}" class="avatar-error-actions">
@@ -49,6 +50,7 @@
       <text wx:if="{{phoneVisibilityError}}" class="phone-error" aria-role="alert">{{phoneVisibilityError}}</text>
       <button wx:if="{{phoneVisibilityError}}" class="phone-visibility-button" bindtap="retryLogin" disabled="{{profileLoading || savingPhoneVisibility}}" hover-class="button-hover">刷新资料</button>
     </view>
+    <text wx:if="{{profileSaveError}}" class="phone-error" aria-role="alert">{{profileSaveError}}</text>
     <button class="primary-button profile-save" form-type="submit" loading="{{saving}}" disabled="{{profileLoading || saving || bindingPhone}}" hover-class="button-hover">保存资料</button>
   </form>
 

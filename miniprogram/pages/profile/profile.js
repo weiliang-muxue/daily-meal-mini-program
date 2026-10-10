@@ -130,7 +130,7 @@ Page({
     avatarImageFailed: false,
     avatarPrivacyMode: 'native', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false,
     legalPrivacyError: '',
-    authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, clearingData: false,
+    authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, profileSaveError: '', clearingData: false,
     bindingPhone: false, phoneError: '',
     savingPhoneVisibility: false, phoneVisibilityError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
@@ -470,7 +470,7 @@ Page({
     this.resetMemberManagement()
     this.setData({
       profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
-      avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false,
+      avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false, avatarPrivacyError: '', profileSaveError: '',
       phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false },
       updatedText: '', member: {}, memberCount: 0, occupiedCount: 0,
       activeInvites: [], joinedMembers: [], joinedMembersState: 'idle', transferMembers: [], selectedMemberRef: '',
@@ -555,53 +555,71 @@ Page({
     this.setData({ avatarImageFailed: true })
   },
 
-  onChooseAvatar(event) {
-    if (this.data.profileLoading || this.data.saving) return
-    if (event.detail && event.detail.avatarUrl) this.setData({
-      avatarPreview: event.detail.avatarUrl,
-      avatarLocalPath: event.detail.avatarUrl,
-      avatarImageFailed: false,
-      avatarPrivacyError: '',
+  onAvatarTap() {
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving) return
+    // Keep the native button mounted: choosing still requires this user tap.
+    this.setData({
+      avatarPrivacyError: '请在微信选择框中选择头像，选好后点击“保存资料”。若未弹出选择框，请稍后重试。',
       avatarPrivacyTone: 'hint',
     })
-    else {
-      const errMsg = String(event && event.detail && event.detail.errMsg || '').toLowerCase()
-      const denied = /deny/.test(errMsg)
-      const cancelled = /cancel/.test(errMsg)
-      const unavailable = /not\s+declared|undeclared|unsupported|not\s+supported|not support/.test(errMsg)
-      if (unavailable) {
-        this.setData({
-          avatarPrivacyMode: 'native',
-          avatarPrivacyError: '当前微信版本或小程序配置暂不支持选择头像，可先填写昵称，不影响其他功能。',
-          avatarPrivacyTone: 'error',
-        })
-        return
-      }
-      if (denied) {
-        this.setData({
-          avatarPrivacyMode: 'authorize',
-          avatarPrivacyError: '已取消头像授权，不影响其他功能；需要时可再次尝试。',
-          avatarPrivacyTone: 'hint',
-        })
-        return
-      }
-      if (cancelled) {
-        this.setData({ avatarPrivacyError: '', avatarPrivacyTone: 'hint' })
-        return
-      }
-      if (/privacy|permission|authorization|scope/.test(errMsg)) {
-        this.setData({
-          avatarPrivacyMode: 'authorize',
-          avatarPrivacyError: '选择头像前需要完成微信隐私授权，授权后请再次点击头像。',
-          avatarPrivacyTone: 'hint',
-        })
-        return
-      }
+  },
+
+  onChooseAvatar(event = {}) {
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving) return
+    const avatarUrl = event && event.detail && event.detail.avatarUrl
+    if (typeof avatarUrl === 'string' && avatarUrl.trim()) this.setData({
+      avatarPreview: avatarUrl,
+      avatarLocalPath: avatarUrl,
+      avatarImageFailed: false,
+      avatarPrivacyMode: 'native',
+      authorizingAvatar: false,
+      avatarPrivacyError: '',
+      avatarPrivacyTone: 'hint',
+      profileSaveError: '',
+    })
+    else this.onChooseAvatarError(event)
+  },
+
+  onChooseAvatarError(event = {}) {
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving) return
+    // Native open-capability failures arrive through binderror, not necessarily
+    // bindchooseavatar. Never change the existing avatar/draft on a failure.
+    const errMsg = String(event && event.detail && event.detail.errMsg || '').toLowerCase()
+    const denied = /deny/.test(errMsg)
+    const cancelled = /cancel/.test(errMsg)
+    const unavailable = /not\s+declared|undeclared|unsupported|not\s+supported|not support/.test(errMsg)
+    if (unavailable) {
       this.setData({
-        avatarPrivacyError: '头像暂时无法选择，可先填写昵称，不影响其他功能。',
+        avatarPrivacyMode: 'native',
+        avatarPrivacyError: '当前微信版本或小程序配置暂不支持选择头像，可先填写昵称，不影响其他功能。',
         avatarPrivacyTone: 'error',
       })
+      return
     }
+    if (denied) {
+      this.setData({
+        avatarPrivacyMode: 'authorize',
+        avatarPrivacyError: '已取消头像授权，不影响其他功能；需要时可再次尝试。',
+        avatarPrivacyTone: 'hint',
+      })
+      return
+    }
+    if (cancelled) {
+      this.setData({ avatarPrivacyError: '', avatarPrivacyTone: 'hint' })
+      return
+    }
+    if (/privacy|permission|authorization|scope/.test(errMsg)) {
+      this.setData({
+        avatarPrivacyMode: 'authorize',
+        avatarPrivacyError: '选择头像前需要完成微信隐私授权，授权后请再次点击头像。',
+        avatarPrivacyTone: 'hint',
+      })
+      return
+    }
+    this.setData({
+      avatarPrivacyError: '头像暂时无法选择，可先填写昵称，不影响其他功能。',
+      avatarPrivacyTone: 'error',
+    })
   },
   onNicknameInput(event) {
     if (this.data.profileLoading || this.data.saving) return
@@ -707,7 +725,7 @@ Page({
       ? event.detail.value.nickname : this.data.nickname
     const nickname = String(submittedNickname || '').trim().slice(0, 20)
     if (this.data.profileLoading || this.data.saving || this.data.bindingPhone) return
-    this.setData({ saving: true })
+    this.setData({ saving: true, profileSaveError: '' })
     wx.showLoading({ title: '正在保存', mask: true })
     try {
       const avatarImage = this.data.avatarLocalPath
@@ -718,10 +736,13 @@ Page({
         profile, nickname: profile.nickname, nicknameDirty: false,
         nicknameInitial: (profile.nickname || '我').slice(0, 1),
         avatarPreview: profile.avatarUrl, avatarLocalPath: '', avatarImageFailed: false,
+        avatarPrivacyError: '', profileSaveError: '',
       })
       wx.showToast({ title: '资料已保存', icon: 'success' })
     } catch (error) {
-      wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
+      const message = error && error.message || '保存失败，请重试'
+      this.setData({ profileSaveError: message + (this.data.avatarLocalPath ? '；已选择的头像仍保留在当前页面。' : '') })
+      wx.showToast({ title: message, icon: 'none' })
     } finally {
       wx.hideLoading()
       this.setData({ saving: false })

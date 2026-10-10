@@ -1,8 +1,8 @@
 {
-  "lastReleasedVersion": "0.2.1",
-  "workingVersion": "0.3.0",
+  "lastReleasedVersion": "0.3.0",
+  "workingVersion": "0.3.1",
   "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.3.0候选：取消喝水推送；完善餐食采购联动、单餐替换、定制条件、收藏与菜谱库；隐私正文明确昵称、头像用途及可选性，尾号展示须成员确认。兼容云函数已更新，保留既有餐单与记录。真实手机与头像授权待验收，当前为开发候选。",
+  "wechatUploadDescription": "0.3.1候选：补接头像选择错误回调，增加点击反馈、头像未保存提醒及资料保存失败提示；取消或失败保留原头像与当前草稿。保留餐单和记录，不改云端数据结构。微信后台头像声明及手机选择、保存、重入仍待验收，未据此宣称头像能力已恢复。",
   "stateSchemaVersion": 13,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 4,

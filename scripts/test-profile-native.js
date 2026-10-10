@@ -13,6 +13,14 @@ const authModulePath = path.join(root, 'miniprogram', 'services', 'auth-store.js
 const userStoreModulePath = path.join(root, 'miniprogram', 'services', 'user-store.js')
 
 assert(/open-type="chooseAvatar"/.test(profileWxml))
+const avatarButton = (profileWxml.match(/<button[^>]*open-type="chooseAvatar"[^>]*>/) || [])[0] || ''
+const avatarErrorHandler = (avatarButton.match(/binderror="([^"]+)"/) || [])[1]
+assert.strictEqual(avatarErrorHandler, 'onChooseAvatarError', '原生头像错误必须通过 button 的 binderror 接收，不能只测试成功回调')
+assert(avatarButton.includes('bindtap="onAvatarTap"'), '原生头像入口应提供点击反馈且不能替换原生选择流程')
+assert(profileWxml.includes('wx:if="{{avatarLocalPath}}"') && profileWxml.includes('新头像尚未保存'),
+  '选图预览必须明确尚未保存，不能误报上传成功')
+assert(profileWxml.includes('wx:if="{{profileSaveError}}"') && profileWxml.includes('{{profileSaveError}}'),
+  '资料保存失败必须留下可读的页内重试提示')
 assert(/open-type="chooseAvatar"[^>]+disabled="\{\{profileLoading \|\| saving\}\}"/.test(profileWxml),
   '资料初始化和保存期间必须锁定头像选择')
 assert(/class="avatar-button avatar-authorize"[^>]+disabled="\{\{profileLoading \|\| authorizingAvatar \|\| saving\}\}"/.test(profileWxml),
@@ -191,11 +199,48 @@ async function main() {
   assert.strictEqual(staleAvatarError.data.avatarImageFailed, false, '旧头像的延迟错误不能隐藏新头像')
 
   const chosenAvatar = makePage()
+  chosenAvatar.onAvatarTap()
+  assert(chosenAvatar.data.avatarPrivacyError.includes('微信选择框'))
+  assert.strictEqual(chosenAvatar.data.avatarPrivacyMode, 'native', '点击反馈不能卸载原生头像按钮')
   chosenAvatar.data.avatarImageFailed = true
   chosenAvatar.onChooseAvatar({ detail: { avatarUrl: 'new-local-avatar-path' } })
   assert.strictEqual(chosenAvatar.data.avatarPreview, 'new-local-avatar-path')
   assert.strictEqual(chosenAvatar.data.avatarLocalPath, 'new-local-avatar-path')
   assert.strictEqual(chosenAvatar.data.avatarImageFailed, false, '重新选择头像后必须恢复图片预览')
+  assert.strictEqual(chosenAvatar.data.avatarPrivacyError, '')
+
+  for (const error of [
+    'chooseAvatar:fail user cancel',
+    'chooseAvatar:fail user deny',
+    'chooseAvatar:fail api scope is not declared in the privacy agreement',
+    'chooseAvatar:fail privacy authorization required',
+    'chooseAvatar:fail unavailable',
+  ]) {
+    const failed = makePage()
+    failed.data.avatarPreview = 'unsaved-local-avatar'
+    failed.data.avatarLocalPath = 'unsaved-local-avatar'
+    failed.data.profile = { avatarUrl: 'previous-saved-avatar' }
+    failed[avatarErrorHandler]({ detail: { errMsg: error } })
+    assert.strictEqual(failed.data.avatarPreview, 'unsaved-local-avatar')
+    assert.strictEqual(failed.data.avatarLocalPath, 'unsaved-local-avatar')
+    assert.strictEqual(failed.data.profile.avatarUrl, 'previous-saved-avatar')
+    if (!error.includes('cancel')) assert(failed.data.avatarPrivacyError, '真实错误绑定必须给出可见反馈')
+  }
+  const emptyEvent = makePage()
+  emptyEvent.onChooseAvatar()
+  emptyEvent.onChooseAvatar(null)
+  emptyEvent[avatarErrorHandler]()
+  assert(emptyEvent.data.avatarPrivacyError, '缺少原生事件详情不能导致页面抛错')
+  for (const guard of ['profileLoading', 'saving', 'unloaded']) {
+    const guarded = makePage()
+    if (guard === 'unloaded') guarded.memberManagementUnloaded = true
+    else guarded.data[guard] = true
+    guarded.onAvatarTap()
+    guarded.onChooseAvatar({ detail: { avatarUrl: 'must-not-apply' } })
+    guarded[avatarErrorHandler]({ detail: { errMsg: 'chooseAvatar:fail' } })
+    assert.strictEqual(guarded.data.avatarLocalPath, '')
+    assert.strictEqual(guarded.data.avatarPrivacyError, '')
+  }
 
   const cancelledAvatar = makePage()
   cancelledAvatar.onChooseAvatar({ detail: { errMsg: 'chooseAvatar:fail user cancel' } })
@@ -227,6 +272,48 @@ async function main() {
   assert.strictEqual(submitted.data.nickname, '表单提交值')
   assert.strictEqual(submitted.data.nicknameDirty, false)
   assert.strictEqual(submitted.data.avatarImageFailed, false, '资料保存成功后必须允许显示刷新后的头像')
+
+  // Synthetic local file metadata and auth response: this is an offline flow
+  // regression, not proof of native authorization or a real cloud upload.
+  const avatarSave = makePage()
+  avatarSave.data.profile = { nickname: '旧资料', avatarUrl: 'previous-saved-avatar' }
+  avatarSave.onChooseAvatar({ detail: { avatarUrl: 'synthetic-avatar-path' } })
+  const fileDigest = 'a'.repeat(64)
+  wx.cloud = { CDN: ({ filePath }) => ({ syntheticFile: filePath }) }
+  wx.getFileSystemManager = () => ({ getFileInfo({ success }) { success({ size: 1000, digest: fileDigest }) } })
+  let avatarWriteCalls = 0
+  authStore.updateProfile = async (payload) => {
+    avatarWriteCalls++
+    assert.deepStrictEqual(payload.avatarImage, {
+      sourceUrl: { syntheticFile: 'synthetic-avatar-path' }, sourceSize: 1000, sourceSha256: fileDigest,
+    })
+    if (avatarWriteCalls === 1) throw new Error('网络暂时不可用，请重试')
+    return { nickname: payload.nickname, avatarUrl: 'new-saved-avatar' }
+  }
+  await avatarSave.saveProfile({ detail: { value: { nickname: '测试资料' } } })
+  assert.strictEqual(avatarSave.data.profile.avatarUrl, 'previous-saved-avatar')
+  assert.strictEqual(avatarSave.data.avatarLocalPath, 'synthetic-avatar-path')
+  assert.strictEqual(avatarSave.data.saving, false)
+  assert(avatarSave.data.profileSaveError.includes('保留在当前页面'))
+  await avatarSave.saveProfile({ detail: { value: { nickname: '测试资料' } } })
+  assert.strictEqual(avatarSave.data.avatarLocalPath, '')
+  assert.strictEqual(avatarSave.data.avatarPreview, 'new-saved-avatar')
+  assert.strictEqual(avatarSave.data.profileSaveError, '')
+  assert.strictEqual(avatarSave.data.saving, false)
+  authStore.profile = avatarSave.data.profile
+  const reopened = makePage()
+  reopened.render()
+  assert.strictEqual(reopened.data.avatarPreview, 'new-saved-avatar', '页面重建采用已保存头像，不依赖临时草稿')
+
+  const oversized = makePage()
+  oversized.onChooseAvatar({ detail: { avatarUrl: 'synthetic-oversized-avatar' } })
+  wx.getFileSystemManager = () => ({ getFileInfo({ success }) { success({ size: 1024 * 1024 + 1, digest: fileDigest }) } })
+  await oversized.saveProfile()
+  assert.strictEqual(avatarWriteCalls, 2, '超限图片不得调用云端资料写入')
+  assert(oversized.data.profileSaveError.includes('不能超过 1 MB'))
+  assert.strictEqual(oversized.data.avatarLocalPath, 'synthetic-oversized-avatar')
+  delete wx.cloud
+  delete wx.getFileSystemManager
 
   let bindCalls = 0
   authStore.bindPhoneNumber = async () => { bindCalls += 1; throw new Error('不应调用') }
