@@ -8,9 +8,9 @@ const membershipPath = path.join(root, 'miniprogram/services/membership-store.js
 const { LEGAL_CONSENT_VERSION, hasCurrentLegalConsent, legalConsentPayload } = require('../miniprogram/utils/legal-consent')
 const namespaceA = 'a'.repeat(32)
 const namespaceB = 'b'.repeat(32)
-const consent = { version: 1, privacyRead: true, agreementRead: true, accepted: true }
+const consent = { version: LEGAL_CONSENT_VERSION, privacyRead: true, agreementRead: true, accepted: true }
 const active = { status: 'active', cacheNamespace: namespaceA }
-const consented = { ...active, legalConsentVersion: 1, legalConsentAccepted: true }
+const consented = { ...active, legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsentAccepted: true }
 let handler = async () => active
 let calls = []
 global.wx = { getStorageInfoSync: () => ({ keys: [] }), removeStorageSync() {} }
@@ -25,10 +25,12 @@ delete require.cache[membershipPath]
 const { MembershipStore } = require(membershipPath)
 
 async function testStrictProofAndRuntimeProjection() {
-  assert.strictEqual(LEGAL_CONSENT_VERSION, 1)
+  assert.strictEqual(LEGAL_CONSENT_VERSION, 2)
+  assert.strictEqual(LEGAL_CONSENT_VERSION, require('../cloudfunctions/membership/core').LEGAL_CONSENT_VERSION)
   for (const member of [active, { ...active, legalConsentAccepted: true },
     { ...active, legalConsentVersion: 0, legalConsentAccepted: true },
-    { ...active, legalConsentVersion: 1, legalConsentAccepted: false }]) {
+    { ...active, legalConsentVersion: 1, legalConsentAccepted: true },
+    { ...active, legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsentAccepted: false }]) {
     assert.strictEqual(hasCurrentLegalConsent(member), false)
     const store = new MembershipStore()
     handler = async () => member

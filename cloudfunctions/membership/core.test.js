@@ -119,25 +119,25 @@ assert.strictEqual(JSON.stringify(visibleInvite).includes('must-not-leak'), fals
 assert.strictEqual(Object.prototype.hasOwnProperty.call(visibleInvite, 'codeHash'), false)
 assert.throws(() => publicInvite({ _id: 'invalid' }), (error) => error.code === 'INVITE_REFERENCE_INVALID')
 
-assert.strictEqual(LEGAL_CONSENT_VERSION, 1)
-const accepted = { version: 1, privacyRead: true, agreementRead: true, accepted: true }
+assert.strictEqual(LEGAL_CONSENT_VERSION, 2)
+const accepted = { version: LEGAL_CONSENT_VERSION, privacyRead: true, agreementRead: true, accepted: true }
 assert.doesNotThrow(() => assertLegalConsent(accepted))
 for (const invalid of [
   undefined, null, true, [], {}, { accepted: true },
   ...Object.keys(accepted).map((field) => ({ ...accepted, [field]: false })),
-  { ...accepted, version: '1' }, { ...accepted, version: 2 },
+  { ...accepted, version: '2' }, { ...accepted, version: 1 }, { ...accepted, version: 3 },
   { ...accepted, privacyRead: 'true' }, { ...accepted, acceptedAt: 1 },
 ]) assert.throws(() => assertLegalConsent(invalid), (error) => error.code === 'LEGAL_CONSENT_REQUIRED')
 for (const legalConsent of [
-  undefined, null, {}, { version: 1 }, { version: 1, accepted: true },
-  { version: 0, acceptedAt: 1 }, { version: '1', acceptedAt: 1 },
-  { version: 1, acceptedAt: 0 }, { version: 1, acceptedAt: -1 },
-  { version: 1, acceptedAt: NaN }, { version: 1, acceptedAt: '2026-09-21T00:00:00Z' },
-  { version: 1, acceptedAt: new Date('invalid') },
-  { version: 1, acceptedAt: 123, accepted: false },
+  undefined, null, {}, { version: 2 }, { version: 2, accepted: true },
+  { version: 0, acceptedAt: 1 }, { version: '2', acceptedAt: 1 }, { version: 1, acceptedAt: 1 },
+  { version: 2, acceptedAt: 0 }, { version: 2, acceptedAt: -1 },
+  { version: 2, acceptedAt: NaN }, { version: 2, acceptedAt: '2026-09-21T00:00:00Z' },
+  { version: 2, acceptedAt: new Date('invalid') },
+  { version: 2, acceptedAt: 123, accepted: false },
 ]) assert.strictEqual(hasAcceptedLegalConsent({ legalConsent }), false)
-assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: 1, acceptedAt: 123 } }), true)
-assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: 1, acceptedAt: new Date(123) } }), true)
+assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: LEGAL_CONSENT_VERSION, acceptedAt: 123 } }), true)
+assert.strictEqual(hasAcceptedLegalConsent({ legalConsent: { version: LEGAL_CONSENT_VERSION, acceptedAt: new Date(123) } }), true)
 
 const fs = require('fs')
 const path = require('path')

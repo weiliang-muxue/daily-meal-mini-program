@@ -34,6 +34,7 @@
       </block>
       <view class="consent-section">
         <text class="consent-instruction">请分别点开阅读以下协议，之后可勾选同意。</text>
+        <text class="consent-hint">本次说明更新：已绑定手机号仅保存后四位，同意后当前管理员可用后四位辅助区分成员；不保存完整号码。昵称和后四位不发送给 AI。</text>
         <view class="consent-links" aria-label="待阅读的协议">
           <button class="consent-link" disabled="{{openingLegal || submitting}}" bindtap="openUserAgreement" hover-class="access-button-hover" aria-label="用户协议，{{agreementRead ? '已打开' : '点开阅读'}}">
             <text>《用户协议》</text>

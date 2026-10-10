@@ -12,8 +12,9 @@ const userPath = path.join(root, 'miniprogram/services/user-store.js')
 const privateCachePath = path.join(root, 'miniprogram/services/private-cache.js')
 const cloudPath = path.join(root, 'miniprogram/utils/cloud.js')
 const privacyPath = path.join(root, 'miniprogram/utils/privacy-auth.js')
-const consent = { version: 1, privacyRead: true, agreementRead: true, accepted: true }
-const consentedMember = { status: 'active', legalConsentVersion: 1, legalConsentAccepted: true }
+const { LEGAL_CONSENT_VERSION } = require('../miniprogram/utils/legal-consent')
+const consent = { version: LEGAL_CONSENT_VERSION, privacyRead: true, agreementRead: true, accepted: true }
+const consentedMember = { status: 'active', legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsentAccepted: true }
 
 function installDependencies(overrides = {}) {
   const membershipStore = {
@@ -35,11 +36,11 @@ function installDependencies(overrides = {}) {
   const callFunction = overrides.callFunction || (async () => ({}))
   const privacy = {
     async navigateToUserAgreement(_, options = {}) {
-      if (options.onRead) options.onRead({ document: 'agreement', version: 1 })
+      if (options.onRead) options.onRead({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
       return { navigated: true }
     },
     async openPrivacyContractOrLocal(_, options = {}) {
-      if (options.onRead) options.onRead({ document: 'privacy', version: 1 })
+      if (options.onRead) options.onRead({ document: 'privacy', version: LEGAL_CONSENT_VERSION })
       return { openedPlatformContract: true, usedLocalFallback: false }
     },
     ...(overrides.privacy || {}),
@@ -346,7 +347,7 @@ async function testNewMemberRequiresReadsAndExplicitConsent() {
 }
 
 async function testExistingMemberWithoutCurrentProofCannotSkipGate() {
-  for (const legalProof of [{}, { legalConsentVersion: 0, legalConsentAccepted: true }, { legalConsentVersion: 1, legalConsentAccepted: false }]) {
+  for (const legalProof of [{}, { legalConsentVersion: 0, legalConsentAccepted: true }, { legalConsentVersion: 1, legalConsentAccepted: true }, { legalConsentVersion: LEGAL_CONSENT_VERSION, legalConsentAccepted: false }]) {
     const calls = []
     installDependencies({
       membershipStore: {
@@ -380,7 +381,7 @@ async function testFailedOpenAndSubmissionNeverAutoAgree() {
     membershipStore: { async acceptInvite() { submitCalls += 1; throw new Error('网络异常') } },
     privacy: {
       async navigateToUserAgreement(_, { onRead }) {
-        if (allowRead) onRead({ document: 'agreement', version: 1 })
+        if (allowRead) onRead({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
         return { navigated: allowRead }
       },
     },
@@ -420,10 +421,10 @@ async function testReadScopeResetAndStaleCallbacks() {
   const oldRead = delayedRead
   membershipStore.cacheNamespace = 'b'.repeat(32)
   page.onShow()
-  oldRead({ document: 'agreement', version: 1 })
+  oldRead({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
   assert.strictEqual(page.data.agreementRead, false, '旧身份回调不能恢复阅读状态')
   await page.openUserAgreement()
-  delayedRead({ document: 'agreement', version: 1 })
+  delayedRead({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
   await page.openPrivacyGuide()
   page.changeLegalConsent({ detail: { value: ['legal-accepted'] } })
   assert.strictEqual(page.data.legalAccepted, true)
@@ -437,7 +438,7 @@ async function testReadScopeResetAndStaleCallbacks() {
   assert.strictEqual(page.data.legalAccepted, false)
   await page.openUserAgreement()
   page.onUnload()
-  delayedRead({ document: 'agreement', version: 1 })
+  delayedRead({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
   assert.strictEqual(page.data.agreementRead, false, '已退出页面忽略迟到回调')
 }
 

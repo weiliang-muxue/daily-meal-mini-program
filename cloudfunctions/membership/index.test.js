@@ -4,11 +4,11 @@ const assert = require('assert')
 const crypto = require('crypto')
 const Module = require('module')
 const path = require('path')
-const { CONTROL_ID } = require('./core')
+const { CONTROL_ID, LEGAL_CONSENT_VERSION } = require('./core')
 
 const OWNER = 'owner-account'
 const MEMBER = 'member-account'
-const CONSENT = Object.freeze({ version: 1, privacyRead: true, agreementRead: true, accepted: true })
+const CONSENT = Object.freeze({ version: LEGAL_CONSENT_VERSION, privacyRead: true, agreementRead: true, accepted: true })
 const HOURS_PER_DAY = 24
 const LEGACY_MAX_MEMBERS = 14
 const LEGACY_CONTROL_CONFIGURATION = Object.freeze({
@@ -797,7 +797,7 @@ async function missingOrInvalidConsentCannotWrite() {
   for (const legalConsent of [
     undefined, null, {}, true, { accepted: true }, { ...CONSENT, privacyRead: false },
     { ...CONSENT, agreementRead: false }, { ...CONSENT, accepted: false },
-    { ...CONSENT, accepted: 'true' }, { ...CONSENT, version: 2 }, { ...CONSENT, version: '1' },
+    { ...CONSENT, accepted: 'true' }, { ...CONSENT, version: 1 }, { ...CONSENT, version: 3 }, { ...CONSENT, version: '2' },
     { ...CONSENT, acceptedAt: 123 },
   ]) {
     await assert.rejects(
@@ -819,7 +819,7 @@ async function existingMembersExplicitlyAcceptOnceForTheirOwnGeneration() {
     ...CONTROL(), activeMemberCount: 2, inviteSlots: 3, inviteTtlHours: 168,
   })
   const initial = await membership._test.status(MEMBER)
-  assert.strictEqual(initial.legalConsentVersion, 1)
+  assert.strictEqual(initial.legalConsentVersion, LEGAL_CONSENT_VERSION)
   assert.strictEqual(initial.legalConsentAccepted, false)
   assert.strictEqual(database.record('meal_members', MEMBER).legalConsent, undefined)
   assert.strictEqual((await membership._test.status('unjoined-account')).legalConsentAccepted, false)
@@ -835,7 +835,7 @@ async function existingMembersExplicitlyAcceptOnceForTheirOwnGeneration() {
   assert.strictEqual(accepted.data.role, 'member')
   const after = database.record('meal_members', MEMBER)
   assert.deepStrictEqual(Object.keys(after.legalConsent).sort(), ['acceptedAt', 'version'])
-  assert.strictEqual(after.legalConsent.version, 1)
+  assert.strictEqual(after.legalConsent.version, LEGAL_CONSENT_VERSION)
   assert(after.legalConsent.acceptedAt > 1000 && after.legalConsent.acceptedAt < 9999999999999)
   assert.deepStrictEqual(database.record('meal_members', OWNER), ownerBefore)
   const controlAfter = database.record('meal_members', CONTROL_ID)
@@ -905,6 +905,7 @@ async function acceptedInvitationExposesOnlyDisplayRelationship() {
     memberRef: record.memberRef, role: 'member', label: '家人备注', joinedAt: record.joinedAt,
     displayName: '受邀用户的昵称', inviterLabel: '邀请人的昵称', invitationLabel: '家人备注', joinSource: 'invite',
     adminNote: '', adminNoteUpdatedAt: null,
+    maskedPhone: '', phoneStatus: 'consent_required',
   })
   assert.strictEqual(summary.members.find((item) => item.role === 'owner').joinSource, 'owner')
   const serialized = JSON.stringify(summary)
@@ -1167,6 +1168,57 @@ async function memberNoteWritesRecheckOwnerAndTargetInsideTransaction() {
   }
 }
 
+async function maskedPhonesRequireCurrentConsentAndOwner() {
+  seed({}, { [MEMBER]: {
+    ...activeMember('member', 'b'.repeat(32), '2'.repeat(32)),
+    legalConsent: { version: 1, acceptedAt: 10 },
+  } })
+  database.bucket('meal_members').set(CONTROL_ID, {
+    ...CONTROL(), activeMemberCount: 2, inviteSlots: 10, inviteTtlHours: 168,
+  })
+  database.bucket('meal_users').set(MEMBER, { phoneBound: true, maskedPhone: '****1234', phoneNumber: 'never-return-raw-phone' })
+  const beforeProfile = clone(database.record('meal_users', MEMBER))
+  const row = async () => (await membership._test.listMembers(OWNER)).members.find(item => item.role === 'member')
+  await membership._test.acceptLegalConsent(OWNER, CONSENT, '1'.repeat(32))
+  assert.strictEqual((await row()).phoneStatus, 'consent_required')
+  assert.strictEqual((await row()).maskedPhone, '', '旧版同意不能被当作尾号展示许可')
+  await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))
+  assert.strictEqual((await row()).maskedPhone, '****1234')
+  assert.strictEqual((await row()).phoneStatus, 'available')
+  assert.deepStrictEqual(database.record('meal_users', MEMBER), beforeProfile, '确认新版说明及读取不能改写个人档案')
+  assert(!JSON.stringify(await row()).includes('never-return-raw-phone'))
+  currentIdentity = MEMBER
+  const denied = await membership.main({ action: 'listMembers', OPENID: OWNER, role: 'owner' })
+  assert.strictEqual(denied.code, 'OWNER_REQUIRED')
+  assert(!JSON.stringify(denied).includes('1234'))
+  currentIdentity = OWNER
+  for (const invalid of [null, 1234, ['****1234'], '12345678901', '****12345', '****1234\n', ' ****1234', '****１２３４']) {
+    database.bucket('meal_users').set(MEMBER, { phoneBound: true, maskedPhone: invalid })
+    assert.strictEqual((await row()).maskedPhone, '')
+    assert.strictEqual((await row()).phoneStatus, 'unavailable', '异常值不能退回原值或截取完整号码')
+  }
+  for (const profile of [{}, { phoneBound: false, maskedPhone: '****1234' }, { phoneBound: 'true', maskedPhone: '****1234' }]) {
+    database.bucket('meal_users').set(MEMBER, profile)
+    assert.strictEqual((await row()).phoneStatus, 'unbound')
+    assert.strictEqual((await row()).maskedPhone, '')
+  }
+  database.bucket('meal_users').delete(MEMBER)
+  assert.strictEqual((await row()).phoneStatus, 'unbound')
+  database.bucket('meal_users').set(MEMBER, beforeProfile)
+  database.bucket('meal_members').set(OWNER, { ...database.record('meal_members', OWNER), legalConsent: { version: 1, acceptedAt: 10 } })
+  assert.strictEqual((await row()).maskedPhone, '', '旧版管理员不能在未确认本版说明时获取尾号')
+  await membership._test.acceptLegalConsent(OWNER, CONSENT, '1'.repeat(32))
+  database.beforeTransaction = async () => {
+    database.beforeTransaction = null
+    database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), legalConsent: { version: 1, acceptedAt: 10 } })
+  }
+  assert.strictEqual((await row()).maskedPhone, '', '同意状态必须在读取事务内重新核验')
+  await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))
+  await membership._test.transferOwner(OWNER, 'b'.repeat(32), true)
+  await assert.rejects(membership._test.listMembers(OWNER), { code: 'OWNER_REQUIRED' })
+  assert.strictEqual((await membership._test.listMembers(MEMBER)).members.find(item => item.role === 'owner').maskedPhone, '****1234')
+}
+
 async function run() {
   assertStrictNotFoundClassification()
   assertFixedPublicErrors()
@@ -1203,6 +1255,7 @@ async function run() {
   await invalidMemberNotesCannotWrite()
   await onlyCurrentOwnerCanReadAndWriteMemberNotes()
   await memberNoteWritesRecheckOwnerAndTargetInsideTransaction()
+  await maskedPhonesRequireCurrentConsentAndOwner()
   console.log('membership transaction entry tests passed')
 }
 

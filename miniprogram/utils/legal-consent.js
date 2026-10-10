@@ -2,7 +2,7 @@
 
 // This is the app's agreement version, separate from WeChat's native permission.
 // Keep read/checkbox state in the access page only; never restore it from storage.
-const LEGAL_CONSENT_VERSION = 1
+const LEGAL_CONSENT_VERSION = 2
 
 function hasCurrentLegalConsent(member) {
   return Boolean(member && member.status === 'active'

@@ -42,6 +42,10 @@ assert(/<form[^>]+bindsubmit="saveProfile"/.test(profileWxml) && /form-type="sub
 assert(/\.profile-form\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*display:\s*block[^}]*box-sizing:\s*border-box/.test(profileWxss),
   '原生 form 卡片必须显式铺满并使用 border-box，避免 surface 背景碎裂成窄条')
 assert(/open-type="getPhoneNumber"/.test(profileWxml) && /bindgetphonenumber="onGetPhoneNumber"/.test(profileWxml))
+assert(profileWxml.includes('后四位') && profileWxml.includes('管理员') && profileWxml.includes('授权'),
+  '手机号原生授权旁应说明后四位及管理员用途')
+assert(profileWxml.includes('使用微信昵称或自行填写') && /\.profile-info-hint\s*\{[^}]*font-size:\s*14px[^}]*overflow-wrap:\s*anywhere/.test(profileWxss),
+  '可选资料提示使用可读字号并在窄屏内换行')
 assert(/class="phone-button"[^>]+disabled="\{\{profileLoading \|\| bindingPhone \|\| saving\}\}"/.test(profileWxml),
   '资料初始化或保存期间必须禁用手机号绑定，避免资料请求竞态')
 assert(/\.phone-button\s*\{[^}]*width:\s*72px[^}]*min-width:\s*72px[^}]*max-width:\s*72px[^}]*min-height:\s*48px/.test(profileWxss),

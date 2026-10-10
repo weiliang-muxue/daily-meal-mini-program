@@ -70,6 +70,10 @@ function visibleJoinedMembers(summary) {
       displayName: cleanMemberName(item.displayName) || cleanMemberName(item.label) || (item.role === 'owner' ? '管理员' : '受邀成员'),
       role: item.role,
       roleLabel: item.role === 'owner' ? '管理员' : '普通成员',
+      phoneText: item.phoneStatus === 'available' && typeof item.maskedPhone === 'string'
+        && item.maskedPhone.length === 8 && /^\*{4}\d{4}$/.test(item.maskedPhone) ? item.maskedPhone
+        : item.phoneStatus === 'consent_required' ? '待成员确认'
+          : item.phoneStatus === 'unbound' ? '未绑定' : '暂不可用',
       joinedText: memberJoinedText(item.joinedAt),
       inviterLabel: joinSource === 'owner' ? '无需邀请加入'
         : joinSource === 'invite' ? cleanMemberName(item.inviterLabel) || '邀请人信息未记录' : '邀请人信息未记录',

@@ -461,13 +461,27 @@ function isOriginalInviterGeneration(invitation, member) {
     && storedTimestamp(invitation.createdAt) >= storedTimestamp(member.joinedAt))
 }
 
-async function joinedMemberProjection(transaction, ordered, rawControl) {
+function adminPhoneProjection(profile, member, readerConsented) {
+  // Never derive a suffix from unexpected/raw phone fields, or expose legacy consent.
+  if (!readerConsented || !hasAcceptedLegalConsent(member)) {
+    return { maskedPhone: '', phoneStatus: 'consent_required' }
+  }
+  if (!profile || profile.phoneBound !== true) return { maskedPhone: '', phoneStatus: 'unbound' }
+  if (typeof profile.maskedPhone !== 'string' || profile.maskedPhone.length !== 8 || !/^\*{4}\d{4}$/.test(profile.maskedPhone)) {
+    return { maskedPhone: '', phoneStatus: 'unavailable' }
+  }
+  return { maskedPhone: profile.maskedPhone, phoneStatus: 'available' }
+}
+
+async function joinedMemberProjection(transaction, ordered, rawControl, readerConsented) {
   const byOpenid = new Map(ordered.map((member) => [member._id, member]))
   const byMemberRef = new Map(ordered.map((member) => [member.memberRef, member]))
   const names = new Map()
+  const phones = new Map()
   for (const [index, member] of ordered.entries()) {
     const profile = await readDocument(transaction.collection('meal_users').doc(member._id))
     names.set(member.memberRef, clean(profile && profile.nickname, 20) || publicMember(member, index).displayName)
+    phones.set(member.memberRef, adminPhoneProjection(profile, member, readerConsented))
   }
   const result = []
   for (const [index, member] of ordered.entries()) {
@@ -500,6 +514,7 @@ async function joinedMemberProjection(transaction, ordered, rawControl) {
       }),
       adminNote: adminNoteText(member.adminNote),
       adminNoteUpdatedAt: storedTimestamp(member.adminNoteUpdatedAt) || null,
+      ...phones.get(member.memberRef),
     })
   }
   return result
@@ -548,7 +563,7 @@ async function listMembers(openid) {
       inviteSlots: config.inviteSlots,
       inviteTtlHours: config.inviteTtlHours,
       capacityExceeded: capacityExceeded(control, config),
-      members: await joinedMemberProjection(transaction, ordered, rawControl),
+      members: await joinedMemberProjection(transaction, ordered, rawControl, hasAcceptedLegalConsent(owner)),
       activeInvites: visibleInvites,
     }
   })

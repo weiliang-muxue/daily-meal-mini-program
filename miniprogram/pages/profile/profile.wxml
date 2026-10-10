@@ -35,11 +35,13 @@
 
   <text class="section-title">个人资料</text>
   <form class="profile-form surface" bindsubmit="saveProfile">
-    <view class="field-row"><text class="field-label">昵称</text><input type="nickname" name="nickname" maxlength="20" value="{{nickname}}" bindinput="onNicknameInput" disabled="{{profileLoading || saving}}" placeholder="填写昵称" /></view>
+    <view class="field-row"><text class="field-label">昵称</text><input type="nickname" name="nickname" maxlength="20" value="{{nickname}}" bindinput="onNicknameInput" disabled="{{profileLoading || saving}}" placeholder="使用微信昵称或自行填写" /></view>
+    <text class="profile-info-hint">点击头像可主动选择头像；昵称可用微信提供的填写方式，也可自行修改。填写后请保存资料。</text>
     <view class="phone-row">
       <view class="phone-copy"><text class="field-label">手机号</text><text class="phone-value">{{profile.phoneBound ? profile.maskedPhone : '未绑定（可选）'}}</text></view>
       <button class="phone-button" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{bindingPhone}}" disabled="{{profileLoading || bindingPhone || saving}}" hover-class="button-hover">{{profile.phoneBound ? '更换' : '绑定'}}</button>
     </view>
+    <text class="profile-info-hint">手机号绑定为可选项，点击后由微信请求授权并单独保存。只保存后四位，用于管理员区分受邀成员；不保存完整号码。未绑定不影响餐单功能。</text>
     <text wx:if="{{phoneError}}" class="phone-error" aria-role="alert">{{phoneError}}</text>
     <button class="primary-button profile-save" form-type="submit" loading="{{saving}}" disabled="{{profileLoading || saving || bindingPhone}}" hover-class="button-hover">保存资料</button>
   </form>
@@ -63,7 +65,7 @@
       <view class="joined-members-heading">
         <view class="joined-members-summary">
           <text class="joined-members-title">{{joinedMembersState === 'ready' ? '当前 ' + joinedMembers.length + ' 位成员' : '成员与邀请来源'}}</text>
-          <text class="joined-members-hint">仅管理员可见；含管理员本人。成员备注与邀请备注分别保存。</text>
+          <text class="joined-members-hint">仅管理员可见；含管理员本人。后四位用于辅助区分成员，可能重复，请结合昵称和备注核对。旧成员确认新版隐私说明后显示。</text>
         </view>
         <button class="joined-members-refresh" bindtap="retryMembers" loading="{{joinedMembersState === 'loading'}}" disabled="{{profileLoading || joinedMembersState === 'loading' || transferringOwner || creatingInvite || revokingInviteRef || savingMemberNote}}" hover-class="profile-control-hover" aria-label="刷新已加入成员和邀请状态">刷新</button>
       </view>
@@ -89,6 +91,7 @@
             <text class="joined-member-role {{item.role === 'owner' ? 'owner' : ''}}">{{item.roleLabel}}</text>
           </view>
           <view class="joined-member-detail"><text class="joined-member-label">加入时间</text><text class="joined-member-value">{{item.joinedText}}</text></view>
+          <view class="joined-member-detail"><text class="joined-member-label">手机尾号</text><text class="joined-member-value">{{item.phoneText}}</text></view>
           <view class="joined-member-detail"><text class="joined-member-label">邀请人</text><text class="joined-member-value">{{item.inviterLabel}}</text></view>
           <view class="joined-member-detail"><text class="joined-member-label">邀请备注</text><text class="joined-member-value">{{item.invitationLabel}}</text></view>
           <view class="member-note-section">

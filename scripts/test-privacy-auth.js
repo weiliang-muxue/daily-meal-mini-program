@@ -3,6 +3,7 @@
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
+const { LEGAL_CONSENT_VERSION } = require('../miniprogram/utils/legal-consent')
 
 const root = path.resolve(__dirname, '..')
 const privacyPath = path.join(root, 'miniprogram', 'utils', 'privacy-auth.js')
@@ -110,19 +111,19 @@ async function testReadProofRequiresRenderedPageAndNavigationSuccess() {
   const api = callbackApi({ navigateTo: (options) => { navigation = options; options.success({}) } })
   await privacyAuth.navigateToUserAgreement(api, { onRead: (detail) => reads.push(detail) })
   assert.deepStrictEqual(reads, [], 'navigateTo 成功不能单独证明本地正文已显示')
-  navigation.events.legalDocumentReady({ document: 'privacy', version: 1 })
+  navigation.events.legalDocumentReady({ document: 'privacy', version: LEGAL_CONSENT_VERSION })
   navigation.events.legalDocumentReady({ document: 'agreement', version: 0 })
   assert.deepStrictEqual(reads, [], '错误文档或旧版本不能解锁')
   privacyAuth.reportLegalDocumentReady({
     getOpenerEventChannel: () => ({ emit: (event, detail) => navigation.events[event](detail) }),
   }, 'agreement')
-  navigation.events.legalDocumentReady({ document: 'agreement', version: 1 })
-  assert.deepStrictEqual(reads, [{ document: 'agreement', version: 1 }], '重复回调只计一次')
+  navigation.events.legalDocumentReady({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
+  assert.deepStrictEqual(reads, [{ document: 'agreement', version: LEGAL_CONSENT_VERSION }], '重复回调只计一次')
 
   const failedReads = []
   const failed = callbackApi({
     navigateTo: ({ events, fail }) => {
-      events.legalDocumentReady({ document: 'agreement', version: 1 })
+      events.legalDocumentReady({ document: 'agreement', version: LEGAL_CONSENT_VERSION })
       fail({ errMsg: 'navigateTo:fail' })
     },
   })
@@ -143,7 +144,7 @@ async function testPlatformAndLocalPrivacyReadProofStaySeparateFromAuthorization
   const fallback = await privacyAuth.openPrivacyContractOrLocal(api, { onRead: () => { readCount += 1 } })
   assert.strictEqual(fallback.usedLocalFallback, true)
   assert.strictEqual(readCount, 0, '本地回退导航发起后仍需等待正文页回调')
-  localNavigation.events.legalDocumentReady({ document: 'privacy', version: 1 })
+  localNavigation.events.legalDocumentReady({ document: 'privacy', version: LEGAL_CONSENT_VERSION })
   assert.strictEqual(readCount, 1)
   assert.strictEqual(authorizationCalls, 0, '打开协议不是申请微信原生敏感权限')
 
