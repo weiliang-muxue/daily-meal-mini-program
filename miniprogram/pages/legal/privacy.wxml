@@ -29,6 +29,7 @@
     <view class="legal-section">
       <text class="legal-section-title">二、使用目的与最小化</text>
       <text class="legal-paragraph">上述数据只用于成员验证、恢复个人资料、生成和保存餐单、同步采购与提醒、展示健康记录及完成用户主动发起的操作。头像和健康照片只有在用户主动选择后才处理；昵称、头像和手机号都可以跳过，不影响餐单核心功能。</text>
+      <text class="legal-paragraph">昵称和头像用于你自愿完善、保存和展示个人资料。你主动保存的昵称可供当前管理员结合成员备注区分受邀成员；头像仅供你本人在小程序内查看，其他成员及管理员不能查看。昵称和头像不发送给 AI，不填写也可以正常使用餐单、采购与健康记录。</text>
     </view>
 
     <view class="legal-section">

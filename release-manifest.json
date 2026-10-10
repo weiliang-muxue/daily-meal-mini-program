@@ -2,7 +2,7 @@
   "lastReleasedVersion": "0.2.1",
   "workingVersion": "0.3.0",
   "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.3.0候选：取消喝水推送；完善餐食采购联动、单餐替换、定制条件、收藏与菜谱库；尾号展示须成员确认。兼容云函数已更新，保留既有餐单与记录。真实手机与头像授权待验收，当前为开发候选。",
+  "wechatUploadDescription": "0.3.0候选：取消喝水推送；完善餐食采购联动、单餐替换、定制条件、收藏与菜谱库；隐私正文明确昵称、头像用途及可选性，尾号展示须成员确认。兼容云函数已更新，保留既有餐单与记录。真实手机与头像授权待验收，当前为开发候选。",
   "stateSchemaVersion": 13,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 4,

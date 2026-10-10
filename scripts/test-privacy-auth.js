@@ -280,6 +280,16 @@ async function testAccessAndProfileLegalRoutes() {
   const profileWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/profile/profile.wxml'), 'utf8')
   const agreementWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/legal/user-agreement.wxml'), 'utf8')
   const privacyWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/legal/privacy.wxml'), 'utf8')
+  const privacyDoc = fs.readFileSync(path.join(root, 'docs/PRIVACY.md'), 'utf8')
+  for (const disclosure of [
+    '昵称和头像用于你自愿完善、保存和展示个人资料',
+    '昵称可供当前管理员结合成员备注区分受邀成员',
+    '头像仅供你本人在小程序内查看，其他成员及管理员不能查看',
+    '昵称和头像不发送给 AI，不填写也可以正常使用餐单、采购与健康记录',
+  ]) {
+    assert(privacyWxml.includes(disclosure), `隐私正文须明确资料用途和范围：${disclosure}`)
+    assert(privacyDoc.includes(disclosure), `仓库隐私说明须与页面一致：${disclosure}`)
+  }
   for (const internalTerm of ['openid', 'unionid', 'session_key', 'auth 云函数', '门禁审计', '真源', '命名空间']) {
     assert(!privacyWxml.includes(internalTerm), `隐私说明不能向用户暴露内部术语：${internalTerm}`)
   }
