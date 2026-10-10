@@ -12,6 +12,7 @@
 
   <view class="legal-document" user-select="{{true}}">
     <view class="legal-notice">请在使用前分别打开本协议与《隐私保护指引》，再主动勾选同意。查看协议或返回不会自动同意；头像、照片等功能仍只在你主动操作时按微信平台规则单独请求授权。</view>
+    <view class="legal-notice">2026年10月10日更新（协议版本2）：已绑定手机号仅保存绑定状态、后四位掩码和绑定时间，不保存完整号码。你与当前管理员均确认本版说明后，管理员可用后四位辅助区分成员。昵称和后四位不发送给 AI。</view>
 
     <view class="legal-section">
       <text class="legal-section-title">一、服务范围与成员资格</text>
@@ -40,13 +41,15 @@
 
     <view class="legal-section">
       <text class="legal-section-title">五、账号与数据隔离</text>
-      <text class="legal-paragraph">餐单、采购、提醒、资料和健康记录按当前微信身份隔离。邀请管理员可以管理成员资格、邀请码和管理员交接，并查看成员主动保存的昵称、邀请备注、加入时间与邀请来源。仅管理员可见这些管理信息，不能因此查看其他成员的手机号、头像、照片、私人餐单、体重、运动或健康备注。</text>
+      <text class="legal-paragraph">餐单、采购、提醒、资料和健康记录按当前微信身份隔离。邀请管理员可以管理成员资格、邀请码和管理员交接，并查看成员主动保存的昵称、邀请备注、加入时间与邀请来源。成员和当前管理员均确认本版说明后，管理员还可查看已绑定手机号的后四位掩码，仅用于辅助区分成员和填写管理备注，不作为唯一身份凭证。未确认本版说明的旧成员不披露后四位。</text>
+      <text class="legal-paragraph">仅当前管理员可查看这些管理信息；普通成员不能查看他人的管理信息。管理员不能查看完整手机号、其他成员的头像、照片、私人餐单、采购、体重、运动或健康备注。管理员交接后，原管理员失去上述管理信息的访问权限。</text>
       <text class="legal-paragraph">用户应妥善管理微信账号和设备。发现异常访问时，应先保护微信账号，并通过下述支持路径报告问题。</text>
     </view>
 
     <view class="legal-section">
       <text class="legal-section-title">六、隐私能力与选择</text>
       <text class="legal-paragraph">头像、相机和相册等敏感能力只在用户主动点击相应操作时按微信平台规则请求授权。拒绝授权不会阻止查看本协议或使用不依赖该能力的功能，用户可以稍后重试或打开微信平台《隐私保护指引》。</text>
+      <text class="legal-paragraph">绑定手机号为可选操作，仅在你主动点击并经微信授权后处理。完整号码仅在服务端用于生成后四位掩码，随后不再保存；只保存绑定状态、后四位掩码和绑定时间。后四位不用于营销，不发送给 AI；拒绝或暂时无法绑定不会影响其他功能。头像由你主动选择，昵称可通过微信提供的填写方式或自行输入，并可再次修改、保存；不会自动获取完整微信资料。</text>
       <button class="legal-action" bindtap="openPrivacyGuide" hover-class="button-hover">打开微信平台《隐私保护指引》</button>
     </view>
 

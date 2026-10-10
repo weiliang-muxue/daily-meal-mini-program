@@ -287,7 +287,19 @@ async function testAccessAndProfileLegalRoutes() {
     '隐私说明中的 AI 来源标识必须与业务页面一致')
   for (const markup of [agreementWxml, privacyWxml]) {
     assert(markup.includes('微信平台《隐私保护指引》'), '法律页面必须统一使用微信平台正式名称')
+    assert(markup.includes('成员和当前管理员均确认本版说明后'), '两份说明必须明确双方确认后才展示尾号')
+    assert(markup.includes('未确认本版说明的旧成员不披露后四位'), '两份说明必须保留历史成员不自动披露规则')
+    assert(markup.includes('不保存完整号码') && markup.includes('不发送给 AI'), '两份说明须保留最小保存和不向 AI 发送的边界')
+    assert(markup.includes('拒绝或暂时无法绑定不会影响其他功能'), '绑定手机号仍是可选操作')
+    assert(!markup.includes('不能因此查看其他成员的手机号、'), '不能保留与尾号权限冲突的旧表述')
   }
+  assert(!accessWxml.includes('本次说明更新') && !accessWxml.includes('后四位'),
+    '入口不重复展开手机号说明，详情应放入两份协议')
+  assert(agreementWxml.includes('2026年10月10日更新（协议版本2）'), '用户协议必须标明本次说明版本')
+  assert(agreementWxml.includes('手机号为可选操作') && agreementWxml.includes('主动点击并经微信授权后处理'),
+    '协议阅读不代替微信原生手机号授权')
+  assert(accessWxml.includes('请分别点开阅读以下协议') && accessWxml.includes('查看协议不会自动同意'),
+    '精简入口不能移除阅读与主动同意提示')
   for (const internalTerm of ['公开、可审计', '自绘弹窗', '平台合同', '随代码发布', '不冒充']) {
     assert(!agreementWxml.includes(internalTerm) && !privacyWxml.includes(internalTerm),
       `法律页面不能向普通用户暴露工程化说明：${internalTerm}`)
