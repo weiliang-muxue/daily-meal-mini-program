@@ -614,7 +614,7 @@ test('readiness status probes only reserved documents and performs no business w
   reset()
   wxContext = { OPENID: owner }
   try {
-    const response = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'status', expectedCacheNamespace: cacheNamespace })
     assert.strictEqual(response.success, true)
     assert.strictEqual(typeof response.data.configured, 'boolean')
     assert.strictEqual(response.data.storageReady, true)
@@ -662,7 +662,7 @@ test('owner readiness status exposes only three non-secret validity booleans wit
       wxContext = { OPENID: owner }
       const before = storesSnapshot()
       try {
-        const response = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+        const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'status', expectedCacheNamespace: cacheNamespace })
         assert.strictEqual(response.success, true)
         assert.deepStrictEqual(response.data.configurationChecks, expectedChecks)
         assertNoForbiddenKeys(response, new Set([
@@ -693,7 +693,7 @@ test('readiness checks require the stored exact owner role and ignore caller rol
       wxContext = { OPENID: otherOwner, role: 'owner' }
       const before = storesSnapshot()
       try {
-        const response = await planner.main({
+        const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
           action: 'status', expectedCacheNamespace: otherCacheNamespace,
           role: 'owner', member: { role: 'owner' }, OPENID: owner,
           configurationChecks: true,
@@ -729,7 +729,7 @@ test('readiness checks do not leak for stale namespaces or absent verified membe
       const originalError = console.error
       console.error = (...values) => logs.push(values)
       try {
-        const response = await planner.main({
+        const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
           action: 'status', expectedCacheNamespace: scenario.namespace,
           role: 'owner', configurationChecks: true,
         })
@@ -752,7 +752,7 @@ test('readiness checks require WX identity even when event claims an owner', asy
   reset()
   wxContext = {}
   const before = storesSnapshot()
-  const response = await planner.main({
+  const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
     action: 'status', expectedCacheNamespace: cacheNamespace,
     OPENID: owner, role: 'owner', member: { role: 'owner' }, configurationChecks: true,
   })
@@ -772,7 +772,7 @@ test('owner task status does not expose readiness configuration checks or write 
     wxContext = { OPENID: owner }
     const before = storesSnapshot()
     try {
-      const response = await planner.main({
+      const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
         action: 'status', taskId: task._id, expectedCacheNamespace: cacheNamespace,
       })
       assert.strictEqual(response.success, true)
@@ -800,7 +800,7 @@ test('retired provider diagnostic actions remain unsupported and cannot write bu
       reset()
       wxContext = { OPENID: owner }
       const before = storesSnapshot()
-      const response = await planner.main({ action: retiredAction, expectedCacheNamespace: cacheNamespace })
+      const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: retiredAction, expectedCacheNamespace: cacheNamespace })
       assert.deepStrictEqual(response, {
         success: false,
         code: 'UNSUPPORTED_ACTION',
@@ -828,7 +828,7 @@ test('readiness status maps missing AI collections to a sanitized storage error 
     const originalError = console.error
     console.error = (...values) => logs.push(values)
     try {
-      const response = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+      const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'status', expectedCacheNamespace: cacheNamespace })
       assert.deepStrictEqual(response, {
         success: false,
         code: 'AI_STORAGE_NOT_READY',
@@ -857,7 +857,7 @@ test('readiness status maps transaction infrastructure failure without exposing 
   const originalError = console.error
   console.error = (...values) => logs.push(values)
   try {
-    const response = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'status', expectedCacheNamespace: cacheNamespace })
     assert.strictEqual(response.success, false)
     assert.strictEqual(response.code, 'AI_STORAGE_NOT_READY')
     assert.strictEqual(JSON.stringify({ response, logs }).includes('PRIVATE_TRANSACTION_METADATA'), false)
@@ -901,7 +901,7 @@ test('unknown public failures log only the generic public code', async () => {
   const originalError = console.error
   console.error = (...values) => logs.push(values)
   try {
-    const response = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'status', expectedCacheNamespace: cacheNamespace })
     assert.strictEqual(response.code, 'AI_GENERATION_FAILED')
     assert.deepStrictEqual(logs, [[{ code: 'AI_GENERATION_FAILED', stage: 'STORAGE_PROBE' }]])
     assert.strictEqual(JSON.stringify({ response, logs }).includes('PRIVATE_USER_DATABASE_DETAIL'), false)
@@ -1114,7 +1114,7 @@ test('public recent failure response recursively excludes identifiers and privat
   wxContext = { OPENID: owner }
   try {
     const before = storesSnapshot()
-    const response = await planner.main({ action: 'recentFailure', expectedCacheNamespace: cacheNamespace })
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'recentFailure', expectedCacheNamespace: cacheNamespace })
     assert.strictEqual(response.success, true)
     assert.deepStrictEqual(Object.keys(response).sort(), ['data', 'success'])
     assertNoForbiddenKeys(response, new Set([
@@ -1513,61 +1513,32 @@ test('start is idempotent for the same owner, request id, preferences, and state
   assert.strictEqual(collectionStore('meal_ai_tasks').size, 1)
 })
 
-test('schema v7 remains usable across start, claim, finalize, and status without an implicit state rewrite', async () => {
-  reset()
-  const legacyStartState = {
-    ...get('meal_user_states', owner),
-    schemaVersion: 7,
-    customReminders: [{ id: 'schema-7-start', text: '启动期间保留', done: false }],
+test('current AI start and finalize require persisted schema migration without rewriting legacy data', async () => {
+  for (const schemaVersion of [7, 8, 12]) {
+    reset()
+    const source = { ...get('meal_user_states', owner), schemaVersion }
+    put('meal_user_states', owner, source)
+    collectionStore('meal_ai_controls')
+    const before = storesSnapshot()
+    await assert.rejects(
+      planner._test.startTask(owner, input, source.stateRevision, 'a'.repeat(32), consent),
+      error => error.code === 'STATE_SCHEMA_UPGRADE_REQUIRED',
+    )
+    assertZeroBusinessWrites(before, 'new task cannot start on unmigrated state')
+
+    reset()
+    const final = finalClaimTask(108, 41)
+    const sourceAtFinalize = { ...stateWithPlans({ stateRevision: 4 }), schemaVersion }
+    put('meal_user_states', owner, sourceAtFinalize)
+    put('meal_ai_tasks', final.task._id, planner._test.taskData(final.task))
+    put('meal_ai_controls', owner, { owner, activeTaskId: final.task._id, generationEpoch: 41 })
+    const beforeFinal = storesSnapshot()
+    await assert.rejects(
+      planner._test.settleSuccess(owner, final.task._id, final.claim, final.leaseToken, validPlan(final.task)),
+      error => error.code === 'STATE_SCHEMA_UPGRADE_REQUIRED',
+    )
+    assertZeroBusinessWrites(beforeFinal, 'new result cannot partially upgrade old state')
   }
-  delete legacyStartState.waterReminder
-  put('meal_user_states', owner, legacyStartState)
-
-  const started = await planner._test.startTask(
-    owner, input, legacyStartState.stateRevision, 'a'.repeat(32), consent,
-  )
-  const startedTaskId = started.task.taskId
-  assert.strictEqual(started.task.status, 'queued')
-  assert.deepStrictEqual(get('meal_user_states', owner), legacyStartState,
-    'start must only migrate schema v7 in memory')
-
-  const claimed = await planner._test.claimWork(owner, startedTaskId)
-  assert(claimed.claim, 'schema v7 task must remain claimable')
-  assert.deepStrictEqual(get('meal_user_states', owner), legacyStartState,
-    'claim must not rewrite schema v7 user state')
-
-  reset()
-  const final = finalClaimTask(108, 41)
-  const legacyFinalizeState = {
-    ...stateWithPlans({
-      stateRevision: 4,
-      customReminders: [{ id: 'schema-7-finalize', text: '写回期间保留', done: true }],
-    }),
-    schemaVersion: 7,
-  }
-  delete legacyFinalizeState.waterReminder
-  put('meal_user_states', owner, legacyFinalizeState)
-  put('meal_ai_tasks', final.task._id, planner._test.taskData(final.task))
-  put('meal_ai_controls', owner, { owner, activeTaskId: final.task._id, generationEpoch: 41 })
-
-  const finalized = await planner._test.settleSuccess(
-    owner, final.task._id, final.claim, final.leaseToken, validPlan(final.task),
-  )
-  assert.strictEqual(finalized.task.status, 'succeeded')
-  const stored = get('meal_user_states', owner)
-  assert.strictEqual(stored.schemaVersion, 7,
-    'aiPlanner must leave the persisted schema migration to userData')
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(stored, 'waterReminder'), false)
-  assert.deepStrictEqual(stored.customReminders, legacyFinalizeState.customReminders)
-  assert.strictEqual(stored.draftPlan.id, final.task.planId)
-  assert.strictEqual(stored.stateRevision, 5)
-
-  const status = await planner._test.readTaskStatus(owner, final.task._id)
-  assert.strictEqual(status.task.status, 'succeeded')
-  assert.strictEqual(status.result.draftPlan.id, final.task.planId)
-  assert.strictEqual(status.result.stateRevision, 5)
-  assert.strictEqual(get('meal_user_states', owner).schemaVersion, 7,
-    'status must only migrate schema v7 in memory')
 })
 
 test('future user-state schemas fail closed before start or finalize can write', async () => {
@@ -1677,7 +1648,7 @@ test('public start exposes a fixed intent error without creating a task', async 
   const originalError = console.error
   console.error = (...values) => logs.push(values)
   try {
-    const response = await planner.main({
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
       action: 'start',
       expectedCacheNamespace: cacheNamespace,
       preferences: { ...input, exerciseIntent: undefined },
@@ -1717,7 +1688,7 @@ test('public start rejects missing consent without task writes or private loggin
   console.error = (...values) => logs.push(values)
   try {
     const marker = 'PRIVATE_HEALTH_MARKER_MUST_NOT_LOG'
-    const response = await planner.main({
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
       action: 'start',
       expectedCacheNamespace: cacheNamespace,
       preferences: { ...input, healthNotes: marker },
@@ -1778,7 +1749,7 @@ test('public start reports only fixed transaction stages and never exposes priva
     const originalError = console.error
     console.error = (...values) => logs.push(values)
     try {
-      const response = await planner.main({
+      const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
         action: 'start',
         expectedCacheNamespace: cacheNamespace,
         preferences: input,
@@ -1854,7 +1825,7 @@ test('public task status reports only fixed transaction stages and never exposes
     const originalError = console.error
     console.error = (...values) => logs.push(values)
     try {
-      const response = await planner.main({
+      const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
         action: 'status', taskId: task._id, expectedCacheNamespace: cacheNamespace,
       })
       assert.deepStrictEqual(response, {
@@ -1896,7 +1867,7 @@ test('queued task status does not read the full user state', async () => {
     code: 'PRIVATE_DATABASE_FAILURE',
   }))
   try {
-    const response = await planner.main({
+    const response = await planner.main({ clientContractVersion: CONTRACT_VERSION,
       action: 'status', taskId: task._id, expectedCacheNamespace: cacheNamespace,
     })
     assert.strictEqual(response.success, true)
@@ -2556,6 +2527,92 @@ test('advance reports fixed claim and failure-settlement stages', async () => {
     }),
     (error) => planner._test.publicStage(error) === 'ADVANCE_SETTLE_FAILURE',
   )
+})
+
+test('public AI protocol negotiation preserves released metadata and rejects explicit invalid versions', async () => {
+  reset()
+  collectionStore('meal_ai_tasks'); collectionStore('meal_ai_controls')
+  const before = storesSnapshot()
+  const previous = wxContext
+  wxContext = { OPENID: owner }
+  try {
+    const old = await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })
+    const current = await planner.main({ clientContractVersion: CONTRACT_VERSION, action: 'status', expectedCacheNamespace: cacheNamespace })
+    assert.strictEqual(old.success, true)
+    assert.strictEqual(old.data.contractVersion, 2)
+    assert.strictEqual(old.data.plannerVersion, '7')
+    assert.strictEqual(old.data.aiDataConsentVersion, 2)
+    assert.strictEqual(current.success, true)
+    assert.strictEqual(current.data.contractVersion, 4)
+    assert.strictEqual(current.data.plannerVersion, '10')
+    for (const version of [undefined, null, 2, 3, 5, '4', true]) {
+      const denied = await planner.main({ clientContractVersion: version, action: 'status', expectedCacheNamespace: cacheNamespace })
+      assert.strictEqual(denied.code, 'AI_CONTRACT_VERSION_UNSUPPORTED')
+    }
+    for (const event of [null, [], 'status']) {
+      assert.strictEqual((await planner.main(event)).code, 'UNSUPPORTED_ACTION')
+    }
+    assertZeroBusinessWrites(before, 'protocol metadata negotiation')
+    wxContext = {}
+    assert.strictEqual((await planner.main({ action: 'status', expectedCacheNamespace: cacheNamespace })).code, 'IDENTITY_REQUIRED')
+  } finally { wxContext = previous }
+})
+
+test('released AI tasks remain resumable and current clients cannot fail, claim, or cancel them', async () => {
+  reset()
+  const legacy = require('./legacy-v2')
+  const legacyState = require('./legacy-v2/user-state')
+  const legacyConfig = require('./legacy-v2/provider-config').configuration({
+    AI_API_KEY: 'TEST_PLACEHOLDER_ONLY', AI_API_BASE_URL: 'https://example.invalid',
+    AI_PROVIDER_DISPLAY_NAME: 'Synthetic AI', AI_PROVIDER_REVISION: '1',
+  })
+  assert.strictEqual(legacyConfig.providerConfigVersion, providerConfig.providerConfigVersion)
+  const legacyInput = { ...legacyState.defaults().generationPreferences,
+    durationDays: 1, mealTypes: ['breakfast'], goals: ['均衡饮食'], exerciseIntent: 'none',
+    startDate: '2026-08-31', exerciseByDay: [] }
+  const source = legacyState.defaults()
+  put('meal_user_states', owner, source)
+  const oldConsent = { accepted: true, version: 2, providerRevision: providerConfig.providerRevision }
+  const started = await legacy._test.startTask(owner, legacyInput, 0, 'l'.repeat(32), oldConsent, cacheNamespace, providerConfig)
+  const id = started.task.taskId
+  assert.strictEqual(started.task.contractVersion, 2)
+  const claimed = await legacy._test.claimWork(owner, id, cacheNamespace, providerConfig)
+  assert(claimed.claim)
+  const oldStatus = await legacy._test.readTaskStatus(owner, id, cacheNamespace, providerConfig)
+  assert.strictEqual(oldStatus.task.status, 'running')
+  const before = storesSnapshot()
+  databaseCalls.length = 0
+  await assert.rejects(planner._test.readCurrentTask(owner), error => error.code === 'AI_LEGACY_TASK_ACTIVE')
+  for (const operation of [
+    () => planner._test.readTaskStatus(owner, id),
+    () => planner._test.claimWork(owner, id),
+    () => planner._test.cancelGeneration(owner, id, oldStatus.task.taskRevision),
+  ]) await assert.rejects(operation(), error => error.code === 'AI_TASK_PROTOCOL_MISMATCH')
+  assertZeroBusinessWrites(before, 'current engine must preserve in-progress released tasks')
+  assert.deepStrictEqual(get('meal_user_states', owner), source)
+
+  // Defend even an inconsistent state/task pair left by an older deployment.
+  put('meal_user_states', owner, defaults())
+  const beforeStart = storesSnapshot()
+  databaseCalls.length = 0
+  await assert.rejects(planner._test.startTask(owner, input, 0, 'n'.repeat(32), consent), error => error.code === 'AI_LEGACY_TASK_ACTIVE')
+  assertZeroBusinessWrites(beforeStart, 'new start must not terminate a released active task')
+  put('meal_user_states', owner, source)
+  const previous = wxContext
+  wxContext = { OPENID: owner }
+  try {
+    const cancelled = await planner.main({ action: 'cancel', taskId: id,
+      expectedTaskRevision: oldStatus.task.taskRevision, expectedCacheNamespace: cacheNamespace })
+    assert.strictEqual(cancelled.success, true)
+    assert.strictEqual(cancelled.data.task.status, 'cancelled')
+    assert.strictEqual(cancelled.data.task.contractVersion, 2)
+    assert.deepStrictEqual(get('meal_user_states', owner), source)
+  } finally { wxContext = previous }
+
+  const retained = get('meal_ai_tasks', id)
+  put('meal_ai_controls', owner, { owner, activeTaskId: id, generationEpoch: retained.generationEpoch })
+  assert.strictEqual(await planner._test.readCurrentTask(owner), null)
+  assert.deepStrictEqual(get('meal_ai_tasks', id), retained, 'new current clears only a finished legacy pointer')
 })
 
 const originalNow = Date.now

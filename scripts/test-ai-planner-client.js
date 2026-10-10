@@ -202,6 +202,7 @@ const storage = {
 }
 const calls = []
 const caller = async (name, action, payload) => {
+  assert.strictEqual(payload.clientContractVersion, CONTRACT_VERSION, 'every AI action must negotiate the current protocol')
   calls.push({ name, action, payload })
   if (action === 'status' && !(payload && payload.taskId)) {
     return {
@@ -266,7 +267,7 @@ const service = new AiPlannerService(memberStore, caller, storage)
     '服务层规范化后的状态必须满足规划页面的完整就绪契约',
   )
   assert.deepStrictEqual(calls[0], {
-    name: 'aiPlanner', action: 'status', payload: { expectedCacheNamespace: namespace },
+    name: 'aiPlanner', action: 'status', payload: { clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace },
   })
   calls.length = 0
 
@@ -276,7 +277,7 @@ const service = new AiPlannerService(memberStore, caller, storage)
     retryable: true, category: 'transient',
   })
   assert.deepStrictEqual(calls[0], {
-    name: 'aiPlanner', action: 'recentFailure', payload: { expectedCacheNamespace: namespace },
+    name: 'aiPlanner', action: 'recentFailure', payload: { clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace },
   })
   assert.strictEqual(JSON.stringify(recentFailure).includes('PRIVATE_'), false)
   calls.length = 0
@@ -292,7 +293,7 @@ const service = new AiPlannerService(memberStore, caller, storage)
       expectedStateRevision: 7,
       clientRequestId: requestId,
       aiDataConsent: { accepted: true, version: AI_DATA_CONSENT_VERSION, providerRevision },
-      expectedCacheNamespace: namespace,
+      clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace,
     },
   })
   const storedKey = `meal_ai_task_v2_${namespace}`
@@ -303,12 +304,12 @@ const service = new AiPlannerService(memberStore, caller, storage)
   await service.advance(taskId)
   await service.cancel(taskId, 0)
   assert.deepStrictEqual(calls.slice(1).map((call) => call.action), ['status', 'advance', 'cancel'])
-  assert.deepStrictEqual(calls[1].payload, { taskId, expectedCacheNamespace: namespace })
-  assert.deepStrictEqual(calls[2].payload, { taskId, expectedCacheNamespace: namespace })
+  assert.deepStrictEqual(calls[1].payload, { taskId, clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace })
+  assert.deepStrictEqual(calls[2].payload, { taskId, clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace })
   assert.deepStrictEqual(calls[3].payload, {
     taskId,
     expectedTaskRevision: 0,
-    expectedCacheNamespace: namespace,
+    clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace,
   })
   assert.strictEqual(service.loadCachedTask().status, 'cancelled')
 
@@ -316,7 +317,7 @@ const service = new AiPlannerService(memberStore, caller, storage)
   const current = await service.currentTask()
   assert.strictEqual(current.task.taskId, taskId)
   assert.strictEqual(calls[4].action, 'current')
-  assert.deepStrictEqual(calls[4].payload, { expectedCacheNamespace: namespace })
+  assert.deepStrictEqual(calls[4].payload, { clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace })
 
   const emptyService = new AiPlannerService(memberStore, async () => null, storage)
   assert.strictEqual(await emptyService.currentTask(), null)

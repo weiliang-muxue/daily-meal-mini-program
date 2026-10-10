@@ -411,7 +411,7 @@ async function startProbe(miniProgram, ownerToken, processInstanceId) {
       return 'UNKNOWN'
     }
     const call = async (name, data) => {
-      const options = { name, data }
+      const options = { name, data: name === 'aiPlanner' ? { ...data, clientContractVersion: state.releaseCompatibility.contractVersion } : data }
       state.internalOptions.add(options)
       try {
         const response = await wx.cloud.callFunction(options)
@@ -973,7 +973,7 @@ async function cleanupProbe(miniProgram, ownerToken, processInstanceId) {
       return 'UNKNOWN'
     }
     const call = async (name, data) => {
-      const options = { name, data }
+      const options = { name, data: name === 'aiPlanner' ? { ...data, clientContractVersion: state.releaseCompatibility.contractVersion } : data }
       state.internalOptions.add(options)
       try {
         const response = await wx.cloud.callFunction(options)

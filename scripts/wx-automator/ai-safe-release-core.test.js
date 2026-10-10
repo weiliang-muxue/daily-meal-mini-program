@@ -202,6 +202,8 @@ test('pins the release probe contract and carries the public provider revision i
   const serverTaskCore = fs.readFileSync(path.resolve(__dirname, '..', '..', 'cloudfunctions', 'aiPlanner', 'task-core.js'), 'utf8')
   assert.match(serverTaskCore, /const TASK_SCHEMA_VERSION = 6\b/)
   const probeSource = fs.readFileSync(path.resolve(__dirname, 'ai-safe-release-probe.js'), 'utf8')
+  assert.equal((probeSource.match(/clientContractVersion: state\.releaseCompatibility\.contractVersion/g) || []).length, 2,
+    'both normal and recovery probe calls must negotiate the current AI protocol')
   assert.equal(RELEASE_COMPATIBILITY.stateSchemaVersion, require('../../shared/user-state').CURRENT_SCHEMA)
   assert.equal((probeSource.match(/action: 'saveState', clientSchemaVersion: state\.releaseCompatibility\.stateSchemaVersion/g) || []).length, 3,
     'probe test-save, retry and cleanup must send the state schema marker')

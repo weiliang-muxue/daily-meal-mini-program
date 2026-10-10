@@ -829,7 +829,65 @@ async function testReleasedClientCoexistence() {
   } finally { cloudStub.getWXContext = originalContext }
 }
 
+async function testMigrationWaitsForGeneration() {
+  const originalContext = cloudStub.getWXContext
+  cloudStub.getWXContext = () => ({ OPENID: owner })
+  try {
+    for (const status of ['queued', 'running', 'finalizing', 'unknown']) {
+      const source = { ...currentState(4), schemaVersion: 8 }
+      reset(source)
+      const task = { owner, cacheNamespace, status, expiresAt: Date.now() + 60000 }
+      put('meal_ai_controls', owner, { owner, cacheNamespace, activeTaskId: 'fictional-old-task' })
+      put('meal_ai_tasks', 'fictional-old-task', task)
+      const reply = await userData.main({ action: 'bootstrap', clientSchemaVersion: 13, expectedCacheNamespace: cacheNamespace })
+      assert.strictEqual(reply.code, 'STATE_UPGRADE_WAITING_FOR_AI')
+      assert.deepStrictEqual(get('meal_user_states', owner), source)
+      assert.deepStrictEqual(get('meal_ai_tasks', 'fictional-old-task'), task)
+      const old = await userData.main({ action: 'bootstrap', expectedCacheNamespace: cacheNamespace })
+      assert.strictEqual(old.success, true, 'old client stays usable while its generation is pending')
+      assert.strictEqual(old.data.schemaVersion, 8)
+    }
+    for (const status of ['succeeded', 'failed', 'cancelled', 'expired', 'conflict']) {
+      reset({ ...currentState(4), schemaVersion: 8 })
+      const task = { owner, cacheNamespace, status, expiresAt: Date.now() + 60000 }
+      put('meal_ai_controls', owner, { owner, cacheNamespace, activeTaskId: 'fictional-old-task' })
+      put('meal_ai_tasks', 'fictional-old-task', task)
+      const reply = await userData.main({ action: 'bootstrap', clientSchemaVersion: 13, expectedCacheNamespace: cacheNamespace })
+      assert.strictEqual(reply.success, true)
+      assert.strictEqual(reply.data.schemaVersion, 13)
+      assert.deepStrictEqual(get('meal_ai_tasks', 'fictional-old-task'), task)
+      assert.strictEqual(get('meal_ai_controls', owner).stateMigrationSchema, 13,
+        'migration must share a write-conflict document with AI start')
+    }
+    reset({ ...currentState(4), schemaVersion: 8 })
+    const retainedControl = { owner, cacheNamespace, activeTaskId: '', rateCount: 3,
+      generationEpoch: 8, idempotencyEntries: [{ marker: 'fictional-retained' }] }
+    put('meal_ai_controls', owner, retainedControl)
+    const oldState = get('meal_user_states', owner)
+    const originalTransaction = database.runTransaction
+    database.runTransaction = callback => originalTransaction(() => callback({
+      collection(name) {
+        const original = collection(name)
+        if (name !== 'meal_ai_controls') return original
+        return { doc(id) { return { ...original.doc(id), async set() {
+          throw Object.assign(new Error('fictional concurrent AI start'), { code: 'DATABASE_TRANSACTION_CONFLICT' })
+        } } } }
+      },
+    }))
+    try {
+      const conflict = await userData.main({ action: 'bootstrap', clientSchemaVersion: 13, expectedCacheNamespace: cacheNamespace })
+      assert.strictEqual(conflict.success, false)
+      assert.deepStrictEqual(get('meal_user_states', owner), oldState, 'fence conflict must precede any state write')
+      assert.deepStrictEqual(get('meal_ai_controls', owner), retainedControl)
+    } finally { database.runTransaction = originalTransaction }
+    const retried = await userData.main({ action: 'bootstrap', clientSchemaVersion: 13, expectedCacheNamespace: cacheNamespace })
+    assert.strictEqual(retried.success, true)
+    assert.deepStrictEqual(get('meal_ai_controls', owner), { ...retainedControl, stateMigrationSchema: 13 })
+  } finally { cloudStub.getWXContext = originalContext }
+}
+
 ;(async () => {
+  await testMigrationWaitsForGeneration()
   await testReleasedClientCoexistence()
   await testPublicSchemaHandshake()
   await testIndependentDietaryPreferenceTransactions()

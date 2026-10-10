@@ -31,6 +31,7 @@ const BUSINESS_ERROR_CODES = new Set([
   'MEAL_REPLACEMENT_INVALID', 'MEAL_REPLACEMENT_CONFLICT', 'MEAL_REPLACEMENT_CONFIRM_REQUIRED',
   'MEAL_CONDITIONS_INVALID',
   'RECIPE_LIBRARY_INVALID', 'RECIPE_LIBRARY_FULL', 'RECIPE_LIBRARY_CONFLICT',
+  'STATE_UPGRADE_WAITING_FOR_AI',
 ])
 const CACHE_NAMESPACE_PATTERN = /^[a-f0-9]{32}$/
 const MAX_LEGACY_PLAN_INJECTION_SCHEMA = 5
@@ -122,6 +123,31 @@ function constrainUiState(state) {
   return sanitizeState(state, { preserveUnknownFrom: state })
 }
 
+async function assertMigrationTaskIdle(transaction, openid, expectedCacheNamespace) {
+  const reference = transaction.collection('meal_ai_controls').doc(openid)
+  let control = null
+  try { control = (await reference.get()).data || null }
+  catch (error) { if (!notFound(error)) throw error }
+  const { _id, ...retainedControl } = control || {}
+  // AI start writes this same document. A real write (including initial creation)
+  // prevents snapshot-isolation write skew between task creation and migration.
+  const fence = { reference, data: { ...retainedControl, owner: openid,
+    cacheNamespace: expectedCacheNamespace, stateMigrationSchema: CURRENT_SCHEMA } }
+  if (!control || !control.activeTaskId) return fence
+  // A different account-data generation cannot write this member's state.
+  if (control.cacheNamespace !== expectedCacheNamespace) return
+  let task = null
+  try { task = (await transaction.collection('meal_ai_tasks').doc(control.activeTaskId).get()).data || null }
+  catch (error) { if (!notFound(error)) throw error }
+  if (!task || task.cacheNamespace !== expectedCacheNamespace) return fence
+  const terminal = ['succeeded', 'failed', 'cancelled', 'expired', 'conflict'].includes(task.status)
+  const expired = Number.isSafeInteger(task.expiresAt) && task.expiresAt > 0 && task.expiresAt <= Date.now()
+  if (task.owner === openid && (terminal || expired)) return fence
+  const error = new Error('旧版生成任务仍在进行，请等待结束后刷新；当前餐单已保留')
+  error.code = 'STATE_UPGRADE_WAITING_FOR_AI'
+  throw error
+}
+
 async function bootstrap(openid, expectedCacheNamespace) {
   return db.runTransaction(async (transaction) => {
     const member = await requireActiveMemberInTransaction(transaction, openid)
@@ -129,13 +155,19 @@ async function bootstrap(openid, expectedCacheNamespace) {
     const reference = transaction.collection('meal_user_states').doc(openid)
     let raw = null
     try { raw = (await reference.get()).data || null } catch (error) { if (!notFound(error)) throw error }
+    let migrationFence = null
+    if (!raw || Number(raw.schemaVersion || 0) < CURRENT_SCHEMA) {
+      migrationFence = await assertMigrationTaskIdle(transaction, openid, expectedCacheNamespace)
+    }
     if (!raw) {
       const state = defaults()
+      if (migrationFence) await migrationFence.reference.set({ data: migrationFence.data })
       await reference.set({ data: { ...stateFields(state), createdAt: db.serverDate(), updatedAt: db.serverDate() } })
       return publicState(state)
     }
     const state = constrainUiState(migrateStored(raw))
     if (Number(raw.schemaVersion || 0) < CURRENT_SCHEMA) {
+      if (migrationFence) await migrationFence.reference.set({ data: migrationFence.data })
       await reference.update({ data: {
         ...atomicStateFields(state),
         migratedFrom: db.command.set(Number(raw.schemaVersion || 0)),

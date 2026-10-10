@@ -442,12 +442,12 @@ class AiPlannerService {
 
   async status() {
     const expectedCacheNamespace = this.requireNamespace()
-    return normalizeServiceStatus(await this.caller('aiPlanner', 'status', { expectedCacheNamespace }))
+    return normalizeServiceStatus(await this.caller('aiPlanner', 'status', { clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace }))
   }
 
   async currentTask() {
     const namespace = this.requireNamespace()
-    const value = await this.caller('aiPlanner', 'current', { expectedCacheNamespace: namespace })
+    const value = await this.caller('aiPlanner', 'current', { clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace })
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     if (!value) return null
     const response = normalizeTaskResponse(value)
@@ -458,7 +458,7 @@ class AiPlannerService {
 
   async recentFailure() {
     const namespace = this.requireNamespace()
-    const value = await this.caller('aiPlanner', 'recentFailure', { expectedCacheNamespace: namespace })
+    const value = await this.caller('aiPlanner', 'recentFailure', { clientContractVersion: CONTRACT_VERSION, expectedCacheNamespace: namespace })
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     return normalizeRecentFailure(value)
   }
@@ -467,6 +467,7 @@ class AiPlannerService {
     const namespace = this.requireNamespace()
     const response = normalizeTaskResponse(await this.caller('aiPlanner', action, {
       ...payload,
+      clientContractVersion: CONTRACT_VERSION,
       expectedCacheNamespace: namespace,
     }))
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()

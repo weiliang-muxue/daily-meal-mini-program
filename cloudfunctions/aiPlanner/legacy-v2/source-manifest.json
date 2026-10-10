@@ -1,0 +1,19 @@
+{
+  "releaseVersion": "0.2.1",
+  "sourceCommit": "d5eb53382ad37d34cf0e14d57a33f42c1a45578b",
+  "contractVersion": 2,
+  "plannerVersion": "7",
+  "taskSchemaVersion": 3,
+  "stateSchemaVersion": 8,
+  "normalization": "LF",
+  "files": {
+    "index.js": "fdf274904e7d8a0480909a7c0fc8b109b508131afa81699335a32b1bf870f896",
+    "lib.js": "3ca1205a42fa928c47af292b3584510cd4b26c47577f5c43536be5f60aa6f2e1",
+    "not-found.js": "e95845f2c25339ea9d707caea43770908aa110fecd47f9d56fffb086017838cf",
+    "provider-compat.js": "e1b6239bb281f2e550ba4c821899cd46deec42da2efbbbcdc7540772c1e47baa",
+    "provider-config.js": "acff0d5a4959a2676b2b5bd1f8f591442a6e2cb3dfb403060bd6b38235edac47",
+    "task-core.js": "aa541113e9ad148d926461b2e75ff6a01c2ffa3409bb02f7ccd44b0041793b94",
+    "transport.js": "b1ab2599be945af6122d3d3f176e9fc7c80ff546a89ccd255ab9d0c8b1ec34ea",
+    "user-state.js": "bdd379e27916779c87a5a6cda0b7d7b8b4f2bab529c42b466b907df01557d427"
+  }
+}
