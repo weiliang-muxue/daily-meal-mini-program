@@ -163,10 +163,17 @@ Page({
     this.resetMemberManagement()
   },
   onUnload() {
+    this.clearRenderedPrivateData()
     this.memberManagementUnloaded = true
     this.memberManagementSuspended = true
+    this.profileViewRevision = (this.profileViewRevision || 0) + 1
+    this.connectRevision = (this.connectRevision || 0) + 1
+    this.finishProfileSave()
     this.invalidatePhoneVisibilityPrompt()
-    this.resetMemberManagement()
+    this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
+    this.memberNoteRequestRevision = (this.memberNoteRequestRevision || 0) + 1
+    if (this.unsubscribeProfileNamespace) this.unsubscribeProfileNamespace()
+    this.unsubscribeProfileNamespace = null
     if (this.unsubscribeMembership) this.unsubscribeMembership()
     this.unsubscribeMembership = null
     if (this.themeChangeHandler && typeof wx.offThemeChange === 'function') wx.offThemeChange(this.themeChangeHandler)
@@ -186,21 +193,31 @@ Page({
   },
 
   async connect(force = false) {
+    if (this.memberManagementUnloaded) return
+    this.watchMemberManagement()
+    const revision = this.connectRevision = (this.connectRevision || 0) + 1
+    const current = () => !this.memberManagementUnloaded && revision === this.connectRevision
     this.resetMemberManagement()
     this.setData({ authState: 'connecting', authDetail: '正在加载资料', profileLoading: true })
     try {
       const member = await membershipStore.init({ force })
+      if (!current()) return
       if (!member || member.status !== 'active') return wx.reLaunch({ url: '/pages/access/access' })
+      const context = this.profileContext()
       const authRequest = authStore.init({ force })
       this.render()
       await authRequest
+      if (!current() || !this.isProfileContextCurrent(context)) return
       await userStore.init({ force })
+      if (!current() || !this.isProfileContextCurrent(context)) return
       this.render()
-      this.setData({ profileLoading: false })
+      this.setData({ profileLoading: false,
+        ...(membershipStore.state === 'ready' ? { phoneVisibilityError: '' } : {}) })
       if (member.role === 'owner') await this.loadMembers()
       else this.resetMemberManagement()
     }
     catch (error) {
+      if (!current()) return
       this.setData({
         authState: 'offline',
         authDetail: error.message || '资料加载失败，请稍后重试',
@@ -212,12 +229,44 @@ Page({
 
   watchMemberManagement() {
     if (this.memberManagementUnloaded) return
+    if (this.profileNamespace === undefined) this.profileNamespace = membershipStore.cacheNamespace || ''
+    if (!this.unsubscribeProfileNamespace && typeof membershipStore.onCacheNamespaceChange === 'function') {
+      this.unsubscribeProfileNamespace = membershipStore.onCacheNamespaceChange((namespace) => {
+        if (this.memberManagementUnloaded || namespace === this.profileNamespace) return
+        const previous = this.profileNamespace
+        this.profileNamespace = namespace || ''
+        this.profileViewRevision = (this.profileViewRevision || 0) + 1
+        // Initial identity acquisition has no previous private draft to clear.
+        if (!previous) return
+        this.connectRevision = (this.connectRevision || 0) + 1
+        this.finishProfileSave()
+        this.clearRenderedPrivateData()
+        this.setData({ profileLoading: false, bindingPhone: false, authorizingAvatar: false,
+          avatarPrivacyMode: 'native', authState: 'offline', authDetail: '微信身份已变化，请重新加载资料' })
+      })
+    }
     if (!this.unsubscribeMembership) {
       this.unsubscribeMembership = membershipStore.onMembershipChange(() => {
         this.resetMemberManagement()
         this.setData({ member: membershipStore.member || {} })
       })
     }
+  },
+
+  profileContext() {
+    return { namespace: membershipStore.cacheNamespace || '', revision: this.profileViewRevision || 0 }
+  },
+
+  isProfileContextCurrent(context) {
+    return !this.memberManagementUnloaded && context.namespace === (membershipStore.cacheNamespace || '')
+      && context.revision === (this.profileViewRevision || 0)
+  },
+
+  finishProfileSave(operation = this.profileSaveOperation) {
+    if (!operation || this.profileSaveOperation !== operation) return
+    this.profileSaveOperation = null
+    wx.hideLoading()
+    if (!this.memberManagementUnloaded) this.setData({ saving: false })
   },
 
   syncMemberManagementIdentity() {
@@ -479,7 +528,9 @@ Page({
   },
 
   async checkAvatarPrivacy() {
+    const context = this.profileContext()
     const privacy = await getPrivacyAuthorizationState()
+    if (!this.isProfileContextCurrent(context)) return
     if (!privacy.supported || privacy.authorized) {
       this.setData({ avatarPrivacyMode: 'native', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false })
       return
@@ -500,9 +551,11 @@ Page({
   },
 
   async authorizeAvatarPrivacy() {
-    if (this.data.profileLoading || this.data.authorizingAvatar) return
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.authorizingAvatar || this.data.saving) return
+    const context = this.profileContext()
     this.setData({ authorizingAvatar: true, avatarPrivacyError: '', avatarPrivacyMode: 'checking' })
     const current = await getPrivacyAuthorizationState()
+    if (!this.isProfileContextCurrent(context)) return
     if (!current.supported || current.authorized) {
       this.setData({
         avatarPrivacyMode: 'native',
@@ -514,6 +567,7 @@ Page({
       return
     }
     const privacy = await ensurePrivacyAuthorized()
+    if (!this.isProfileContextCurrent(context)) return
     if (privacy.authorized) {
       this.setData({
         avatarPrivacyMode: 'native',
@@ -694,7 +748,9 @@ Page({
   },
 
   async onGetPhoneNumber(event) {
-    if (this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
+    const context = this.profileContext()
+    if (!context.namespace) return
     const detail = event && event.detail || {}
     const code = typeof detail.code === 'string' ? detail.code.trim() : ''
     if (!code) {
@@ -709,9 +765,11 @@ Page({
     this.setData({ bindingPhone: true, phoneError: '' })
     try {
       const profile = await authStore.bindPhoneNumber(code)
+      if (!this.isProfileContextCurrent(context)) return
       this.setData({ profile, bindingPhone: false, phoneError: '' })
       wx.showToast({ title: '手机号已绑定', icon: 'success' })
     } catch (error) {
+      if (!this.isProfileContextCurrent(context)) return
       this.setData({
         bindingPhone: false,
         phoneError: error.message || '暂时无法绑定手机号，可稍后重试，不影响其他功能',
@@ -724,14 +782,19 @@ Page({
       && Object.prototype.hasOwnProperty.call(event.detail.value, 'nickname')
       ? event.detail.value.nickname : this.data.nickname
     const nickname = String(submittedNickname || '').trim().slice(0, 20)
-    if (this.data.profileLoading || this.data.saving || this.data.bindingPhone) return
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving || this.data.bindingPhone) return
+    const context = this.profileContext()
+    if (!context.namespace) return
+    const operation = this.profileSaveOperation = {}
     this.setData({ saving: true, profileSaveError: '' })
     wx.showLoading({ title: '正在保存', mask: true })
     try {
       const avatarImage = this.data.avatarLocalPath
         ? await privateImagePayload(this.data.avatarLocalPath, { maxBytes: MAX_AVATAR_BYTES, label: '头像' })
         : null
+      if (!this.isProfileContextCurrent(context)) return
       const profile = await authStore.updateProfile({ nickname, avatarImage })
+      if (!this.isProfileContextCurrent(context)) return
       this.setData({
         profile, nickname: profile.nickname, nicknameDirty: false,
         nicknameInitial: (profile.nickname || '我').slice(0, 1),
@@ -740,17 +803,19 @@ Page({
       })
       wx.showToast({ title: '资料已保存', icon: 'success' })
     } catch (error) {
+      if (!this.isProfileContextCurrent(context)) return
       const message = error && error.message || '保存失败，请重试'
       this.setData({ profileSaveError: message + (this.data.avatarLocalPath ? '；已选择的头像仍保留在当前页面。' : '') })
       wx.showToast({ title: message, icon: 'none' })
     } finally {
-      wx.hideLoading()
-      this.setData({ saving: false })
+      this.finishProfileSave(operation)
     }
   },
 
   retryLogin() {
-    if (this.data.authState !== 'offline') return
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving || this.data.bindingPhone
+      || this.data.savingPhoneVisibility || this.data.clearingData) return
+    if (this.data.authState !== 'offline' && !this.data.phoneVisibilityError) return
     return this.connect(true)
   },
   async toggleHealthSetting(event) {

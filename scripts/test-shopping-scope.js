@@ -515,6 +515,43 @@ function testPantryProjectionAndIdentity() {
 }
 
 async function main() {
+  for (const change of ['namespace', 'plan', 'checks', 'hide', 'unload']) {
+    resetState()
+    userStore.data.checkedShoppingIds = ['apple']
+    const page = pageInstance()
+    page.resetChecked()
+    if (change === 'namespace') membershipStore.switchTo(namespaceB)
+    if (change === 'plan') userStore.data = { activePlanId: 'plan-b', activePlan: plan('plan-b', 'banana'), checkedShoppingIds: ['banana'] }
+    if (change === 'checks') userStore.data.checkedShoppingIds = []
+    if (change === 'hide') page.onHide()
+    if (change === 'unload') page.onUnload()
+    const before = JSON.stringify(userStore.data)
+    modals[0].success({ confirm: true })
+    assert.strictEqual(patchCalls.length, 0, `迟到的重置确认不能作用于已变化的 ${change}`)
+    assert.strictEqual(JSON.stringify(userStore.data), before)
+  }
+  resetState()
+  userStore.data.checkedShoppingIds = ['apple']
+  const resetting = pageInstance()
+  resetting.resetChecked(); resetting.resetChecked()
+  assert.strictEqual(modals.length, 1, '重置只允许一个待确认弹窗')
+  modals[0].success({ confirm: true }); modals[0].success({ confirm: true })
+  assert.strictEqual(patchCalls.length, 1, '重复回调只能重置一次')
+  assert.deepStrictEqual(userStore.data.checkedShoppingIds, [])
+  for (const outcome of ['cancel', 'fail', 'throw']) {
+    resetState()
+    userStore.data.checkedShoppingIds = ['apple']
+    const page = pageInstance(), showModal = wx.showModal
+    if (outcome === 'throw') wx.showModal = () => { throw Error('synthetic unavailable modal') }
+    page.resetChecked()
+    wx.showModal = showModal
+    if (outcome === 'cancel') modals[0].success({ confirm: false })
+    if (outcome === 'fail') modals[0].fail()
+    assert.strictEqual(patchCalls.length, 0, `${outcome} 不能改动勾选`)
+    page.resetChecked()
+    modals.at(-1).success({ confirm: true })
+    assert.strictEqual(patchCalls.length, 1, `${outcome} 后仍可重试`)
+  }
   testPantryProjectionAndIdentity()
   await testNamespaceSwitchDropsOnlyPageOperations()
   await testPlanSwitchDropsOldPlanOperations()
@@ -531,7 +568,7 @@ async function main() {
   await testRemotePlanChangeEndsOldPlanStatus()
   await testNewEditsRemainPendingAfterEarlierSave()
   await testConflictRetryDoesNotClaimNewerEditsSynced()
-  console.log('shopping operation scope, pantry display and sync recovery tests passed (16 scenarios)')
+  console.log('shopping operation scope, reset confirmation, pantry display and sync recovery tests passed (25 scenarios)')
 }
 
 main().catch((error) => {

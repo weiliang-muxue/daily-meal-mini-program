@@ -631,6 +631,8 @@ const testScripts = [
   'scripts/test-profile-transfer.js',
   'scripts/test-profile-relations.js',
   'scripts/test-profile-native.js',
+  'scripts/test-profile-lifecycle.js',
+  'scripts/test-auth-refresh.js',
   'scripts/test-phone-visibility.js',
   'scripts/test-tabbar-ui.js',
   'scripts/test-privacy-auth.js',

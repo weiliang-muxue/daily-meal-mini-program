@@ -136,6 +136,7 @@ assert(pageDefinition)
 
 const { authStore } = require(authModulePath)
 const { userStore } = require(userStoreModulePath)
+require(path.join(root, 'miniprogram/services/membership-store.js')).membershipStore.cacheNamespace = 'a'.repeat(32)
 function makePage() {
   const page = Object.create(pageDefinition)
   page.data = JSON.parse(JSON.stringify(pageDefinition.data))

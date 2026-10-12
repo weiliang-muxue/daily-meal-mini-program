@@ -89,6 +89,7 @@ const shoppingPage = {
   },
 
   onShow() {
+    this.hidden = false
     if (this.skipFirstShow) {
       this.skipFirstShow = false
       return
@@ -99,16 +100,20 @@ const shoppingPage = {
   },
 
   onHide() {
+    this.hidden = true
+    this.resetPrompt = null
     const scope = this.ensureOperationScope()
     clearTimeout(scope.syncTimer)
     if (scope.pendingOperations.size && !scope.retryPromise) this.syncChanges(scope).catch(() => {})
   },
 
   onUnload() {
+    this.resetPrompt = null
     const scope = this.ensureOperationScope()
     clearTimeout(scope.syncTimer)
     if (scope.pendingOperations.size && !scope.retryPromise) this.syncChanges(scope).catch(() => {})
     if (this.unsubscribeNamespace) this.unsubscribeNamespace()
+    this.unloaded = true
   },
 
   ensureOperationScope() {
@@ -358,18 +363,35 @@ const shoppingPage = {
   },
 
   resetChecked() {
+    if (this.unloaded || this.hidden || this.resetPrompt) return
+    const scope = this.ensureOperationScope()
     const current = this.currentShopping()
     if (!current.checkedIds.length) return
-    wx.showModal({
+    const snapshot = JSON.stringify(current)
+    const prompt = this.resetPrompt = {}
+    const closePrompt = () => {
+      if (this.resetPrompt !== prompt) return false
+      this.resetPrompt = null
+      return !this.unloaded && !this.hidden && this.isCurrentOperationScope(scope)
+    }
+    const fail = () => {
+      if (closePrompt()) wx.showToast({ title: '暂时无法打开确认，请重试', icon: 'none' })
+    }
+    try { wx.showModal({
       title: '重置采购进度？',
       content: '只会取消当前计划内的采购勾选，不会删除餐单或其他用户的数据。',
       confirmText: '重置',
       confirmColor: '#A33F2B',
-      success: ({ confirm }) => {
-        if (!confirm) return
+      success: (result) => {
+        if (!closePrompt() || !result || !result.confirm) return
+        if (snapshot !== JSON.stringify(this.currentShopping())) {
+          wx.showToast({ title: '清单已变化，请核对后重试', icon: 'none' })
+          return
+        }
         this.applyCheckedIds(new Set(), current.checkedIds)
       },
-    })
+      fail,
+    }) } catch (_) { fail() }
   },
 
   openPlanner() { wx.navigateTo({ url: '/pages/planner/planner' }) },

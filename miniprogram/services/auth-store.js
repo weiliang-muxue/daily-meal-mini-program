@@ -13,6 +13,12 @@ function namespaceChangedError() {
   return error
 }
 
+function supersededProfileError() {
+  const error = new Error('资料加载请求已过期，请重新加载')
+  error.code = 'PROFILE_REQUEST_SUPERSEDED'
+  return error
+}
+
 class AuthStore {
   constructor(memberStore = membershipStore) {
     this.membershipStore = memberStore
@@ -22,6 +28,7 @@ class AuthStore {
     this.error = ''
     this.initPromise = null
     this.initNamespace = ''
+    this.readRevision = 0
     this.unsubscribeNamespace = memberStore.onCacheNamespaceChange((namespace) => this.applyCacheNamespace(namespace))
   }
 
@@ -34,6 +41,7 @@ class AuthStore {
     this.error = ''
     this.initPromise = null
     this.initNamespace = ''
+    this.readRevision += 1
     return nextNamespace
   }
 
@@ -61,11 +69,20 @@ class AuthStore {
     catch (error) { return Promise.reject(error) }
     if (!this.profile) this.profile = wx.getStorageSync(this.cacheKey(namespace)) || null
     if (this.initPromise && this.initNamespace === namespace && !options.force) return this.initPromise
+    const readRevision = ++this.readRevision
     this.state = 'connecting'
     const request = wxLogin()
-      .then(() => callFunction('auth', 'login', { expectedCacheNamespace: namespace }))
+      .then(() => {
+        if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+        if (readRevision !== this.readRevision) throw supersededProfileError()
+        return callFunction('auth', 'login', { expectedCacheNamespace: namespace })
+      })
       .then((profile) => {
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+        if (readRevision !== this.readRevision) {
+          if (this.profile) return this.profile
+          throw supersededProfileError()
+        }
         this.profile = profile
         this.state = 'ready'
         this.error = ''
@@ -74,6 +91,10 @@ class AuthStore {
       })
       .catch((error) => {
         if (!this.isCurrentNamespace(namespace)) throw error
+        if (readRevision !== this.readRevision) {
+          if (this.profile) return this.profile
+          throw error
+        }
         this.state = 'offline'
         this.error = error.message || '微信身份连接失败'
         if (!this.profile) throw error
@@ -96,8 +117,12 @@ class AuthStore {
       profile, expectedCacheNamespace: namespace,
     })
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    // A login started before or during this write may contain an older server
+    // snapshot. Failed writes leave valid reads available for recovery.
+    this.readRevision += 1
     this.profile = result
     this.state = 'ready'
+    this.error = ''
     wx.setStorageSync(this.cacheKey(namespace), result)
     return result
   }
@@ -108,6 +133,7 @@ class AuthStore {
       code, expectedCacheNamespace: namespace,
     })
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
+    this.readRevision += 1
     this.profile = result
     this.state = 'ready'
     this.error = ''
