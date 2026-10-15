@@ -31,18 +31,9 @@
 .field-row { min-height: 92rpx; display: flex; align-items: center; gap: 22rpx; border-bottom: 1rpx solid var(--line); }
 .field-label { width: 90rpx; font-size: 14px; font-weight: 700; }
 .field-row input { flex: 1; min-width: 0; min-height: 48px; font-size: 14px; }
-.phone-row { min-height: 104rpx; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
-.phone-copy { min-width: 0; flex: 1; display: flex; align-items: center; gap: 22rpx; }
-.phone-value { min-width: 0; flex: 1; color: var(--muted); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
-.phone-button { width: 72px; min-width: 72px; max-width: 72px; min-height: 48px; margin: 0; padding: 0 12px; display: flex; align-items: center; justify-content: center; border: 1rpx solid var(--line-strong); border-radius: 9rpx; background: var(--surface); color: var(--primary); font-size: 14px; font-weight: 680; }
-.phone-button[disabled] { opacity: .48; }
-.phone-visibility { padding: 12px 0; border-top: 1rpx solid var(--line); }
-.phone-visibility-button { width: 100%; min-height: 48px; margin: 0 0 12px; padding: 10px 16px; border: 1rpx solid var(--line-strong); border-radius: 9rpx; background: var(--surface); color: var(--primary); font-size: 14px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
-.phone-visibility-button[disabled] { opacity: .48; }
 .profile-info-hint { display: block; margin: 0 0 16rpx; color: var(--muted); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.phone-error { display: block; margin: 0 0 20rpx; padding: 16rpx 18rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.phone-error.hint { border-color: var(--line-strong); background: var(--surface-muted); color: var(--muted-strong); }
 .profile-save { margin-top: 18rpx; }
+.profile-save-error { display: block; margin: 0 0 20rpx; padding: 16rpx 18rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .data-list { overflow: hidden; }
 .data-row { min-height: 92rpx; padding: 16rpx 26rpx; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; border-bottom: 1rpx solid var(--line); font-size: 14px; }
 .data-row:last-child { border-bottom: 0; }
@@ -149,18 +140,13 @@
   .data-row { align-items: flex-start; flex-direction: column; gap: 6rpx; }
   .data-row text:last-child { text-align: left; }
   .member-option { align-items: flex-start; }
-  .phone-row, .phone-copy { align-items: flex-start; }
-  .phone-row { flex-direction: column; }
-  .phone-copy { flex-direction: column; gap: 6rpx; }
-  .phone-value { white-space: normal; overflow-wrap: anywhere; }
-  .phone-button { width: 100%; max-width: none; }
   .active-invite-row { align-items: flex-start; flex-direction: column; }
   .invite-revoke { width: 100%; }
   .legal-row { align-items: flex-start; }
   .joined-member-detail { flex-direction: column; gap: 4rpx; }
 }
 @media (max-width: 400px) {
-  .auth-strip, .phone-button, .invite-result, .member-option, .invite-revoke, .active-invite-empty button, .avatar-error-actions button, .legal-row, .danger-button { min-height: 48px; }
+  .auth-strip, .invite-result, .member-option, .invite-revoke, .active-invite-empty button, .avatar-error-actions button, .legal-row, .danger-button { min-height: 48px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   .screen {
@@ -177,8 +163,8 @@
   .avatar-button { width: 76px; min-height: 78px; }
   .avatar-visual, .avatar { width: 56px; height: 56px; }
   .auth-strip { margin-top: 10px; padding: 10px 14px; }
-  .field-row, .phone-row, .data-row, .setting-row, .member-option, .active-invite-row { min-height: 52px; }
-  .phone-button, .profile-save, .invite-label, .invite-revoke, .member-retry, .transfer-button, .danger-button, .legal-row, .active-invite-empty button, .avatar-error-actions button { min-height: 48px; }
+  .field-row, .data-row, .setting-row, .member-option, .active-invite-row { min-height: 52px; }
+  .profile-save, .invite-label, .invite-revoke, .member-retry, .transfer-button, .danger-button, .legal-row, .active-invite-empty button, .avatar-error-actions button { min-height: 48px; }
   .invite-field, .transfer-button, .danger-button { margin-top: 12px; }
   .member-status { min-height: 96px; padding: 14px; }
   .joined-member-row { padding: 16px; }

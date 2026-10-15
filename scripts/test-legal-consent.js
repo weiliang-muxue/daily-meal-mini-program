@@ -133,15 +133,9 @@ async function testLegacyConsentKeepsCoreAccessWithoutSharing() {
   store.save({ ...active, legalConsentVersion: 2, serviceConsentAccepted: true,
     phoneVisibilitySupported: true, phoneVisibilityEnabled: false, phoneVisibilityRevision: 0 })
   calls = []
-  for (const invalid of [null, 'true', 1, {}]) await assert.rejects(store.setPhoneVisibility(invalid))
+  assert.strictEqual(store.setPhoneVisibility, undefined)
+  assert.strictEqual(store.member.phoneVisibilityEnabled, undefined, '旧云端权限响应不能保留到客户端')
   assert.deepStrictEqual(calls, [])
-  handler = async () => ({ ...store.member, phoneVisibilityEnabled: true, phoneVisibilityRevision: 1 })
-  await store.setPhoneVisibility(true)
-  assert.deepStrictEqual(calls.pop(), ['membership', 'setPhoneVisibility', {
-    allowed: true, phoneVisibilityVersion: 1, cacheNamespace: namespaceA, expectedRevision: 0, legalConsentVersion: 2,
-  }])
-  assert.strictEqual(store.member.phoneVisibilityEnabled, true)
-  assert.strictEqual(store.member.legalConsentAccepted, undefined, '尾号选择不能伪造整套协议再次同意')
 }
 
 async function main() {

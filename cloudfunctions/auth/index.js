@@ -3,7 +3,7 @@ const crypto = require('crypto')
 const { validateImageFile } = require('./image-file')
 const { downloadImageSource, validMetadata } = require('./image-source')
 const {
-  PROFILE_SCHEMA_VERSION, phoneBindingFromResponse, profileMigration,
+  PROFILE_SCHEMA_VERSION, profileMigration,
   planProfileUpdate, avatarTicketCleanupFiles,
 } = require('./profile-core')
 const { orphanPermanentPath, ticketCleanupClaimable, ticketConsumable } = require('./upload-ticket')
@@ -28,9 +28,6 @@ const AUTH_ERROR_MESSAGES = Object.freeze({
   IMAGE_SOURCE_UNAVAILABLE: '头像读取失败，请重新选择',
   IMAGE_CONTENT_MISMATCH: '头像内容发生变化，请重新选择',
   IMAGE_TOO_LARGE: '头像不能超过 1 MB',
-  PHONE_CODE_REQUIRED: '请重新点击绑定手机号',
-  PHONE_CODE_INVALID: '手机号授权已失效，请重新点击绑定',
-  PHONE_BIND_UNAVAILABLE: '暂时无法绑定手机号，可稍后重试，不影响其他功能',
   STALE_DATA_GENERATION: '账号数据版本已变化，请刷新后重试',
 })
 const AUTH_REQUEST_MESSAGES = new Set([
@@ -112,8 +109,6 @@ async function publicProfile(user = {}) {
     nickname: safeText(user.nickname, 20),
     avatarUrl,
     profileComplete: Boolean(safeText(user.nickname, 20)),
-    phoneBound: user.phoneBound === true && /^\*{4}\d{4}$/.test(user.maskedPhone || ''),
-    maskedPhone: user.phoneBound === true && /^\*{4}\d{4}$/.test(user.maskedPhone || '') ? user.maskedPhone : '',
     createdAt: user.createdAt || null,
     updatedAt: user.updatedAt || null,
   }
@@ -248,7 +243,6 @@ async function login(openid, unionid, expectedCacheNamespace) {
     if (!current) {
       const data = {
         schemaVersion: PROFILE_SCHEMA_VERSION, nickname: '', avatarFileId: '',
-        phoneBound: false, maskedPhone: '', phoneBoundAt: null,
         unionid: unionid || '', loginCount: 1,
         createdAt: db.serverDate(), updatedAt: db.serverDate(), lastLoginAt: db.serverDate(),
       }
@@ -264,48 +258,6 @@ async function login(openid, unionid, expectedCacheNamespace) {
   })
   await cleanupAvatarTickets(openid, expectedCacheNamespace)
     .catch((error) => console.error('avatar cleanup failed', { name: error && error.name }))
-  return publicProfileForGeneration(openid, expectedCacheNamespace)
-}
-
-function phoneApiFailure(error) {
-  const rawCode = Number(error && (error.errCode !== undefined ? error.errCode : error.code))
-  const failure = new Error('暂时无法绑定手机号')
-  failure.code = [40029, 40163].includes(rawCode) ? 'PHONE_CODE_INVALID' : 'PHONE_BIND_UNAVAILABLE'
-  return failure
-}
-
-async function bindPhoneNumber(openid, rawCode, expectedCacheNamespace) {
-  const code = safeText(rawCode, 256)
-  if (!code) {
-    const error = new Error('请重新点击绑定手机号')
-    error.code = 'PHONE_CODE_REQUIRED'
-    throw error
-  }
-
-  await requireMember(openid, expectedCacheNamespace)
-  let binding
-  try {
-    const response = await cloud.openapi.phonenumber.getPhoneNumber({ code, openid })
-    const errCode = Number(response && response.errCode)
-    if (Number.isFinite(errCode) && errCode !== 0) throw Object.assign(new Error('phone api failed'), { errCode })
-    binding = phoneBindingFromResponse(response)
-  } catch (error) {
-    if (error && error.code === 'PHONE_BIND_UNAVAILABLE') throw error
-    throw phoneApiFailure(error)
-  }
-
-  await withActiveMemberTransaction(openid, expectedCacheNamespace, async (transaction) => {
-    const reference = transaction.collection('meal_users').doc(openid)
-    let current = null
-    try { current = (await reference.get()).data || null } catch (error) { if (!notFound(error)) throw error }
-    if (!current) throw new Error('用户档案不存在，请重新登录')
-    await reference.update({ data: {
-      ...profileMigration(current, command.remove()),
-      ...binding,
-      phoneBoundAt: db.serverDate(),
-      updatedAt: db.serverDate(),
-    } })
-  })
   return publicProfileForGeneration(openid, expectedCacheNamespace)
 }
 
@@ -396,7 +348,7 @@ async function commitProfileUpdate(openid, nickname, uploadedAvatarFileId, avata
       })
     }
 
-    await reference.update({ data: { ...planned.data, updatedAt: db.serverDate() } })
+    await reference.update({ data: { ...profileMigration(current, command.remove()), ...planned.data, updatedAt: db.serverDate() } })
     return planned
   })
 }
@@ -462,7 +414,7 @@ exports.main = async (event = {}) => {
       return { success: true, data: await updateProfile(openid, event.profile, event.expectedCacheNamespace) }
     }
     if (event.action === 'bindPhoneNumber') {
-      return { success: true, data: await bindPhoneNumber(openid, event.code, event.expectedCacheNamespace) }
+      return { success: false, code: 'PHONE_FEATURE_REMOVED', message: '手机号绑定已停用，请使用昵称完善资料' }
     }
     return { success: false, message: '不支持的账号操作' }
   } catch (error) {

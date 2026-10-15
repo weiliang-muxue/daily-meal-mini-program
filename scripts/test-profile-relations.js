@@ -81,12 +81,12 @@ async function main() {
     {
       memberRef: ownerRef, displayName: '管理者甲', role: 'owner', roleLabel: '管理员',
       joinedText: '2026-09-21 09:02（北京时间）', inviterLabel: '无需邀请加入', invitationLabel: '无需邀请',
-      adminNote: '', phoneText: '****1234',
+      adminNote: '',
     },
     {
       memberRef, displayName: '小林', role: 'member', roleLabel: '普通成员',
       joinedText: '2026-09-21 14:10（北京时间）', inviterLabel: '原管理员甲', invitationLabel: '家人邀请',
-      adminNote: '成员专属备注', phoneText: '待成员确认',
+      adminNote: '成员专属备注',
     },
   ], '成员展示只保留安全字段，昵称优先并正确转换北京时间')
   assert(!JSON.stringify(page.data.joinedMembers).includes('private-'), '成员展示不得保留身份、完整手机号、头像或健康数据')
@@ -108,7 +108,7 @@ async function main() {
   ]) {
     membershipStore.listMembers = async () => summary([{ memberRef, role: 'member', phoneStatus, maskedPhone }])
     await phonePage.loadMembers()
-    assert.strictEqual(phonePage.data.joinedMembers[0].phoneText, expected)
+    assert.strictEqual(phonePage.data.joinedMembers[0].phoneText, undefined, '不再保留任何尾号显示状态')
     assert.strictEqual(Object.hasOwn(phonePage.data.joinedMembers[0], 'maskedPhone'), false, '页面只保留已验证的显示字段')
   }
   membershipStore.listMembers = async () => knownMembers
@@ -413,12 +413,12 @@ async function main() {
   assert(adminBlock >= 0 && joinedStart > adminBlock && joinedStart < invitesStart && invitesStart < transferStart,
     '已加入成员必须是管理员区域的独立章节，不能隐藏在管理员交接里')
   const joinedMarkup = profileWxml.slice(joinedStart, invitesStart)
-  for (const field of ['displayName', 'roleLabel', 'joinedText', 'inviterLabel', 'invitationLabel', 'phoneText']) {
+  for (const field of ['displayName', 'roleLabel', 'joinedText', 'inviterLabel', 'invitationLabel']) {
     assert(joinedMarkup.includes(`{{item.${field}}}`), `已加入成员必须展示 ${field}`)
   }
   assert(!/<text[^>]*>[^<]*\{\{item.memberRef\}\}/.test(joinedMarkup) && !/phoneNumber|avatar|openid|unionid|health|codeHash/.test(joinedMarkup),
-    '已加入成员行仅新增安全尾号，不显示成员引用或其他私人字段')
-  assert(joinedMarkup.includes('手机尾号') && joinedMarkup.includes('可能重复'), '尾号仅辅助识别，不得当成唯一身份')
+    '已加入成员行不显示成员引用或其他私人字段')
+  assert(!/手机尾号|后四位/.test(joinedMarkup) && joinedMarkup.includes('昵称、邀请备注和成员备注'), '改用昵称与备注区分成员')
   assert(joinedMarkup.includes('重新加载') && joinedMarkup.includes('暂无可展示的成员') && joinedMarkup.includes('正在加载已加入成员'),
     '已加入成员必须提供加载、空白和可重试错误反馈')
   assert(/\.joined-members-refresh\s*\{[^}]*max-width:\s*72px/.test(profileWxss),

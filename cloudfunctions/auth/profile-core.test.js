@@ -4,24 +4,17 @@ const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
 const {
-  PROFILE_SCHEMA_VERSION, maskedPhone, phoneBindingFromResponse, profileMigration,
+  PROFILE_SCHEMA_VERSION, RETIRED_PHONE_FIELDS, profileMigration,
   planProfileUpdate, avatarTicketCleanupFiles,
 } = require('./profile-core')
 
 assert.strictEqual(PROFILE_SCHEMA_VERSION, 2)
-assert.strictEqual(maskedPhone('00008000'), '****8000')
-assert.strictEqual(maskedPhone('+00 0000-8000'), '****8000')
-assert.strictEqual(maskedPhone('123'), '')
-assert.deepStrictEqual(phoneBindingFromResponse({
-  phoneInfo: { phoneNumber: '+0000008000', purePhoneNumber: '00008000', countryCode: '00' },
-}), { phoneBound: true, maskedPhone: '****8000' })
-assert.throws(() => phoneBindingFromResponse({ phoneInfo: {} }), (error) => error.code === 'PHONE_BIND_UNAVAILABLE')
-assert.deepStrictEqual(profileMigration({ schemaVersion: 1 }), {
-  schemaVersion: 2, phoneBound: false, maskedPhone: '', phoneBoundAt: null,
+const remove = { remove: true }
+const retired = Object.fromEntries(RETIRED_PHONE_FIELDS.map(field => [field, 'synthetic-legacy-value']))
+assert.deepStrictEqual(profileMigration(retired, remove), {
+  schemaVersion: 2, ...Object.fromEntries(RETIRED_PHONE_FIELDS.map(field => [field, remove])),
 })
-assert.deepStrictEqual(profileMigration({ schemaVersion: 2, phoneBound: true, maskedPhone: '****8000' }), {
-  schemaVersion: 2, phoneBound: true, maskedPhone: '****8000',
-})
+assert.deepStrictEqual(profileMigration({}), { schemaVersion: 2 })
 
 function functionBody(source, name) {
   const start = source.indexOf(`async function ${name}(`)
@@ -76,13 +69,7 @@ const compensation = functionBody(source, 'compensateAvatarUpdate')
 assert(compensation.includes('cleanupAvatarTicket(openid, avatarTicketToken)'), '失败补偿必须走受保护的票据清理')
 assert(!compensation.includes('deletePrivateFiles'), '失败补偿不能根据事务外快照直接删除头像')
 
-const phoneBinding = functionBody(source, 'bindPhoneNumber')
-assert(phoneBinding.includes('cloud.openapi.phonenumber.getPhoneNumber({ code, openid })'),
-  '手机号动态 code 必须仅由云端携可信 OPENID 调用微信官方接口')
-assert(!/console\.(?:log|info|warn|error)/.test(phoneBinding), '手机号动态 code 和完整号码处理函数不得写日志')
-assert(!/phoneInfo\.(?:phoneNumber|purePhoneNumber|countryCode)/.test(phoneBinding),
-  '完整手机号只能在纯函数内生成掩码，数据库写入路径不得直接引用微信完整号码字段')
-assert(phoneBinding.includes('...binding') && phoneBinding.includes('phoneBoundAt: db.serverDate()'),
-  '手机号绑定只应持久化最小绑定状态、掩码和服务端时间')
+assert(!source.includes('cloud.openapi.phonenumber'), '服务端不得继续兑换手机号')
+assert(source.includes("code: 'PHONE_FEATURE_REMOVED'"), '旧版调用必须明确拒绝')
 
 console.log('auth profile concurrency tests passed')

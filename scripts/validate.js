@@ -489,14 +489,11 @@ assert(/open-type="chooseAvatar"/.test(profilePageSource), '头像必须使用�
 assert(/<input[^>]+type="nickname"[^>]+name="nickname"/.test(profilePageSource), '昵称必须使用微信 nickname 输入能力并随表单提交')
 assert(/<form[^>]+bindsubmit="saveProfile"/.test(profilePageSource) && /form-type="submit"/.test(profilePageSource),
   '昵称资料必须通过表单提交')
-assert(/open-type="getPhoneNumber"/.test(profilePageSource) && /bindgetphonenumber="onGetPhoneNumber"/.test(profilePageSource),
-  '可选手机号必须由用户点击微信 getPhoneNumber 原生按钮')
+assert(!/getPhoneNumber|phoneVisibility|手机尾号/.test(profilePageSource), '手机号和尾号入口必须移除')
 assert(!/getUserInfo/.test(`${profilePageSource}\n${read('miniprogram/pages/profile/profile.js')}`),
   '资料页不能使用已废弃 getUserInfo 获取完整用户资料')
-assert(/cloud\.openapi\.phonenumber\.getPhoneNumber\(\{ code, openid \}\)/.test(authSource),
-  '手机号动态 code 必须由 auth 云函数携可信 OPENID 兑换')
-assert.deepStrictEqual(JSON.parse(read('cloudfunctions/auth/config.json')).permissions.openapi,
-  ['phonenumber.getPhoneNumber'], 'auth 云函数必须声明微信官方手机号云调用权限')
+assert(!authSource.includes('cloud.openapi.phonenumber'), '不得再兑换手机号')
+assert.deepStrictEqual(JSON.parse(read('cloudfunctions/auth/config.json')).permissions.openapi, [], '删除手机号云调用权限')
 assert(!/console\.(?:log|info|warn|error)\([^\n]*(?:event\.code|rawCode|phoneInfo|phoneNumber|purePhoneNumber|maskedPhone)/.test(`${authSource}\n${authProfileCoreSource}`),
   '手机号动态 code、号码或掩码不得进入云函数日志')
 
@@ -633,7 +630,7 @@ const testScripts = [
   'scripts/test-profile-native.js',
   'scripts/test-profile-lifecycle.js',
   'scripts/test-auth-refresh.js',
-  'scripts/test-phone-visibility.js',
+  'scripts/test-phone-retirement.js',
   'scripts/test-tabbar-ui.js',
   'scripts/test-privacy-auth.js',
   'scripts/database-rules.test.js',

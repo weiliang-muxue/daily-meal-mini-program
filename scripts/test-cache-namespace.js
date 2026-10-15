@@ -295,19 +295,12 @@ async function testAuthCachesAreNamespaced() {
   assert.deepStrictEqual(storage.get(keyB), { nickname: 'account-b-updated' })
   assert.deepStrictEqual(storage.get(keyA), { nickname: 'account-a' }, 'Account A cache must remain untouched')
 
-  cloudHandler = async (name, action, payload) => {
-    assert.strictEqual(name, 'auth')
-    assert.strictEqual(action, 'bindPhoneNumber')
-    assert.strictEqual(payload.code, 'single-use-test-code')
-    return { nickname: 'account-b-updated', phoneBound: true, maskedPhone: '****8000' }
-  }
-  await store.bindPhoneNumber('single-use-test-code')
-  assert.deepStrictEqual(storage.get(keyB), {
-    nickname: 'account-b-updated', phoneBound: true, maskedPhone: '****8000',
-  })
-  assert.strictEqual(JSON.stringify(storage.get(keyB)).includes('single-use-test-code'), false,
-    '手机号动态 code 不得进入本地资料缓存')
-  assert.deepStrictEqual(storage.get(keyA), { nickname: 'account-a' }, '绑定手机号不能覆盖其他账号缓存')
+  assert.strictEqual(store.bindPhoneNumber, undefined)
+  cloudHandler = async () => ({ nickname: 'account-b-updated', phoneBound: true, maskedPhone: '****8000' })
+  await store.init({ force: true })
+  assert.deepStrictEqual(store.profile, { nickname: 'account-b-updated' })
+  assert.deepStrictEqual(storage.get(keyB), { nickname: 'account-b-updated' }, '旧云端响应不能重新缓存尾号')
+  assert.deepStrictEqual(storage.get(keyA), { nickname: 'account-a' })
 
   const readsBeforeMissingNamespace = storageReads.length
   const writesBeforeMissingNamespace = storageWrites.length

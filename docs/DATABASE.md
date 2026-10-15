@@ -38,14 +38,11 @@
 | `schemaVersion` | number | 用户档案结构版本 |
 | `nickname` | string | 用户主动填写，最多 20 字 |
 | `avatarFileId` | string | 经成员校验、内容校验和一次性票据事务绑定后的私有文件 ID |
-| `phoneBound` | boolean | 用户是否主动完成手机号绑定；默认 `false` |
-| `maskedPhone` | string | 只保存后四位形成的掩码（例如 `****8000`），不保存或返回完整手机号 |
-| `phoneBoundAt` | server date/null | 最近一次成功绑定时间；未绑定为 `null` |
 | `unionid` | string | 调用上下文可用时保存，永不返回前端 |
 | `loginCount` | number | 登录次数 |
 | `createdAt` / `updatedAt` / `lastLoginAt` | server date | 服务端审计时间 |
 
-档案 schema v2 在旧用户下次登录时原地补齐手机号绑定默认值，并防御性移除 `phoneNumber`、`purePhoneNumber`、`countryCode` 等不受支持的实验字段。手机号必须由用户点击原生 `getPhoneNumber` 按钮取得短时动态 `code`，再由 `auth` 云函数携可信调用上下文中的 `OPENID` 调用 `phonenumber.getPhoneNumber`。动态 `code` 约 5 分钟有效且仅可使用一次，不写数据库、缓存或日志；微信返回的完整号码只在云函数内存中用于生成掩码，随后立即丢弃。手机号绑定受主体资格、认证状态、平台计费和调用额度约束，失败不影响其他业务。
+档案 schema v2 保持兼容；手机号功能已退役。登录和保存资料时仅删除 `phoneBound`、`maskedPhone`、`phoneBoundAt`、`phoneNumber`、`purePhoneNumber`、`countryCode` 六个历史字段，不重建用户文档。上线前须对 `meal_users` 全量按字段存在条件执行同样的 `$unset`，包括未登录用户；清理不读取字段值、不保留号码副本。
 
 ## `meal_user_states` schema v8
 
@@ -89,11 +86,11 @@
 
 ### `meal_members` 与 `meal_invites`
 
-成员文档保存 `legalConsent`（已明确接受的协议版本与服务端接受时间），缺失记录不自动补为已同意。滚动升级中身份接口按请求协商版本：已发布旧客户端不传 `legalConsentVersion` 时按 1，新客户端明确传 2，其他值拒绝。兑换邀请码必须携带与请求版本完全匹配的阅读及主动接受证据；有效版本 1 或 2 均允许原有业务访问，不能据此把版本 1 当作尾号展示授权。重复接受版本 1 不降级既有版本 2，也不改原时间。确认动作验证可信身份及当前缓存命名空间，不清空或迁移餐单、健康或采购数据。
+成员文档保存 `legalConsent`（已明确接受的协议版本与服务端接受时间），缺失记录不自动补为已同意。滚动升级中身份接口按请求协商版本：已发布旧客户端不传 `legalConsentVersion` 时按 1，新客户端明确传 2，其他值拒绝。兑换邀请码必须携带与请求版本完全匹配的阅读及主动接受证据；有效版本 1 或 2 均允许原有业务访问，手机号尾号功能取消，任何协议版本都不授予尾号展示能力。重复接受版本 1 不降级既有版本 2，也不改原时间。确认动作验证可信身份及当前缓存命名空间，不清空或迁移餐单、健康或采购数据。
 
-新增可选 `phoneVisibilityConsent: { version: 1, allowed: boolean, revision: positive safe integer, updatedAt: serverDate }`，只由本人经 `setPhoneVisibility` 事务修改。须匹配可信微信身份、active 状态、基础协议、缓存命名空间及 `expectedRevision`；客户端不能指定被授权的另一成员。无该字段时仅有效协议版本 2 允许展示，有字段时以严格校验后的明确选择为准；畸形字段关闭展示，撤回不被后续一般协议接受覆盖。接口返回本人的能力、是否允许和修订号，不返回原始记录。无需新集合或放宽客户端数据库权限，旧成员不做批量回填。
+已取消 `phoneVisibilityConsent`：部署关闭写入的 membership 后，从 `meal_members` 定向 `$unset` 整个字段，不删除一般 `legalConsent`、成员身份、邀请关系或管理员备注。不再返回 `phoneVisibilitySupported/Enabled/Revision`；旧版请求明确拒绝。
 
-新成员的邀请来源使用服务端查验出的 `inviterMemberRef` 和 `joinSource` 记录，不接受客户端指定邀请人。管理员列表仅投影成员昵称/备注、角色、加入时间、邀请人称呼、邀请备注，以及成员允许后严格校验的手机尾号掩码与可用状态；旧记录按实际邀请来源尽量解析，信息缺失时保留未知。普通成员不能读取此列表，邀请关系不授予管理权限，不能扩大到其他用户的私人资料或业务内容。数据清理仍移除该用户的协议记录和个人字段。
+新成员的邀请来源使用服务端查验出的 `inviterMemberRef` 和 `joinSource` 记录，不接受客户端指定邀请人。管理员列表仅投影成员昵称/备注、角色、加入时间、邀请人称呼、邀请备注，不返回手机号、尾号或原展示选择；旧记录按实际邀请来源尽量解析，信息缺失时保留未知。普通成员不能读取此列表，邀请关系不授予管理权限，不能扩大到其他用户的私人资料或业务内容。数据清理仍移除该用户的协议记录和个人字段。
 
 `meal_members` 以 openid 为文档 ID，保存 `active/disabled/deleting` 状态、`owner/member` 角色、加入时间和服务端时间；`deleting` 是阻止删除过程中继续写入私人数据的不可用状态。总容量固定为 11 人，即 1 位 `owner` 加 10 位受邀 `member`；一次性邀请码固定在创建 168 小时（7 天）后过期。旧版本使用过的 `INVITE_SLOTS`、`INVITE_TTL_HOURS` 环境变量已被代码忽略，不能再用它们改变容量或有效期。受邀账号永远以普通 `member` 加入，只有唯一 `owner` 可以创建邀请、查看成员、撤销待使用邀请或发起管理员转移。`meal_invites` 只保存 32 位大写十六进制邀请码的 SHA-256 摘要、有效状态、次数、有效期、备注和创建者；明文只在创建时返回一次，每个邀请码最多使用一次。
 

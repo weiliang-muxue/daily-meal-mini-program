@@ -1,6 +1,8 @@
 const { callFunction, wxLogin } = require('../utils/cloud')
 const { membershipStore } = require('./membership-store')
 
+const { withoutPhoneData, purgeRetiredPhoneCaches } = require('./retired-phone-data')
+
 const CACHE_PREFIX = 'meal_auth_profile_v1_'
 
 function normalizeCacheNamespace(value) {
@@ -21,6 +23,7 @@ function supersededProfileError() {
 
 class AuthStore {
   constructor(memberStore = membershipStore) {
+    purgeRetiredPhoneCaches()
     this.membershipStore = memberStore
     this.cacheNamespace = normalizeCacheNamespace(memberStore.cacheNamespace)
     this.profile = null
@@ -67,7 +70,7 @@ class AuthStore {
     let namespace
     try { namespace = this.requireCacheNamespace() }
     catch (error) { return Promise.reject(error) }
-    if (!this.profile) this.profile = wx.getStorageSync(this.cacheKey(namespace)) || null
+    if (!this.profile) this.profile = withoutPhoneData(wx.getStorageSync(this.cacheKey(namespace)) || null)
     if (this.initPromise && this.initNamespace === namespace && !options.force) return this.initPromise
     const readRevision = ++this.readRevision
     this.state = 'connecting'
@@ -77,7 +80,8 @@ class AuthStore {
         if (readRevision !== this.readRevision) throw supersededProfileError()
         return callFunction('auth', 'login', { expectedCacheNamespace: namespace })
       })
-      .then((profile) => {
+      .then((rawProfile) => {
+        const profile = withoutPhoneData(rawProfile)
         if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
         if (readRevision !== this.readRevision) {
           if (this.profile) return this.profile
@@ -113,9 +117,9 @@ class AuthStore {
 
   async updateProfile(profile) {
     const namespace = this.requireCacheNamespace()
-    const result = await callFunction('auth', 'updateProfile', {
-      profile, expectedCacheNamespace: namespace,
-    })
+    const result = withoutPhoneData(await callFunction('auth', 'updateProfile', {
+      profile: withoutPhoneData(profile), expectedCacheNamespace: namespace,
+    }))
     if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
     // A login started before or during this write may contain an older server
     // snapshot. Failed writes leave valid reads available for recovery.
@@ -126,21 +130,6 @@ class AuthStore {
     wx.setStorageSync(this.cacheKey(namespace), result)
     return result
   }
-
-  async bindPhoneNumber(code) {
-    const namespace = this.requireCacheNamespace()
-    const result = await callFunction('auth', 'bindPhoneNumber', {
-      code, expectedCacheNamespace: namespace,
-    })
-    if (!this.isCurrentNamespace(namespace)) throw namespaceChangedError()
-    this.readRevision += 1
-    this.profile = result
-    this.state = 'ready'
-    this.error = ''
-    wx.setStorageSync(this.cacheKey(namespace), result)
-    return result
-  }
-
 }
 
 module.exports = { AuthStore, authStore: new AuthStore() }

@@ -89,16 +89,6 @@ for (const failure of [false, true]) {
   })
 }
 
-test('late phone binding does not display the previous member after an identity change', async () => {
-  const f = fixture(), phone = deferred()
-  f.auth.bindPhoneNumber = () => phone.promise
-  const pending = f.page.onGetPhoneNumber({ detail: { code: 'synthetic-once-code' } })
-  f.switchIdentity(); phone.resolve({ nickname: 'old', maskedPhone: '****0000' }); await pending
-  assert.deepEqual(copy(f.page.data.profile), {})
-  assert.equal(f.page.data.bindingPhone, false)
-  assert.equal(f.toasts.length, 0)
-})
-
 test('same-member redraw preserves drafts and successful save clears them', async () => {
   const f = fixture()
   f.page.onNicknameInput({ detail: { value: '虚构草稿' } })
@@ -132,11 +122,10 @@ test('late privacy query cannot update an unloaded profile', async () => {
   assert.equal(f.deadUpdates(), 0)
 })
 
-test('phone visibility recovery refresh works even when login itself is ready', async () => {
+test('offline profile refresh remains available after phone removal', async () => {
   const f = fixture(), calls = []
   f.page.connect = async force => { calls.push(force) }
-  f.page.data.authState = 'ready'
-  f.page.data.phoneVisibilityError = '设置暂未确认，请刷新资料核对后重试'
+  f.page.data.authState = 'offline'
   await f.page.retryLogin()
   assert.deepEqual(calls, [true])
   f.page.data.profileLoading = true

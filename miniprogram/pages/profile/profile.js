@@ -16,56 +16,6 @@ const DEFAULT_MAX_MEMBERS = 11
 const DEFAULT_INVITE_TTL_HOURS = 168
 const MAX_MEMBER_NOTE_LENGTH = 100
 
-function phoneFailureFeedback(detail = {}, stage = 'native') {
-  // Never render/log the original callback: it can contain a one-time code,
-  // encrypted phone data, or identifiers. Only retain an allowlisted diagnosis.
-  const message = String(detail.errMsg || detail.message || '').toLowerCase()
-  let reason = 'NO_CODE'
-  let hint = '微信未返回手机号绑定凭证。请在手机微信中重试；若仍失败，请向管理员反馈诊断信息。'
-  if (/user\s*(deny|denied|cancel)|:fail\s+(cancel|deny)\b/.test(message)) {
-    return { cancelled: true, message: '已取消绑定，之后需要时可以再试', diagnostic: null }
-  }
-  if (stage === 'cloud') {
-    reason = 'SAVE_FAILED'
-    hint = '手机号绑定暂未确认，请重新点击绑定。不影响其他功能。'
-    if (detail.code === 'PHONE_CODE_INVALID' || detail.code === 'PHONE_CODE_REQUIRED') {
-      reason = 'CODE_EXPIRED'
-      hint = '手机号授权已失效，请重新点击绑定获取新授权。'
-    } else if (detail.code === 'ACCOUNT_GENERATION_CHANGED' || detail.code === 'MEMBERSHIP_REQUIRED') {
-      reason = 'IDENTITY_CHANGED'
-      hint = '成员身份已变化，请退出小程序后重新进入。'
-    }
-  } else if (/not\s+declared|undeclared/.test(message)) {
-    reason = 'PRIVACY_DECLARATION'
-    hint = '手机号授权暂不可用，需管理员核对微信后台的手机号隐私声明是否已生效。不影响其他功能。'
-  } else if (/not\s+support|unsupported/.test(message)) {
-    reason = 'CLIENT_UNSUPPORTED'
-    hint = '当前微信客户端不支持手机号授权，请在手机微信中重试。不影响其他功能。'
-  } else if (/no\s+permission|permission\s+denied|access\s+denied|not\s+authorized|unauthorized/.test(message)) {
-    reason = 'CAPABILITY_UNAVAILABLE'
-    hint = '微信未开放本次手机号授权，需管理员核对账号的手机号接口权限。不影响其他功能。'
-  } else if (/privacy|authorization|scope/.test(message)) {
-    reason = 'PRIVACY_AUTH_REQUIRED'
-    hint = '手机号绑定需要微信隐私授权，请查看《隐私保护指引》后重新点击绑定。'
-  } else if (/quota|limit|frequen/.test(message)) {
-    reason = 'LIMITED'
-    hint = '手机号接口暂受调用限制，需管理员核对接口额度与调用状态。不影响其他功能。'
-  } else if (/network|timeout|timed\s+out/.test(message)) {
-    reason = 'NETWORK'
-    hint = '手机号授权网络异常，请检查网络后重新点击绑定。不影响其他功能。'
-  }
-  const diagnostic = { stage, reason }
-  for (const key of ['errno', 'errCode']) {
-    const value = detail[key]
-    if ((typeof value === 'number' || typeof value === 'string') && /^-?\d{1,7}$/.test(String(value))) {
-      diagnostic[key] = Number(value)
-    }
-  }
-  const numeric = ['errno', 'errCode'].filter(key => diagnostic[key] !== undefined)
-    .map(key => `${key}=${diagnostic[key]}`).join(', ')
-  return { cancelled: false, message: `${hint}（PHONE_${stage.toUpperCase()}_${reason}${numeric ? '; ' + numeric : ''}）`, diagnostic }
-}
-
 function pad(value) { return String(value).padStart(2, '0') }
 
 function positiveSafeInteger(value, fallback) {
@@ -120,10 +70,6 @@ function visibleJoinedMembers(summary) {
       displayName: cleanMemberName(item.displayName) || cleanMemberName(item.label) || (item.role === 'owner' ? '管理员' : '受邀成员'),
       role: item.role,
       roleLabel: item.role === 'owner' ? '管理员' : '普通成员',
-      phoneText: item.phoneStatus === 'available' && typeof item.maskedPhone === 'string'
-        && item.maskedPhone.length === 8 && /^\*{4}\d{4}$/.test(item.maskedPhone) ? item.maskedPhone
-        : item.phoneStatus === 'consent_required' ? '待成员确认'
-          : item.phoneStatus === 'unbound' ? '未绑定' : '暂不可用',
       joinedText: memberJoinedText(item.joinedAt),
       inviterLabel: joinSource === 'owner' ? '无需邀请加入'
         : joinSource === 'invite' ? cleanMemberName(item.inviterLabel) || '邀请人信息未记录' : '邀请人信息未记录',
@@ -181,8 +127,6 @@ Page({
     avatarPrivacyMode: 'native', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false,
     legalPrivacyError: '',
     authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, profileSaveError: '', clearingData: false,
-    bindingPhone: false, phoneError: '', phoneErrorTone: 'error',
-    savingPhoneVisibility: false, phoneVisibilityError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
     nativeControlColor: '#176B46',
     member: {}, memberCount: 0, occupiedCount: 0, maxMembers: DEFAULT_MAX_MEMBERS,
@@ -209,7 +153,6 @@ Page({
   },
   onHide() {
     this.memberManagementSuspended = true
-    this.invalidatePhoneVisibilityPrompt()
     this.resetMemberManagement()
   },
   onUnload() {
@@ -219,7 +162,6 @@ Page({
     this.profileViewRevision = (this.profileViewRevision || 0) + 1
     this.connectRevision = (this.connectRevision || 0) + 1
     this.finishProfileSave()
-    this.invalidatePhoneVisibilityPrompt()
     this.memberRequestRevision = (this.memberRequestRevision || 0) + 1
     this.memberNoteRequestRevision = (this.memberNoteRequestRevision || 0) + 1
     if (this.unsubscribeProfileNamespace) this.unsubscribeProfileNamespace()
@@ -261,8 +203,7 @@ Page({
       await userStore.init({ force })
       if (!current() || !this.isProfileContextCurrent(context)) return
       this.render()
-      this.setData({ profileLoading: false,
-        ...(membershipStore.state === 'ready' ? { phoneVisibilityError: '' } : {}) })
+      this.setData({ profileLoading: false })
       if (member.role === 'owner') await this.loadMembers()
       else this.resetMemberManagement()
     }
@@ -291,7 +232,7 @@ Page({
         this.connectRevision = (this.connectRevision || 0) + 1
         this.finishProfileSave()
         this.clearRenderedPrivateData()
-        this.setData({ profileLoading: false, bindingPhone: false, authorizingAvatar: false,
+        this.setData({ profileLoading: false, authorizingAvatar: false,
           avatarPrivacyMode: 'native', authState: 'offline', authDetail: '微信身份已变化，请重新加载资料' })
       })
     }
@@ -570,7 +511,7 @@ Page({
     this.setData({
       profile: {}, nickname: '', nicknameDirty: false, nicknameInitial: '我',
       avatarPreview: '', avatarLocalPath: '', avatarImageFailed: false, avatarPrivacyError: '', profileSaveError: '',
-      phoneError: '', settings: { calciumAnchorReminder: false, vitaminDReminder: false },
+      settings: { calciumAnchorReminder: false, vitaminDReminder: false },
       updatedText: '', member: {}, memberCount: 0, occupiedCount: 0,
       activeInvites: [], joinedMembers: [], joinedMembersState: 'idle', transferMembers: [], selectedMemberRef: '',
       inviteCode: '', inviteExpiresText: '', inviteLabel: '',
@@ -737,119 +678,12 @@ Page({
     this.setData({ nickname, nicknameDirty: true, nicknameInitial: (nickname || '我').slice(0, 1), profileSaveError: '' })
   },
 
-  invalidatePhoneVisibilityPrompt() {
-    this.phoneVisibilityViewRevision = (this.phoneVisibilityViewRevision || 0) + 1
-    if (this.phoneVisibilityOperation && !this.phoneVisibilityOperation.started) {
-      this.phoneVisibilityOperation = null
-      if (!this.memberManagementUnloaded) this.setData({ savingPhoneVisibility: false })
-    }
-  },
-
-  async changePhoneVisibility() {
-    const member = membershipStore.member
-    if (this.data.profileLoading || this.data.savingPhoneVisibility || this.data.clearingData
-      || this.memberManagementSuspended || this.memberManagementUnloaded
-      || membershipStore.state !== 'ready' || !member || member.status !== 'active'
-      || member.phoneVisibilitySupported !== true || !membershipStore.cacheNamespace) return
-    const allowed = member.phoneVisibilityEnabled !== true
-    const operation = { started: false }
-    const namespace = membershipStore.cacheNamespace
-    const membershipRevision = membershipStore.membershipRevision
-    const choiceRevision = member.phoneVisibilityRevision
-    const previousAllowed = member.phoneVisibilityEnabled
-    const viewRevision = this.phoneVisibilityViewRevision || 0
-    this.phoneVisibilityOperation = operation
-    const isCurrent = () => this.phoneVisibilityOperation === operation
-      && !this.memberManagementUnloaded && !this.memberManagementSuspended
-      && (this.phoneVisibilityViewRevision || 0) === viewRevision
-      && membershipStore.cacheNamespace === namespace && membershipStore.membershipRevision === membershipRevision
-      && membershipStore.member && membershipStore.member.status === 'active'
-    this.setData({ savingPhoneVisibility: true, phoneVisibilityError: '' })
-    try {
-      const confirmed = await confirmModal(allowed ? {
-        title: '允许管理员看尾号？',
-        content: '仅向当前管理员展示已绑定手机号的后四位，用于结合昵称和备注区分成员。不保存完整号码，不发送给 AI。你可随时停止展示；不允许也能正常使用。',
-        confirmText: '允许展示', cancelText: '暂不允许',
-      } : {
-        title: '停止展示手机尾号？',
-        content: '保存成功后，管理员下次读取成员列表时将看不到你的尾号。已查看的信息无法收回；不影响手机号绑定或其他功能。',
-        confirmText: '停止展示', cancelText: '取消',
-      })
-      if (!confirmed || !isCurrent()) return
-      // A status refresh can update this choice without changing membership
-      // identity. Never apply a dialog opened against an older choice.
-      const current = membershipStore.member
-      if (membershipStore.state !== 'ready' || current.phoneVisibilitySupported !== true
-        || current.phoneVisibilityRevision !== choiceRevision
-        || current.phoneVisibilityEnabled !== previousAllowed) {
-        throw new Error('PHONE_VISIBILITY_CHANGED')
-      }
-      operation.started = true
-      const result = await membershipStore.setPhoneVisibility(allowed)
-      if (!isCurrent()) return
-      if (!result || result.phoneVisibilitySupported !== true || result.phoneVisibilityEnabled !== allowed) {
-        throw new Error('PHONE_VISIBILITY_UNCONFIRMED')
-      }
-      this.setData({ member: result, phoneVisibilityError: '' })
-      wx.showToast({ title: allowed ? '已允许展示尾号' : '已停止展示尾号', icon: 'success' })
-      if (result.role === 'owner') await this.loadMembers()
-    } catch (_) {
-      if (isCurrent()) this.setData({ phoneVisibilityError: '设置暂未确认，请刷新资料核对后重试。未确认前请勿认为已生效。' })
-    } finally {
-      if (this.phoneVisibilityOperation === operation) {
-        this.phoneVisibilityOperation = null
-        if (!this.memberManagementUnloaded) this.setData({ savingPhoneVisibility: false })
-      }
-    }
-  },
-
-  onPhoneTap() {
-    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
-    this.setData({ phoneError: '', phoneErrorTone: 'error' })
-  },
-
-  showPhoneFailure(detail, stage = 'native') {
-    const feedback = phoneFailureFeedback(detail, stage)
-    this.setData({ bindingPhone: false, phoneError: feedback.message,
-      phoneErrorTone: feedback.cancelled ? 'hint' : 'error' })
-    if (feedback.diagnostic && typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn('[profile-phone]', feedback.diagnostic)
-    }
-  },
-
-  onPhoneNumberError(event) {
-    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
-    this.showPhoneFailure(event && event.detail || {})
-  },
-
-  async onGetPhoneNumber(event) {
-    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
-    const context = this.profileContext()
-    if (!context.namespace) return
-    const detail = event && event.detail || {}
-    const code = typeof detail.code === 'string' ? detail.code.trim() : ''
-    if (!code) {
-      this.showPhoneFailure(detail)
-      return
-    }
-    this.setData({ bindingPhone: true, phoneError: '' })
-    try {
-      const profile = await authStore.bindPhoneNumber(code)
-      if (!this.isProfileContextCurrent(context)) return
-      this.setData({ profile, bindingPhone: false, phoneError: '' })
-      wx.showToast({ title: '手机号已绑定', icon: 'success' })
-    } catch (error) {
-      if (!this.isProfileContextCurrent(context)) return
-      this.showPhoneFailure(error || {}, 'cloud')
-    }
-  },
-
   async saveProfile(event) {
     const submittedNickname = event && event.detail && event.detail.value
       && Object.prototype.hasOwnProperty.call(event.detail.value, 'nickname')
       ? event.detail.value.nickname : this.data.nickname
     const nickname = String(submittedNickname || '').trim().slice(0, 20)
-    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving || this.data.bindingPhone) return
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving) return
     const context = this.profileContext()
     if (!context.namespace) return
     const operation = this.profileSaveOperation = {}
@@ -880,9 +714,8 @@ Page({
   },
 
   retryLogin() {
-    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving || this.data.bindingPhone
-      || this.data.savingPhoneVisibility || this.data.clearingData) return
-    if (this.data.authState !== 'offline' && !this.data.phoneVisibilityError) return
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving || this.data.clearingData) return
+    if (this.data.authState !== 'offline') return
     return this.connect(true)
   },
   async toggleHealthSetting(event) {

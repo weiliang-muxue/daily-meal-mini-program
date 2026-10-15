@@ -65,9 +65,6 @@ function safeMember(member, control, legalVersion = LEGAL_CONSENT_VERSION) {
     legalConsentVersion: legalVersion,
     legalConsentAccepted: active && hasAcceptedLegalConsent(member, legalVersion),
     serviceConsentAccepted: active && hasAcceptedLegalConsent(member, 1),
-    phoneVisibilitySupported: true,
-    phoneVisibilityEnabled: active && phoneVisibilityAllowed(member),
-    phoneVisibilityRevision: active ? phoneVisibilityRevision(member) : 0,
   }
 }
 
@@ -465,80 +462,13 @@ function isOriginalInviterGeneration(invitation, member) {
     && storedTimestamp(invitation.createdAt) >= storedTimestamp(member.joinedAt))
 }
 
-function phoneVisibilityRevision(member) {
-  if (!member || !Object.prototype.hasOwnProperty.call(member, 'phoneVisibilityConsent')) return 0
-  const consent = member.phoneVisibilityConsent
-  return consent && typeof consent === 'object' && !Array.isArray(consent)
-    && Object.keys(consent).length === 4 && consent.version === 1 && typeof consent.allowed === 'boolean'
-    && Number.isSafeInteger(consent.revision) && consent.revision > 0 && storedTimestamp(consent.updatedAt) > 0
-    ? consent.revision : -1
-}
-
-function phoneVisibilityAllowed(member) {
-  if (!member || member.status !== 'active') return false
-  if (!Object.prototype.hasOwnProperty.call(member, 'phoneVisibilityConsent')) return hasAcceptedLegalConsent(member)
-  return phoneVisibilityRevision(member) > 0 && member.phoneVisibilityConsent.allowed === true
-}
-
-async function setPhoneVisibility(openid, allowed, version, cacheNamespace, expectedRevision, legalVersion) {
-  if (typeof allowed !== 'boolean' || version !== 1 || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
-    const error = new Error('请确认手机尾号展示选择后重试')
-    error.code = 'PHONE_VISIBILITY_INVALID'
-    throw error
-  }
-  await db.runTransaction(async (transaction) => {
-    const controlReference = transaction.collection('meal_members').doc(CONTROL_ID)
-    const reference = transaction.collection('meal_members').doc(openid)
-    const control = assertOperationalControl(await readDocument(controlReference))
-    const member = await readDocument(reference)
-    assertReactivationAllowed(member)
-    if (!member || member.status !== 'active' || !hasAcceptedLegalConsent(member, 1)) {
-      const error = new Error('请重新验证成员身份')
-      error.code = 'MEMBERSHIP_REQUIRED'
-      throw error
-    }
-    if (!isCacheNamespace(cacheNamespace) || member.cacheNamespace !== cacheNamespace) {
-      const error = new Error('账号数据状态已变化，请重新进入')
-      error.code = 'ACCOUNT_GENERATION_CHANGED'
-      throw error
-    }
-    const revision = phoneVisibilityRevision(member)
-    if (revision < 0 || revision !== expectedRevision || revision >= Number.MAX_SAFE_INTEGER) {
-      const error = new Error('尾号展示设置已变化，请刷新资料后再选择')
-      error.code = 'PHONE_VISIBILITY_CONFLICT'
-      throw error
-    }
-    if (revision > 0 && member.phoneVisibilityConsent.allowed === allowed) return
-    await reference.update({ data: {
-      phoneVisibilityConsent: { version: 1, allowed, revision: revision + 1, updatedAt: db.serverDate() },
-      updatedAt: db.serverDate(),
-    } })
-    await controlReference.update({ data: { ...reviseOperationalControl(control), updatedAt: db.serverDate() } })
-  })
-  return status(openid, legalVersion)
-}
-
-function adminPhoneProjection(profile, member, readerConsented) {
-  // Never derive a suffix from unexpected/raw phone fields, or expose legacy consent.
-  if (!readerConsented || !phoneVisibilityAllowed(member)) {
-    return { maskedPhone: '', phoneStatus: 'consent_required' }
-  }
-  if (!profile || profile.phoneBound !== true) return { maskedPhone: '', phoneStatus: 'unbound' }
-  if (typeof profile.maskedPhone !== 'string' || profile.maskedPhone.length !== 8 || !/^\*{4}\d{4}$/.test(profile.maskedPhone)) {
-    return { maskedPhone: '', phoneStatus: 'unavailable' }
-  }
-  return { maskedPhone: profile.maskedPhone, phoneStatus: 'available' }
-}
-
-async function joinedMemberProjection(transaction, ordered, rawControl, readerConsented) {
+async function joinedMemberProjection(transaction, ordered, rawControl) {
   const byOpenid = new Map(ordered.map((member) => [member._id, member]))
   const byMemberRef = new Map(ordered.map((member) => [member.memberRef, member]))
   const names = new Map()
-  const phones = new Map()
   for (const [index, member] of ordered.entries()) {
     const profile = await readDocument(transaction.collection('meal_users').doc(member._id))
     names.set(member.memberRef, clean(profile && profile.nickname, 20) || publicMember(member, index).displayName)
-    phones.set(member.memberRef, adminPhoneProjection(profile, member, readerConsented))
   }
   const result = []
   for (const [index, member] of ordered.entries()) {
@@ -571,7 +501,6 @@ async function joinedMemberProjection(transaction, ordered, rawControl, readerCo
       }),
       adminNote: adminNoteText(member.adminNote),
       adminNoteUpdatedAt: storedTimestamp(member.adminNoteUpdatedAt) || null,
-      ...phones.get(member.memberRef),
     })
   }
   return result
@@ -620,7 +549,7 @@ async function listMembers(openid) {
       inviteSlots: config.inviteSlots,
       inviteTtlHours: config.inviteTtlHours,
       capacityExceeded: capacityExceeded(control, config),
-      members: await joinedMemberProjection(transaction, ordered, rawControl, hasAcceptedLegalConsent(owner, 1)),
+      members: await joinedMemberProjection(transaction, ordered, rawControl),
       activeInvites: visibleInvites,
     }
   })
@@ -742,8 +671,6 @@ function publicError(error) {
     MEMBERSHIP_BOOTSTRAP_IN_PROGRESS: '管理员初始化正在进行，请稍后重试',
     LEGAL_CONSENT_REQUIRED: '请阅读隐私政策和用户协议后明确同意',
     LEGAL_CONSENT_VERSION_UNSUPPORTED: '协议版本暂不支持，请更新小程序后重试',
-    PHONE_VISIBILITY_INVALID: '请确认手机尾号展示选择后重试',
-    PHONE_VISIBILITY_CONFLICT: '尾号展示设置已变化，请刷新资料后再选择',
     MEMBERSHIP_REQUIRED: '请先使用有效成员身份加入',
     ACCOUNT_GENERATION_CHANGED: '账号数据状态已变化，请重新进入',
   })
@@ -760,14 +687,14 @@ exports.main = async (event = {}) => {
   if (!OPENID) return { success: false, code: 'IDENTITY_REQUIRED', message: '无法识别微信身份' }
   try {
     // Released v0.2 clients omit this field and only understand consent v1.
-    // Keep negotiation request-local; it never grants phone-viewing permission.
+    // Keep legal-version negotiation request-local.
     const legalVersion = ['status', 'acceptInvite', 'acceptLegalConsent', 'transferOwner', 'setPhoneVisibility'].includes(event.action)
       ? assertLegalConsentVersion(event.legalConsentVersion === undefined ? 1 : event.legalConsentVersion)
       : LEGAL_CONSENT_VERSION
     if (event.action === 'status') return { success: true, data: await status(OPENID, legalVersion) }
     if (event.action === 'acceptInvite') return { success: true, data: await acceptInvite(OPENID, event.code, event.legalConsent, legalVersion) }
     if (event.action === 'acceptLegalConsent') return { success: true, data: await acceptLegalConsent(OPENID, event.legalConsent, event.cacheNamespace, legalVersion) }
-    if (event.action === 'setPhoneVisibility') return { success: true, data: await setPhoneVisibility(OPENID, event.allowed, event.phoneVisibilityVersion, event.cacheNamespace, event.expectedRevision, legalVersion) }
+    if (event.action === 'setPhoneVisibility') return { success: false, code: 'PHONE_FEATURE_REMOVED', message: '手机尾号展示已停用' }
     if (event.action === 'createInvite') return { success: true, data: await createInvite(OPENID, event.label) }
     if (event.action === 'listMembers') return { success: true, data: await listMembers(OPENID) }
     if (event.action === 'setMemberNote') return { success: true, data: await setMemberNote(OPENID, event.memberRef, event.note) }

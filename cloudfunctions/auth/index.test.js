@@ -241,39 +241,29 @@ async function testProfileWriteRechecksGenerationInTransaction() {
   assert.strictEqual(get('meal_users', OPENID).nickname, '旧昵称')
 }
 
-async function testPhoneBindingRechecksAfterProviderCall() {
+async function testRetiredPhoneCannotBeReintroduced() {
   reset()
-  phoneHandler = async () => {
-    put('meal_members', OPENID, { status: 'active', cacheNamespace: ROTATED_NAMESPACE })
-    return { phoneInfo: { purePhoneNumber: '00008000' } }
+  let called = false
+  phoneHandler = async () => { called = true; throw Error('must not request phone') }
+  for (const code of ['', 'synthetic-code']) {
+    const before = get('meal_users', OPENID)
+    const result = await auth.main({ action: 'bindPhoneNumber', code, expectedCacheNamespace: CACHE_NAMESPACE })
+    assert.strictEqual(result.code, 'PHONE_FEATURE_REMOVED')
+    assert.strictEqual(called, false)
+    assert.deepStrictEqual(get('meal_users', OPENID), before)
   }
-  const response = await auth.main({
-    action: 'bindPhoneNumber', code: 'single-use-test-code',
-    expectedCacheNamespace: CACHE_NAMESPACE,
-  })
-  assert.deepStrictEqual(response, staleResponse())
-  assert.strictEqual(get('meal_users', OPENID).phoneBound, false)
-  assert.strictEqual(get('meal_users', OPENID).maskedPhone, '')
-}
-
-async function testPhoneErrorsRemainSafe() {
-  reset()
-  const missingPhoneCode = await auth.main({
-    action: 'bindPhoneNumber', code: '', expectedCacheNamespace: CACHE_NAMESPACE,
-  })
-  assert.deepStrictEqual(missingPhoneCode, {
-    success: false, code: 'PHONE_CODE_REQUIRED', message: '请重新点击绑定手机号',
-  })
-
-  const unavailablePhone = await auth.main({
-    action: 'bindPhoneNumber', code: 'single-use-test-code',
-    expectedCacheNamespace: CACHE_NAMESPACE,
-  })
-  assert.deepStrictEqual(unavailablePhone, {
-    success: false, code: 'PHONE_BIND_UNAVAILABLE',
-    message: '暂时无法绑定手机号，可稍后重试，不影响其他功能',
-  })
-  assert.strictEqual(JSON.stringify(unavailablePhone).includes('private phone provider detail'), false)
+  const legacy = { ...get('meal_users', OPENID), phoneBound: true, maskedPhone: '****0000',
+    phoneNumber: 'synthetic-private-phone', purePhoneNumber: 'synthetic-private-phone', countryCode: '00' }
+  for (const action of ['login', 'updateProfile']) {
+    put('meal_users', OPENID, legacy)
+    const result = await auth.main({ action, profile: { nickname: '新昵称', maskedPhone: '****1111' }, expectedCacheNamespace: CACHE_NAMESPACE })
+    assert.strictEqual(result.success, true)
+    for (const field of ['phoneBound', 'maskedPhone', 'phoneBoundAt', 'phoneNumber', 'purePhoneNumber', 'countryCode']) {
+      assert(!Object.hasOwn(get('meal_users', OPENID), field))
+      assert(!Object.hasOwn(result.data, field))
+    }
+    assert.strictEqual(get('meal_users', OPENID).avatarFileId, legacy.avatarFileId)
+  }
 }
 
 async function testRotationAfterDownloadPreventsUpload() {
@@ -439,16 +429,12 @@ async function testAuthStoreSendsExpectedGeneration() {
   const store = new AuthStore(memberStore)
   await store.init({ force: true })
   await store.updateProfile({ nickname: '客户端昵称' })
-  await store.bindPhoneNumber('single-use-test-code')
+  assert.strictEqual(store.bindPhoneNumber, undefined)
   assert.deepStrictEqual(calls, [
     { name: 'auth', action: 'login', payload: { expectedCacheNamespace: CACHE_NAMESPACE } },
     {
       name: 'auth', action: 'updateProfile',
       payload: { profile: { nickname: '客户端昵称' }, expectedCacheNamespace: CACHE_NAMESPACE },
-    },
-    {
-      name: 'auth', action: 'bindPhoneNumber',
-      payload: { code: 'single-use-test-code', expectedCacheNamespace: CACHE_NAMESPACE },
     },
   ])
 }
@@ -457,8 +443,7 @@ async function tests() {
   await testPublicErrorBoundary()
   await testEveryActionRejectsMissingAndStaleGeneration()
   await testProfileWriteRechecksGenerationInTransaction()
-  await testPhoneBindingRechecksAfterProviderCall()
-  await testPhoneErrorsRemainSafe()
+  await testRetiredPhoneCannotBeReintroduced()
   await testRotationAfterDownloadPreventsUpload()
   await testLateUploadsAreBlocked()
   await testFailedCompensationKeepsReceiptUntilLeaseRetry()

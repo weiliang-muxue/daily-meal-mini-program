@@ -905,7 +905,6 @@ async function acceptedInvitationExposesOnlyDisplayRelationship() {
     memberRef: record.memberRef, role: 'member', label: '家人备注', joinedAt: record.joinedAt,
     displayName: '受邀用户的昵称', inviterLabel: '邀请人的昵称', invitationLabel: '家人备注', joinSource: 'invite',
     adminNote: '', adminNoteUpdatedAt: null,
-    maskedPhone: '', phoneStatus: 'consent_required',
   })
   assert.strictEqual(summary.members.find((item) => item.role === 'owner').joinSource, 'owner')
   const serialized = JSON.stringify(summary)
@@ -1168,55 +1167,27 @@ async function memberNoteWritesRecheckOwnerAndTargetInsideTransaction() {
   }
 }
 
-async function maskedPhonesRequireCurrentConsentAndOwner() {
-  seed({}, { [MEMBER]: {
-    ...activeMember('member', 'b'.repeat(32), '2'.repeat(32)),
-    legalConsent: { version: 1, acceptedAt: 10 },
-  } })
-  database.bucket('meal_members').set(CONTROL_ID, {
-    ...CONTROL(), activeMemberCount: 2, inviteSlots: 10, inviteTtlHours: 168,
-  })
-  database.bucket('meal_users').set(MEMBER, { phoneBound: true, maskedPhone: '****1234', phoneNumber: 'never-return-raw-phone' })
-  const beforeProfile = clone(database.record('meal_users', MEMBER))
-  const row = async () => (await membership._test.listMembers(OWNER)).members.find(item => item.role === 'member')
-  await membership._test.acceptLegalConsent(OWNER, CONSENT, '1'.repeat(32))
-  assert.strictEqual((await row()).phoneStatus, 'consent_required')
-  assert.strictEqual((await row()).maskedPhone, '', '旧版同意不能被当作尾号展示许可')
-  await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))
-  assert.strictEqual((await row()).maskedPhone, '****1234')
-  assert.strictEqual((await row()).phoneStatus, 'available')
-  assert.deepStrictEqual(database.record('meal_users', MEMBER), beforeProfile, '确认新版说明及读取不能改写个人档案')
-  assert(!JSON.stringify(await row()).includes('never-return-raw-phone'))
+async function retiredPhonesAreNeverProjected() {
+  seed({}, { [MEMBER]: { ...activeMember('member', 'b'.repeat(32), '2'.repeat(32)),
+    phoneVisibilityConsent: { allowed: true, version: 1, revision: 1, updatedAt: 10 } } })
+  database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), activeMemberCount: 2, inviteSlots: 10, inviteTtlHours: 168 })
+  database.bucket('meal_users').set(MEMBER, { nickname: '保留昵称', phoneBound: true, maskedPhone: '****1234' })
+  const result = await membership._test.listMembers(OWNER)
+  const row = result.members.find(item => item.role === 'member')
+  assert.strictEqual(row.displayName, '保留昵称')
+  assert(!Object.hasOwn(row, 'maskedPhone'))
+  assert(!Object.hasOwn(row, 'phoneStatus'))
   currentIdentity = MEMBER
-  const denied = await membership.main({ action: 'listMembers', OPENID: OWNER, role: 'owner' })
-  assert.strictEqual(denied.code, 'OWNER_REQUIRED')
-  assert(!JSON.stringify(denied).includes('1234'))
+  const before = database.records('meal_members')
+  for (const allowed of [true, false]) {
+    const response = await membership.main({ action: 'setPhoneVisibility', allowed })
+    assert.strictEqual(response.code, 'PHONE_FEATURE_REMOVED')
+    assert.deepStrictEqual(database.records('meal_members'), before)
+  }
+  const status = await membership.main({ action: 'status' })
+  assert(!Object.keys(status.data).some(key => key.startsWith('phone')))
+  assert.strictEqual((await membership.main({ action: 'listMembers' })).code, 'OWNER_REQUIRED')
   currentIdentity = OWNER
-  for (const invalid of [null, 1234, ['****1234'], '12345678901', '****12345', '****1234\n', ' ****1234', '****１２３４']) {
-    database.bucket('meal_users').set(MEMBER, { phoneBound: true, maskedPhone: invalid })
-    assert.strictEqual((await row()).maskedPhone, '')
-    assert.strictEqual((await row()).phoneStatus, 'unavailable', '异常值不能退回原值或截取完整号码')
-  }
-  for (const profile of [{}, { phoneBound: false, maskedPhone: '****1234' }, { phoneBound: 'true', maskedPhone: '****1234' }]) {
-    database.bucket('meal_users').set(MEMBER, profile)
-    assert.strictEqual((await row()).phoneStatus, 'unbound')
-    assert.strictEqual((await row()).maskedPhone, '')
-  }
-  database.bucket('meal_users').delete(MEMBER)
-  assert.strictEqual((await row()).phoneStatus, 'unbound')
-  database.bucket('meal_users').set(MEMBER, beforeProfile)
-  database.bucket('meal_members').set(OWNER, { ...database.record('meal_members', OWNER), legalConsent: { version: 1, acceptedAt: 10 } })
-  assert.strictEqual((await row()).maskedPhone, '****1234', '现任管理员按成员授权查看，不要求管理员重复同意入口协议')
-  await membership._test.acceptLegalConsent(OWNER, CONSENT, '1'.repeat(32))
-  database.beforeTransaction = async () => {
-    database.beforeTransaction = null
-    database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), legalConsent: { version: 1, acceptedAt: 10 } })
-  }
-  assert.strictEqual((await row()).maskedPhone, '', '同意状态必须在读取事务内重新核验')
-  await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))
-  await membership._test.transferOwner(OWNER, 'b'.repeat(32), true)
-  await assert.rejects(membership._test.listMembers(OWNER), { code: 'OWNER_REQUIRED' })
-  assert.strictEqual((await membership._test.listMembers(MEMBER)).members.find(item => item.role === 'owner').maskedPhone, '****1234')
 }
 
 async function legacyAndCurrentConsentProtocolsCoexist() {
@@ -1242,7 +1213,7 @@ async function legacyAndCurrentConsentProtocolsCoexist() {
   assert.strictEqual(newStatus.data.legalConsentVersion, 2)
   assert.strictEqual(newStatus.data.legalConsentAccepted, false, '旧同意不能自动升级')
   assert.strictEqual(newStatus.data.serviceConsentAccepted, true, '旧同意继续用于基本服务')
-  assert.strictEqual(newStatus.data.phoneVisibilityEnabled, false)
+  assert.strictEqual(newStatus.data.phoneVisibilityEnabled, undefined)
   assert.deepStrictEqual(database.records('meal_members'), initialMembers, '两种状态查询都不改同意记录')
   assert.deepStrictEqual(privateCollectionSnapshot(), privateBefore)
 
@@ -1269,9 +1240,9 @@ async function legacyAndCurrentConsentProtocolsCoexist() {
   const acceptedMember = database.record('meal_members', MEMBER)
   assert.strictEqual(acceptedMember.legalConsent.version, 2)
   const row = async () => (await membership._test.listMembers(OWNER)).members.find(item => item.role === 'member')
-  assert.strictEqual((await row()).maskedPhone, '****1234', '尾号以对应成员授权为准')
+  assert.strictEqual((await row()).maskedPhone, undefined, '协议同意不能重新开放已退役的尾号')
   await membership._test.acceptLegalConsent(OWNER, CONSENT, '1'.repeat(32))
-  assert.strictEqual((await row()).maskedPhone, '****1234')
+  assert.strictEqual((await row()).maskedPhone, undefined, '协议同意不能重新开放已退役的尾号')
   const controlBeforeLegacyReturn = database.record('meal_members', CONTROL_ID)
   const legacyReturn = await membership.main({ action: 'acceptLegalConsent', legalConsent: legacyConsent,
     cacheNamespace: '2'.repeat(32) })
@@ -1315,76 +1286,8 @@ async function legacyAndCurrentConsentProtocolsCoexist() {
   currentIdentity = OWNER
 }
 
-async function scopedPhoneChoiceIsPrivateRevocableAndRevisionBound() {
-  seed({}, { [MEMBER]: { ...activeMember('member', 'b'.repeat(32), '2'.repeat(32)), legalConsent: { version: 1, acceptedAt: 10 } } })
-  database.bucket('meal_members').set(OWNER, { ...database.record('meal_members', OWNER), legalConsent: { version: 1, acceptedAt: 11 } })
-  database.bucket('meal_members').set(CONTROL_ID, { ...CONTROL(), activeMemberCount: 2, inviteSlots: 10, inviteTtlHours: 168 })
-  seedPrivateCollections([OWNER, MEMBER])
-  database.bucket('meal_users').set(MEMBER, { phoneBound: true, maskedPhone: '****1234' })
-  const privateBefore = privateCollectionSnapshot()
-  const originalConsent = database.record('meal_members', MEMBER).legalConsent
-  const ownerBefore = database.record('meal_members', OWNER)
-  const row = async () => (await membership._test.listMembers(OWNER)).members.find(item => item.role === 'member')
-  const payload = { action: 'setPhoneVisibility', phoneVisibilityVersion: 1, legalConsentVersion: 2,
-    cacheNamespace: '2'.repeat(32), expectedRevision: 0, allowed: true }
-  currentIdentity = MEMBER
-  const snapshot = database.records('meal_members')
-  for (const invalid of [
-    { allowed: undefined }, { allowed: 1 }, { allowed: 'true' },
-    { phoneVisibilityVersion: undefined }, { phoneVisibilityVersion: 2 },
-    { expectedRevision: undefined }, { expectedRevision: '0' }, { expectedRevision: -1 },
-    { cacheNamespace: '1'.repeat(32) },
-  ]) {
-    assert.strictEqual((await membership.main({ ...payload, ...invalid })).success, false)
-    assert.deepStrictEqual(database.records('meal_members'), snapshot)
-  }
-  assert.strictEqual((await row()).phoneStatus, 'consent_required')
-  const allowed = await membership.main({ ...payload, OPENID: OWNER, memberRef: 'a'.repeat(32) })
-  assert.strictEqual(allowed.success, true)
-  assert.strictEqual(allowed.data.phoneVisibilityEnabled, true)
-  assert.strictEqual(allowed.data.phoneVisibilityRevision, 1)
-  assert.strictEqual(allowed.data.serviceConsentAccepted, true)
-  assert.strictEqual(allowed.data.legalConsentAccepted, false)
-  assert.strictEqual((await row()).maskedPhone, '****1234')
-  assert.deepStrictEqual(database.record('meal_members', OWNER), ownerBefore, '伪造目标身份不能更改他人展示权限')
-  const consentAfterAllow = database.record('meal_members', MEMBER).phoneVisibilityConsent
-  await membership.main({ ...payload, expectedRevision: 1 })
-  assert.deepStrictEqual(database.record('meal_members', MEMBER).phoneVisibilityConsent, consentAfterAllow, '同值保存保留首次时间和版本')
-  const stopped = await membership.main({ ...payload, allowed: false, expectedRevision: 1 })
-  assert.strictEqual(stopped.data.phoneVisibilityEnabled, false)
-  assert.strictEqual(stopped.data.phoneVisibilityRevision, 2)
-  assert.strictEqual((await row()).maskedPhone, '')
-  assert.strictEqual((await membership.main(payload)).code, 'PHONE_VISIBILITY_CONFLICT', '迟到的允许请求不能覆盖较新的停止展示')
-  assert.deepStrictEqual(database.record('meal_members', MEMBER).legalConsent, originalConsent)
-  assert.deepStrictEqual(privateCollectionSnapshot(), privateBefore)
-  await membership._test.acceptLegalConsent(MEMBER, CONSENT, '2'.repeat(32))
-  assert.strictEqual((await row()).maskedPhone, '', '之后确认新版协议不能取消此前停止展示的选择')
-  assert.strictEqual((await membership.main({ ...payload, expectedRevision: 2 })).data.phoneVisibilityEnabled, true)
-  const validChoice = database.record('meal_members', MEMBER).phoneVisibilityConsent
-  for (const invalid of [null, {}, { ...validChoice, version: 2 }, { ...validChoice, allowed: 'true' },
-    { ...validChoice, revision: 0 }, { ...validChoice, updatedAt: 0 }, { ...validChoice, extra: true }]) {
-    database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), phoneVisibilityConsent: invalid })
-    assert.strictEqual((await row()).maskedPhone, '', '畸形或未来权限记录必须隐藏尾号')
-    assert.strictEqual((await membership.main({ ...payload, expectedRevision: 3 })).code, 'PHONE_VISIBILITY_CONFLICT')
-  }
-  database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), phoneVisibilityConsent: validChoice })
-  database.beforeTransaction = async () => {
-    database.beforeTransaction = null
-    database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), cacheNamespace: '9'.repeat(32) })
-  }
-  assert.strictEqual((await membership.main({ ...payload, allowed: false, expectedRevision: 3 })).code, 'ACCOUNT_GENERATION_CHANGED')
-  assert.deepStrictEqual(database.record('meal_members', MEMBER).phoneVisibilityConsent, validChoice)
-  database.bucket('meal_members').set(MEMBER, { ...database.record('meal_members', MEMBER), status: 'deleting' })
-  assert.strictEqual((await membership.main({ ...payload, expectedRevision: 3, cacheNamespace: '9'.repeat(32) })).code, 'ACCOUNT_DELETION_IN_PROGRESS')
-  assert.deepStrictEqual(database.record('meal_members', MEMBER).phoneVisibilityConsent, validChoice)
-  currentIdentity = ''
-  assert.strictEqual((await membership.main(payload)).code, 'IDENTITY_REQUIRED')
-  currentIdentity = OWNER
-}
-
 async function run() {
   await legacyAndCurrentConsentProtocolsCoexist()
-  await scopedPhoneChoiceIsPrivateRevocableAndRevisionBound()
   assertStrictNotFoundClassification()
   assertFixedPublicErrors()
   assert.strictEqual(membership._test.inviteExpired(100, 100), true)
@@ -1420,7 +1323,7 @@ async function run() {
   await invalidMemberNotesCannotWrite()
   await onlyCurrentOwnerCanReadAndWriteMemberNotes()
   await memberNoteWritesRecheckOwnerAndTargetInsideTransaction()
-  await maskedPhonesRequireCurrentConsentAndOwner()
+  await retiredPhonesAreNeverProjected()
   console.log('membership transaction entry tests passed')
 }
 

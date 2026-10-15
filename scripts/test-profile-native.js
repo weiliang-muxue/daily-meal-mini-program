@@ -51,23 +51,10 @@ assert(/class="header-title">\{\{nickname \|\| '还没有设置昵称'\}\}/.test
 assert(/<form[^>]+bindsubmit="saveProfile"/.test(profileWxml) && /form-type="submit"/.test(profileWxml))
 assert(/\.profile-form\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*display:\s*block[^}]*box-sizing:\s*border-box/.test(profileWxss),
   '原生 form 卡片必须显式铺满并使用 border-box，避免 surface 背景碎裂成窄条')
-assert(/open-type="getPhoneNumber"/.test(profileWxml) && /bindgetphonenumber="onGetPhoneNumber"/.test(profileWxml))
-assert(/open-type="getPhoneNumber"[^>]+binderror="onPhoneNumberError"/.test(profileWxml),
-  '手机号原生组件错误也必须可诊断，不能只有成功事件入口')
-assert(profileWxml.includes('后四位') && profileWxml.includes('管理员') && profileWxml.includes('授权'),
-  '手机号原生授权旁应说明后四位及管理员用途')
+assert(!/getPhoneNumber|phoneVisibility|手机尾号/.test(profileWxml), '手机号入口和尾号展示已移除')
 assert(profileWxml.includes('使用微信昵称或自行填写') && /\.profile-info-hint\s*\{[^}]*font-size:\s*14px[^}]*overflow-wrap:\s*anywhere/.test(profileWxss),
   '可选资料提示使用可读字号并在窄屏内换行')
-assert(/class="phone-button"[^>]+disabled="\{\{profileLoading \|\| bindingPhone \|\| saving\}\}"/.test(profileWxml),
-  '资料初始化或保存期间必须禁用手机号绑定，避免资料请求竞态')
-assert(/\.phone-button\s*\{[^}]*width:\s*72px[^}]*min-width:\s*72px[^}]*max-width:\s*72px[^}]*min-height:\s*48px/.test(profileWxss),
-  '常规手机的手机号按钮必须保持紧凑且满足 48px 触控高度')
-const profileNarrow = (/@media \(max-width: 340px\)\s*\{([\s\S]*?)\n\}/.exec(profileWxss) || [])[1] || ''
-assert(/\.phone-row\s*\{[^}]*flex-direction:\s*column/.test(profileNarrow)
-  && /\.phone-button\s*\{[^}]*width:\s*100%[^}]*max-width:\s*none/.test(profileNarrow),
-'320px 窄屏手机号区域必须纵向折叠且按钮铺满，避免状态文字被挤断')
-assert(/class="primary-button profile-save"[^>]+disabled="\{\{profileLoading \|\| saving \|\| bindingPhone\}\}"/.test(profileWxml),
-  '资料初始化或手机号绑定期间必须禁用保存资料，避免资料请求竞态')
+assert(/class="primary-button profile-save"[^>]+disabled="\{\{profileLoading \|\| saving\}\}"/.test(profileWxml), '资料加载和保存期间继续锁定提交')
 assert(!/getUserInfo/.test(profileWxml), '资料页不能静默读取已废弃的完整微信资料')
 assert(/avatarPrivacyMode:\s*'native'/.test(profileBehavior),
   '用户未操作头像前必须直接显示原生选择入口，不常驻隐私技术提示')
@@ -75,7 +62,7 @@ assert(!/onLoad\(\)\s*\{[\s\S]*?this\.checkAvatarPrivacy\(\)[\s\S]*?\n\s*\}/.tes
   '头像隐私状态只能在用户点击或原生选择失败后渐进检查')
 assert(!/authState === 'ready'/.test(profileWxml), '身份连接成功后不应常驻展示技术状态条')
 assert(profileWxml.includes('个人资料均为可选') && profileWxml.includes('不填写也可以正常使用'),
-  '隐私与数据说明必须明确头像、昵称和手机号均可选且不影响核心功能')
+  '隐私与数据说明必须明确头像和昵称均可选且不影响核心功能')
 assert(!profileWxml.includes('隐私设置') && !/\.privacy-card|\.privacy-title/.test(profileWxss),
   '中性隐私说明不能继续使用黄色警示卡层级')
 assert(/class="legal-row touch-target"[^>]+bindtap="openUserAgreement"/.test(profileWxml)
@@ -342,119 +329,6 @@ async function main() {
   assert.strictEqual(oversized.data.avatarLocalPath, 'synthetic-oversized-avatar')
   delete wx.cloud
   delete wx.getFileSystemManager
-
-  let bindCalls = 0
-  authStore.bindPhoneNumber = async () => { bindCalls += 1; throw new Error('不应调用') }
-  const denied = makePage()
-  await denied.onGetPhoneNumber({ detail: { errMsg: 'getPhoneNumber:fail user deny' } })
-  assert.strictEqual(bindCalls, 0)
-  assert.strictEqual(denied.data.bindingPhone, false)
-  assert(/取消/.test(denied.data.phoneError))
-  assert.strictEqual(denied.data.phoneErrorTone, 'hint', '主动取消不是系统错误')
-
-  const originalWarn = console.warn
-  const phoneDiagnostics = []
-  console.warn = (...args) => phoneDiagnostics.push(args)
-  try {
-    for (const [message, expected] of [
-      ['getPhoneNumber:fail api scope is not declared in the privacy agreement', 'PRIVACY_DECLARATION'],
-      ['getPhoneNumber:fail no permission', 'CAPABILITY_UNAVAILABLE'],
-      ['getPhoneNumber:fail access denied', 'CAPABILITY_UNAVAILABLE'],
-      ['getPhoneNumber:fail not supported', 'CLIENT_UNSUPPORTED'],
-      ['getPhoneNumber:fail privacy authorization required', 'PRIVACY_AUTH_REQUIRED'],
-      ['getPhoneNumber:fail quota limit', 'LIMITED'],
-      ['getPhoneNumber:fail network timeout', 'NETWORK'],
-      ['getPhoneNumber:ok', 'NO_CODE'],
-      ['getPhoneNumber:fail unknown-sensitive-detail', 'NO_CODE'],
-    ]) {
-      const failed = makePage()
-      failed.data.profile = { phoneBound: true, maskedPhone: '****0000' }
-      await failed.onGetPhoneNumber({ detail: { errMsg: message, errno: 1400001,
-        encryptedData: 'private-encrypted-value', iv: 'private-iv', cloudID: 'private-cloud-id' } })
-      assert(failed.data.phoneError.includes('PHONE_NATIVE_' + expected))
-      assert(failed.data.phoneError.includes('errno=1400001'))
-      assert.strictEqual(failed.data.profile.maskedPhone, '****0000', '失败不改变已有绑定')
-      assert.strictEqual(failed.data.phoneErrorTone, 'error')
-      assert.strictEqual(bindCalls, 0, '没有 code 时绝不能调用云端或伪造绑定')
-      failed.onPhoneTap()
-      assert.strictEqual(failed.data.phoneError, '', '重试应清除上一次失败提示')
-    }
-    const nativeError = makePage()
-    nativeError.onPhoneNumberError({ detail: { errMsg: 'getPhoneNumber:fail no permission',
-      code: 'private-once-code', errno: 'private-id', errCode: 'private-numeric-like-12345678901' } })
-    assert(nativeError.data.phoneError.includes('CAPABILITY_UNAVAILABLE'))
-    const lastDiagnostic = phoneDiagnostics.at(-1)[1]
-    assert.deepStrictEqual(lastDiagnostic, { stage: 'native', reason: 'CAPABILITY_UNAVAILABLE' })
-    const logsBeforeCancel = phoneDiagnostics.length
-    nativeError.onPhoneNumberError({ detail: { errMsg: 'getPhoneNumber:fail user deny' } })
-    assert.strictEqual(phoneDiagnostics.length, logsBeforeCancel, '取消不写错误日志')
-    const logged = JSON.stringify(phoneDiagnostics)
-    for (const secret of ['private-', 'unknown-sensitive-detail', '"encryptedData":', '"cloudID":', '"iv":']) {
-      assert(!logged.includes(secret), '原生诊断不能输出凭证、号码或完整回调：' + secret)
-    }
-    for (const key of ['profileLoading', 'bindingPhone', 'saving']) {
-      const guarded = makePage(); guarded.data[key] = true
-      guarded.onPhoneNumberError({ detail: { errMsg: 'getPhoneNumber:fail' } })
-      assert.strictEqual(guarded.data.phoneError, '')
-    }
-  } finally { console.warn = originalWarn }
-
-  const success = makePage()
-  authStore.bindPhoneNumber = async (code) => {
-    bindCalls += 1
-    assert.strictEqual(code, 'single-use-test-code')
-    return { nickname: '测试昵称', phoneBound: true, maskedPhone: '****8000' }
-  }
-  await success.onGetPhoneNumber({ detail: { code: 'single-use-test-code', errMsg: 'getPhoneNumber:ok' } })
-  assert.strictEqual(bindCalls, 1)
-  assert.deepStrictEqual(success.data.profile, {
-    nickname: '测试昵称', phoneBound: true, maskedPhone: '****8000',
-  })
-  assert.strictEqual(success.data.bindingPhone, false)
-  assert.strictEqual(success.data.phoneError, '')
-  assert(toastCalls.some((item) => item.title === '手机号已绑定'))
-  assert.strictEqual(JSON.stringify(success.data).includes('single-use-test-code'), false,
-    '手机号动态 code 不得进入页面 data 或本地持久状态')
-
-  const unavailable = makePage()
-  authStore.bindPhoneNumber = async () => {
-    throw new Error('暂时无法绑定手机号，可稍后重试，不影响其他功能')
-  }
-  await unavailable.onGetPhoneNumber({ detail: { code: 'another-single-use-code' } })
-  assert.strictEqual(unavailable.data.bindingPhone, false)
-  assert(/不影响其他功能/.test(unavailable.data.phoneError))
-
-  const expiredCode = makePage()
-  authStore.bindPhoneNumber = async () => { throw Object.assign(new Error('private-server-detail'), { code: 'PHONE_CODE_INVALID' }) }
-  await expiredCode.onGetPhoneNumber({ detail: { code: 'synthetic-expired-code' } })
-  assert(expiredCode.data.phoneError.includes('PHONE_CLOUD_CODE_EXPIRED'))
-  assert(!expiredCode.data.phoneError.includes('private-server-detail'))
-  expiredCode.onNicknameInput({ detail: { value: '虚构未保存昵称' } })
-  expiredCode.onChooseAvatar({ detail: { avatarUrl: 'synthetic-unsaved-avatar' } })
-  expiredCode.onPhoneTap()
-  authStore.bindPhoneNumber = async code => {
-    assert.strictEqual(code, 'synthetic-fresh-code', '重试必须使用用户再次授权得到的新凭证')
-    return { nickname: '虚构旧昵称', phoneBound: true, maskedPhone: '****0000' }
-  }
-  await expiredCode.onGetPhoneNumber({ detail: { code: 'synthetic-fresh-code' } })
-  assert.strictEqual(expiredCode.data.phoneError, '')
-  assert.strictEqual(expiredCode.data.profile.maskedPhone, '****0000')
-  assert.strictEqual(expiredCode.data.nickname, '虚构未保存昵称')
-  assert.strictEqual(expiredCode.data.avatarLocalPath, 'synthetic-unsaved-avatar')
-
-  bindCalls = 0
-  authStore.bindPhoneNumber = async () => { bindCalls += 1; return {} }
-  const saveInFlight = makePage()
-  saveInFlight.data.saving = true
-  await saveInFlight.onGetPhoneNumber({ detail: { code: 'must-not-be-consumed' } })
-  assert.strictEqual(bindCalls, 0, '资料保存期间不能消费手机号动态 code')
-
-  let updateCalls = 0
-  authStore.updateProfile = async () => { updateCalls += 1; return {} }
-  const phoneInFlight = makePage()
-  phoneInFlight.data.bindingPhone = true
-  await phoneInFlight.saveProfile({ detail: { value: { nickname: '并发输入' } } })
-  assert.strictEqual(updateCalls, 0, '手机号绑定期间不能并发更新资料')
 
   const sources = makePage(); let navigation, navigationCount = 0
   wx.navigateTo = options => { navigation = options; navigationCount++ }

@@ -1,3 +1,4 @@
+const { withoutPhoneData } = require('./retired-phone-data')
 const { callFunction, wxLogin } = require('../utils/cloud')
 const { reconcilePrivateCaches } = require('./private-cache')
 const { LEGAL_CONSENT_VERSION, hasServiceLegalConsent, legalConsentPayload } = require('../utils/legal-consent')
@@ -72,7 +73,8 @@ class MembershipStore {
     return request.then((member) => memberForAccess(member, options))
   }
 
-  save(member) {
+  save(rawMember) {
+    const member = withoutPhoneData(rawMember)
     const previousNamespace = this.cacheNamespace
     const nextNamespace = normalizeCacheNamespace(member && member.cacheNamespace)
     const previousMember = this.member
@@ -156,17 +158,6 @@ class MembershipStore {
     return this.runIdentityAction('acceptLegalConsent', { legalConsent, cacheNamespace })
   }
   createInvite(label) { return callFunction('membership', 'createInvite', { label }) }
-  setPhoneVisibility(allowed) {
-    if (typeof allowed !== 'boolean' || !this.verifiedInRuntime || !this.cacheNamespace
-      || !hasServiceLegalConsent(this.member) || this.member.phoneVisibilitySupported !== true
-      || !Number.isSafeInteger(this.member.phoneVisibilityRevision) || this.member.phoneVisibilityRevision < 0) {
-      return Promise.reject(staleIdentityError())
-    }
-    return this.runIdentityAction('setPhoneVisibility', {
-      allowed, phoneVisibilityVersion: 1, cacheNamespace: this.cacheNamespace,
-      expectedRevision: this.member.phoneVisibilityRevision,
-    })
-  }
   listMembers() { return callFunction('membership', 'listMembers') }
   setMemberNote(memberRef, note) { return callFunction('membership', 'setMemberNote', { memberRef, note }) }
   revokeInvite(inviteRef) { return callFunction('membership', 'revokeInvite', { inviteRef }) }

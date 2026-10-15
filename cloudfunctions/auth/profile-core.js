@@ -6,38 +6,14 @@ function fileId(value) {
   return typeof value === 'string' ? value : ''
 }
 
-function maskedPhone(value) {
-  const digits = typeof value === 'string' ? value.replace(/\D/g, '') : ''
-  return digits.length >= 4 ? `****${digits.slice(-4)}` : ''
-}
-
-function phoneBindingFromResponse(response = {}) {
-  const phoneInfo = response && response.phoneInfo
-  const phone = phoneInfo && (phoneInfo.purePhoneNumber || phoneInfo.phoneNumber)
-  const masked = maskedPhone(phone)
-  if (!masked) {
-    const error = new Error('微信未返回可用手机号')
-    error.code = 'PHONE_BIND_UNAVAILABLE'
-    throw error
-  }
-  return { phoneBound: true, maskedPhone: masked }
-}
+const RETIRED_PHONE_FIELDS = Object.freeze([
+  'phoneBound', 'maskedPhone', 'phoneBoundAt', 'phoneNumber', 'purePhoneNumber', 'countryCode',
+])
 
 function profileMigration(current = {}, removeValue) {
-  const masked = typeof current.maskedPhone === 'string' && /^\*{4}\d{4}$/.test(current.maskedPhone)
-    ? current.maskedPhone : ''
-  const phoneBound = current.phoneBound === true && Boolean(masked)
-  const data = {
-    schemaVersion: PROFILE_SCHEMA_VERSION,
-    phoneBound,
-    maskedPhone: phoneBound ? masked : '',
-  }
-  if (!phoneBound) data.phoneBoundAt = null
+  const data = { schemaVersion: PROFILE_SCHEMA_VERSION }
   if (removeValue !== undefined) {
-    // Defensive cleanup for unsupported local experiments or pre-release fields.
-    data.phoneNumber = removeValue
-    data.purePhoneNumber = removeValue
-    data.countryCode = removeValue
+    for (const field of RETIRED_PHONE_FIELDS) data[field] = removeValue
   }
   return data
 }
@@ -71,8 +47,7 @@ function avatarTicketCleanupFiles(ticket = {}, activeAvatarFileId = '') {
 
 module.exports = {
   PROFILE_SCHEMA_VERSION,
-  maskedPhone,
-  phoneBindingFromResponse,
+  RETIRED_PHONE_FIELDS,
   profileMigration,
   planProfileUpdate,
   avatarTicketCleanupFiles,

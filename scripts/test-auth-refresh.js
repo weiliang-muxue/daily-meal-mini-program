@@ -20,18 +20,19 @@ function fixture() {
     if (name === '../utils/cloud') return { wxLogin: async () => ({}), callFunction(name, action) {
       const request = deferred(); requests.push({ action, ...request }); return request.promise
     } }
+    if (name === './retired-phone-data') return require('../miniprogram/services/retired-phone-data')
     throw Error('Unexpected import')
   }, wx: { getStorageSync: key => cached.get(key), setStorageSync: (key, value) => cached.set(key, value) } })
   return { store: exports.exports.authStore, requests, cached,
     async tick() { await new Promise(resolve => setImmediate(resolve)) } }
 }
 
-for (const action of ['updateProfile', 'bindPhoneNumber']) {
+for (const action of ['updateProfile']) {
   test('late login cannot replace a completed ' + action + ' in memory or cache', async () => {
     const f = fixture(), reading = f.store.init()
     await f.tick()
-    const writing = action === 'updateProfile' ? f.store.updateProfile({ nickname: 'new' }) : f.store.bindPhoneNumber('synthetic-once-code')
-    const saved = { nickname: 'saved', phoneBound: true, maskedPhone: '****0000' }
+    const writing = f.store.updateProfile({ nickname: 'new' })
+    const saved = { nickname: 'saved' }
     f.requests[1].resolve(saved); await writing
     f.requests[0].resolve({ nickname: 'stale', phoneBound: false }); await reading
     assert.equal(f.store.profile, saved)

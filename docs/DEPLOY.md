@@ -50,7 +50,7 @@ pwsh -File scripts/deploy-production-function.ps1 -FunctionName membership -Appr
 5. 把 `storage.rules.json` 配置到云存储，并确认根规则为客户端 `read: false`、`write: false`。头像和健康照片由小程序使用微信 `wx.cloud.CDN` 临时传给已经校验有效成员身份的业务云函数；只有云函数可以校验并写入私有永久目录，客户端没有任何云存储直写或直读权限。规则修改通常需要 1–3 分钟生效，生效前不要开放测试账号。
 6. 按 `database.indexes.json` 手工创建八个复合索引：`health_daily(owner, month, date)`、`health_daily(owner, date)`、`meal_invites(codeHash, active)`、`meal_members(memberRef, status)`、`meal_ai_tasks(owner, status, createdAt desc)`、`meal_ai_tasks(status, expiresAt)`、`meal_ai_shards(owner, taskId)`、`meal_ai_tasks(shardCleanupPending, shardCleanupUpdatedAtMs)`。
 7. `membership` 的业务规则已锁定为管理员 1 人加受邀成员 10 人，总容量 11 人，一次性邀请码创建后 7 天（168 小时）过期。旧版本可能遗留的 `INVITE_SLOTS`、`INVITE_TTL_HOURS` 环境变量会被当前代码忽略；本次升级不读取、导出或改写既有云函数环境变量，也不重新初始化成员。
-8. 按顺序部署 `membership`、`auth`、`userData`、`health`、`privacy`，均选择云端安装依赖。七个正式云函数的 `config.json` 都显式配置 `timeout: 60` 和 `memorySize: 256`；完整部署后必须在云函数配置页或只读函数信息中确认线上值确实为 60 秒和 256 MB，不能把文件存在或上传成功当成运行配置已经生效。`auth/config.json` 必须保留 `phonenumber.getPhoneNumber` 云调用权限；部署后在云函数权限页面核对该权限生效。手机号能力受目标小程序主体资格、认证、计费和额度限制，真机失败时不应开放数据库或加入 AppSecret 规避。先不要部署 `mealAiMaintenance`，待第 6 步索引全部显示可用并完成 AI 云函数配置后再启用其定时触发器。
+8. 按顺序部署 `membership`、`auth`、`userData`、`health`、`privacy`，均选择云端安装依赖。七个正式云函数的 `config.json` 都显式配置 `timeout: 60` 和 `memorySize: 256`；完整部署后必须在云函数配置页或只读函数信息中确认线上值确实为 60 秒和 256 MB，不能把文件存在或上传成功当成运行配置已经生效。`auth/config.json` 的 OpenAPI 权限列表为空，手机号功能已取消；不得再添加 `phonenumber.getPhoneNumber` 权限。先不要部署 `mealAiMaintenance`，待第 6 步索引全部显示可用并完成 AI 云函数配置后再启用其定时触发器。
 9. 在小程序尚未发布、成员库与邀请码库都为空时，临时部署 `ownerBootstrapOnce`。不要把 `SOURCE=wx_devtools` 当作管理员授权：官方只将 `SOURCE` 定义为调用链来源，它不能证明操作者是项目所有者。按以下两阶段流程初始化，不需要部署口令或其他密钥：
 
    1. 目标管理员使用自己的微信登录开发者工具，在调试器 Console 执行 `wx.cloud.callFunction({ name: 'ownerBootstrapOnce', data: { action: 'request' } }).then(console.log)`。确认返回 `success: true`、`data.state: "pending"` 且尚未过期。此操作只创建待批准请求，不授予任何权限；公开响应不包含目标身份、请求编号或批准摘要。
@@ -130,7 +130,7 @@ AI task schema v3 会在任务启动时保存本次同意协议版本和规范�
 7. 验证体重、运动、照片、头像、提醒开关及“清空我的私人数据”闭环。额外验证未受邀微信无法调用图片入口、超过头像 1 MB 或健康照片 2 MB 时明确失败、伪装扩展名及文件内容/摘要不符被拒绝，并确认 Network 中没有客户端 `uploadFile`。健康提醒默认关闭，只有用户主动开启后显示。普通成员清理后应退出成员资格；唯一且无其他成员的管理员清理后应只保留全新随机引用、无个人资料的最小管理员身份，旧缓存不能恢复。唯一管理员仍有活跃成员时，删除必须被阻止；只有显式选择接任者并确认 `transferOwner` 后才能继续，且任何时刻只能有一名管理员。
 8. 建立一个仅含虚构条件、带 task schema v3、AI 同意协议 v2 和有效计划摘要的 AI 任务并停止推进，待其 `expiresAt` 后验证 `mealAiMaintenance` 把任务压缩为 `expired`、保留摘要、清除匹配代次的活动指针且不改变 `meal_user_states`。在隔离测试环境分别构造旧同意版本或缺少同意版本的活动任务，以及带当前同意版本但缺少摘要的活动任务：前者应压缩为 `failed / AI_DATA_CONSENT_REQUIRED`，后者应压缩为 `conflict / STATE_REVISION_CONFLICT`；两者的遗留分片与匹配指针均应清理，用户状态保持不变，重复触发应保持幂等。不要使用真实健康或饮食正文做运维测试。
 9. 运行 `node scripts/check-staged-safety.js` 并人工核对暂存差异，确认没有配置文件、凭据或个人数据。
-10. 每次完整部署或升级后，由部署者在目标云环境控制台人工完成线上元数据复核：七个正式云函数的超时均为 60 秒、内存均为 256 MB；`auth` 只保留本发布所需的 `phonenumber.getPhoneNumber` 云调用权限；`mealAiMaintenance` 的 `mealAiRetentionSweep` 触发器已启用、类型为 `timer` 且每 30 分钟运行一次；数据库安全规则恰好覆盖十个正式集合且每项客户端 `read`、`write` 都为 `false`；云存储根规则的客户端 `read`、`write` 都为 `false`。本地 `node scripts/validate.js` 只校验仓库静态配置，不查询云环境，不能替代这一步。若只读工具不能筛选返回字段或可能显示环境变量，改用控制台页面只核对上述字段，不保存完整原始响应。
+10. 每次完整部署或升级后，由部署者在目标云环境控制台人工完成线上元数据复核：七个正式云函数的超时均为 60 秒、内存均为 256 MB；`auth` 不再配置 `phonenumber.getPhoneNumber` 云调用权限；`mealAiMaintenance` 的 `mealAiRetentionSweep` 触发器已启用、类型为 `timer` 且每 30 分钟运行一次；数据库安全规则恰好覆盖十个正式集合且每项客户端 `read`、`write` 都为 `false`；云存储根规则的客户端 `read`、`write` 都为 `false`。本地 `node scripts/validate.js` 只校验仓库静态配置，不查询云环境，不能替代这一步。若只读工具不能筛选返回字段或可能显示环境变量，改用控制台页面只核对上述字段，不保存完整原始响应。
 
 ## 云开发不可用时
 
