@@ -16,6 +16,56 @@ const DEFAULT_MAX_MEMBERS = 11
 const DEFAULT_INVITE_TTL_HOURS = 168
 const MAX_MEMBER_NOTE_LENGTH = 100
 
+function phoneFailureFeedback(detail = {}, stage = 'native') {
+  // Never render/log the original callback: it can contain a one-time code,
+  // encrypted phone data, or identifiers. Only retain an allowlisted diagnosis.
+  const message = String(detail.errMsg || detail.message || '').toLowerCase()
+  let reason = 'NO_CODE'
+  let hint = '微信未返回手机号绑定凭证。请在手机微信中重试；若仍失败，请向管理员反馈诊断信息。'
+  if (/user\s*(deny|denied|cancel)|:fail\s+(cancel|deny)\b/.test(message)) {
+    return { cancelled: true, message: '已取消绑定，之后需要时可以再试', diagnostic: null }
+  }
+  if (stage === 'cloud') {
+    reason = 'SAVE_FAILED'
+    hint = '手机号绑定暂未确认，请重新点击绑定。不影响其他功能。'
+    if (detail.code === 'PHONE_CODE_INVALID' || detail.code === 'PHONE_CODE_REQUIRED') {
+      reason = 'CODE_EXPIRED'
+      hint = '手机号授权已失效，请重新点击绑定获取新授权。'
+    } else if (detail.code === 'ACCOUNT_GENERATION_CHANGED' || detail.code === 'MEMBERSHIP_REQUIRED') {
+      reason = 'IDENTITY_CHANGED'
+      hint = '成员身份已变化，请退出小程序后重新进入。'
+    }
+  } else if (/not\s+declared|undeclared/.test(message)) {
+    reason = 'PRIVACY_DECLARATION'
+    hint = '手机号授权暂不可用，需管理员核对微信后台的手机号隐私声明是否已生效。不影响其他功能。'
+  } else if (/not\s+support|unsupported/.test(message)) {
+    reason = 'CLIENT_UNSUPPORTED'
+    hint = '当前微信客户端不支持手机号授权，请在手机微信中重试。不影响其他功能。'
+  } else if (/no\s+permission|permission\s+denied|access\s+denied|not\s+authorized|unauthorized/.test(message)) {
+    reason = 'CAPABILITY_UNAVAILABLE'
+    hint = '微信未开放本次手机号授权，需管理员核对账号的手机号接口权限。不影响其他功能。'
+  } else if (/privacy|authorization|scope/.test(message)) {
+    reason = 'PRIVACY_AUTH_REQUIRED'
+    hint = '手机号绑定需要微信隐私授权，请查看《隐私保护指引》后重新点击绑定。'
+  } else if (/quota|limit|frequen/.test(message)) {
+    reason = 'LIMITED'
+    hint = '手机号接口暂受调用限制，需管理员核对接口额度与调用状态。不影响其他功能。'
+  } else if (/network|timeout|timed\s+out/.test(message)) {
+    reason = 'NETWORK'
+    hint = '手机号授权网络异常，请检查网络后重新点击绑定。不影响其他功能。'
+  }
+  const diagnostic = { stage, reason }
+  for (const key of ['errno', 'errCode']) {
+    const value = detail[key]
+    if ((typeof value === 'number' || typeof value === 'string') && /^-?\d{1,7}$/.test(String(value))) {
+      diagnostic[key] = Number(value)
+    }
+  }
+  const numeric = ['errno', 'errCode'].filter(key => diagnostic[key] !== undefined)
+    .map(key => `${key}=${diagnostic[key]}`).join(', ')
+  return { cancelled: false, message: `${hint}（PHONE_${stage.toUpperCase()}_${reason}${numeric ? '; ' + numeric : ''}）`, diagnostic }
+}
+
 function pad(value) { return String(value).padStart(2, '0') }
 
 function positiveSafeInteger(value, fallback) {
@@ -131,7 +181,7 @@ Page({
     avatarPrivacyMode: 'native', avatarPrivacyError: '', avatarPrivacyTone: 'hint', authorizingAvatar: false,
     legalPrivacyError: '',
     authState: 'idle', authDetail: '', profileLoading: true, updatedText: '', saving: false, profileSaveError: '', clearingData: false,
-    bindingPhone: false, phoneError: '',
+    bindingPhone: false, phoneError: '', phoneErrorTone: 'error',
     savingPhoneVisibility: false, phoneVisibilityError: '',
     settings: { calciumAnchorReminder: false, vitaminDReminder: false }, savingSettings: false,
     nativeControlColor: '#176B46',
@@ -611,9 +661,11 @@ Page({
 
   onAvatarTap() {
     if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving) return
-    // Keep the native button mounted: choosing still requires this user tap.
+    // Some clients log cancellation without dispatching binderror. Do not leave
+    // a persistent "waiting for picker" message that only a callback can clear.
+    // Pressed feedback stays native; neither this tap nor a cancel is a failure.
     this.setData({
-      avatarPrivacyError: '请在微信选择框中选择头像，选好后点击“保存资料”。若未弹出选择框，请稍后重试。',
+      avatarPrivacyError: '',
       avatarPrivacyTone: 'hint',
     })
   },
@@ -676,9 +728,13 @@ Page({
     })
   },
   onNicknameInput(event) {
-    if (this.data.profileLoading || this.data.saving) return
-    const nickname = event.detail.value
-    this.setData({ nickname, nicknameDirty: true, nicknameInitial: (nickname || '我').slice(0, 1) })
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.saving) return
+    // Native nickname autofill can arrive on blur/confirm without an input
+    // event. All three paths update the same draft; form submit is authoritative.
+    const value = event && event.detail && event.detail.value
+    if (typeof value !== 'string') return
+    const nickname = value.slice(0, 20)
+    this.setData({ nickname, nicknameDirty: true, nicknameInitial: (nickname || '我').slice(0, 1), profileSaveError: '' })
   },
 
   invalidatePhoneVisibilityPrompt() {
@@ -747,6 +803,25 @@ Page({
     }
   },
 
+  onPhoneTap() {
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
+    this.setData({ phoneError: '', phoneErrorTone: 'error' })
+  },
+
+  showPhoneFailure(detail, stage = 'native') {
+    const feedback = phoneFailureFeedback(detail, stage)
+    this.setData({ bindingPhone: false, phoneError: feedback.message,
+      phoneErrorTone: feedback.cancelled ? 'hint' : 'error' })
+    if (feedback.diagnostic && typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn('[profile-phone]', feedback.diagnostic)
+    }
+  },
+
+  onPhoneNumberError(event) {
+    if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
+    this.showPhoneFailure(event && event.detail || {})
+  },
+
   async onGetPhoneNumber(event) {
     if (this.memberManagementUnloaded || this.data.profileLoading || this.data.bindingPhone || this.data.saving) return
     const context = this.profileContext()
@@ -754,12 +829,7 @@ Page({
     const detail = event && event.detail || {}
     const code = typeof detail.code === 'string' ? detail.code.trim() : ''
     if (!code) {
-      const denied = /deny|cancel/.test(String(detail.errMsg || '').toLowerCase())
-      this.setData({
-        phoneError: denied
-          ? '已取消绑定，之后需要时可以再试'
-          : '暂时无法获取手机号，可稍后重试，不影响其他功能',
-      })
+      this.showPhoneFailure(detail)
       return
     }
     this.setData({ bindingPhone: true, phoneError: '' })
@@ -770,10 +840,7 @@ Page({
       wx.showToast({ title: '手机号已绑定', icon: 'success' })
     } catch (error) {
       if (!this.isProfileContextCurrent(context)) return
-      this.setData({
-        bindingPhone: false,
-        phoneError: error.message || '暂时无法绑定手机号，可稍后重试，不影响其他功能',
-      })
+      this.showPhoneFailure(error || {}, 'cloud')
     }
   },
 

@@ -42,6 +42,8 @@ assert.strictEqual((profileWxml.match(/data-src="\{\{avatarPreview\}\}"/g) || []
 assert.strictEqual((profileWxml.match(/binderror="onAvatarImageError"/g) || []).length, 2,
   '两个头像图片分支都必须处理加载失败')
 assert(/<input[^>]+type="nickname"[^>]+name="nickname"/.test(profileWxml))
+assert(/<input[^>]+type="nickname"[^>]+bindblur="onNicknameInput"[^>]+bindconfirm="onNicknameInput"/.test(profileWxml),
+  '微信昵称自动填充的 blur/confirm 必须同步草稿，不能只依赖 input')
 assert(/<input[^>]+type="nickname"[^>]+disabled="\{\{profileLoading \|\| saving\}\}"/.test(profileWxml),
   '资料初始化和保存期间必须锁定昵称输入')
 assert(/class="header-title">\{\{nickname \|\| '还没有设置昵称'\}\}/.test(profileWxml),
@@ -50,6 +52,8 @@ assert(/<form[^>]+bindsubmit="saveProfile"/.test(profileWxml) && /form-type="sub
 assert(/\.profile-form\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*display:\s*block[^}]*box-sizing:\s*border-box/.test(profileWxss),
   '原生 form 卡片必须显式铺满并使用 border-box，避免 surface 背景碎裂成窄条')
 assert(/open-type="getPhoneNumber"/.test(profileWxml) && /bindgetphonenumber="onGetPhoneNumber"/.test(profileWxml))
+assert(/open-type="getPhoneNumber"[^>]+binderror="onPhoneNumberError"/.test(profileWxml),
+  '手机号原生组件错误也必须可诊断，不能只有成功事件入口')
 assert(profileWxml.includes('后四位') && profileWxml.includes('管理员') && profileWxml.includes('授权'),
   '手机号原生授权旁应说明后四位及管理员用途')
 assert(profileWxml.includes('使用微信昵称或自行填写') && /\.profile-info-hint\s*\{[^}]*font-size:\s*14px[^}]*overflow-wrap:\s*anywhere/.test(profileWxss),
@@ -200,8 +204,9 @@ async function main() {
   assert.strictEqual(staleAvatarError.data.avatarImageFailed, false, '旧头像的延迟错误不能隐藏新头像')
 
   const chosenAvatar = makePage()
+  chosenAvatar.data.avatarPrivacyError = '旧提示'
   chosenAvatar.onAvatarTap()
-  assert(chosenAvatar.data.avatarPrivacyError.includes('微信选择框'))
+  assert.strictEqual(chosenAvatar.data.avatarPrivacyError, '', '原生取消可能不回调，点击时不能留下永久等待选择的提示')
   assert.strictEqual(chosenAvatar.data.avatarPrivacyMode, 'native', '点击反馈不能卸载原生头像按钮')
   chosenAvatar.data.avatarImageFailed = true
   chosenAvatar.onChooseAvatar({ detail: { avatarUrl: 'new-local-avatar-path' } })
@@ -244,7 +249,10 @@ async function main() {
   }
 
   const cancelledAvatar = makePage()
-  cancelledAvatar.onChooseAvatar({ detail: { errMsg: 'chooseAvatar:fail user cancel' } })
+  cancelledAvatar.data.avatarPreview = 'previous-avatar'
+  cancelledAvatar.onAvatarTap()
+  cancelledAvatar.onChooseAvatarError({ detail: { errMsg: 'chooseAvatar:fail cancel' } })
+  assert.strictEqual(cancelledAvatar.data.avatarPreview, 'previous-avatar')
   assert.strictEqual(cancelledAvatar.data.avatarPrivacyError, '', '用户主动取消头像选择不应留下持久提示')
   assert.strictEqual(cancelledAvatar.data.avatarPrivacyTone, 'hint', '用户取消头像选择不应显示为系统错误')
 
@@ -272,6 +280,25 @@ async function main() {
   await submitted.saveProfile({ detail: { value: { nickname: '表单提交值' } } })
   assert.strictEqual(submitted.data.nickname, '表单提交值')
   assert.strictEqual(submitted.data.nicknameDirty, false)
+
+  const autofilled = makePage()
+  // Drive the handlers actually bound in WXML, including clients that only
+  // report autofill on blur. No simulated platform nickname is fetched.
+  const nicknameInput = profileWxml.match(/<input[^>]+type="nickname"[^>]*>/)[0]
+  const nicknameBlurHandler = nicknameInput.match(/bindblur="([^"]+)"/)[1]
+  const nicknameConfirmHandler = nicknameInput.match(/bindconfirm="([^"]+)"/)[1]
+  autofilled[nicknameBlurHandler]({ detail: { value: '虚构微信昵称' } })
+  assert.strictEqual(autofilled.data.nickname, '虚构微信昵称')
+  assert.strictEqual(autofilled.data.nicknameInitial, '虚')
+  autofilled.render()
+  assert.strictEqual(autofilled.data.nickname, '虚构微信昵称', '刷新不能丢失原生昵称自动填充')
+  autofilled[nicknameConfirmHandler]({ detail: { value: '' } })
+  assert.strictEqual(autofilled.data.nickname, '', '清空昵称也是有效的可选资料修改')
+  autofilled.onNicknameInput(null)
+  autofilled.onNicknameInput({ detail: {} })
+  autofilled.memberManagementUnloaded = true
+  autofilled[nicknameBlurHandler]({ detail: { value: '迟到的昵称' } })
+  assert.strictEqual(autofilled.data.nickname, '')
   assert.strictEqual(submitted.data.avatarImageFailed, false, '资料保存成功后必须允许显示刷新后的头像')
 
   // Synthetic local file metadata and auth response: this is an offline flow
@@ -323,6 +350,54 @@ async function main() {
   assert.strictEqual(bindCalls, 0)
   assert.strictEqual(denied.data.bindingPhone, false)
   assert(/取消/.test(denied.data.phoneError))
+  assert.strictEqual(denied.data.phoneErrorTone, 'hint', '主动取消不是系统错误')
+
+  const originalWarn = console.warn
+  const phoneDiagnostics = []
+  console.warn = (...args) => phoneDiagnostics.push(args)
+  try {
+    for (const [message, expected] of [
+      ['getPhoneNumber:fail api scope is not declared in the privacy agreement', 'PRIVACY_DECLARATION'],
+      ['getPhoneNumber:fail no permission', 'CAPABILITY_UNAVAILABLE'],
+      ['getPhoneNumber:fail access denied', 'CAPABILITY_UNAVAILABLE'],
+      ['getPhoneNumber:fail not supported', 'CLIENT_UNSUPPORTED'],
+      ['getPhoneNumber:fail privacy authorization required', 'PRIVACY_AUTH_REQUIRED'],
+      ['getPhoneNumber:fail quota limit', 'LIMITED'],
+      ['getPhoneNumber:fail network timeout', 'NETWORK'],
+      ['getPhoneNumber:ok', 'NO_CODE'],
+      ['getPhoneNumber:fail unknown-sensitive-detail', 'NO_CODE'],
+    ]) {
+      const failed = makePage()
+      failed.data.profile = { phoneBound: true, maskedPhone: '****0000' }
+      await failed.onGetPhoneNumber({ detail: { errMsg: message, errno: 1400001,
+        encryptedData: 'private-encrypted-value', iv: 'private-iv', cloudID: 'private-cloud-id' } })
+      assert(failed.data.phoneError.includes('PHONE_NATIVE_' + expected))
+      assert(failed.data.phoneError.includes('errno=1400001'))
+      assert.strictEqual(failed.data.profile.maskedPhone, '****0000', '失败不改变已有绑定')
+      assert.strictEqual(failed.data.phoneErrorTone, 'error')
+      assert.strictEqual(bindCalls, 0, '没有 code 时绝不能调用云端或伪造绑定')
+      failed.onPhoneTap()
+      assert.strictEqual(failed.data.phoneError, '', '重试应清除上一次失败提示')
+    }
+    const nativeError = makePage()
+    nativeError.onPhoneNumberError({ detail: { errMsg: 'getPhoneNumber:fail no permission',
+      code: 'private-once-code', errno: 'private-id', errCode: 'private-numeric-like-12345678901' } })
+    assert(nativeError.data.phoneError.includes('CAPABILITY_UNAVAILABLE'))
+    const lastDiagnostic = phoneDiagnostics.at(-1)[1]
+    assert.deepStrictEqual(lastDiagnostic, { stage: 'native', reason: 'CAPABILITY_UNAVAILABLE' })
+    const logsBeforeCancel = phoneDiagnostics.length
+    nativeError.onPhoneNumberError({ detail: { errMsg: 'getPhoneNumber:fail user deny' } })
+    assert.strictEqual(phoneDiagnostics.length, logsBeforeCancel, '取消不写错误日志')
+    const logged = JSON.stringify(phoneDiagnostics)
+    for (const secret of ['private-', 'unknown-sensitive-detail', '"encryptedData":', '"cloudID":', '"iv":']) {
+      assert(!logged.includes(secret), '原生诊断不能输出凭证、号码或完整回调：' + secret)
+    }
+    for (const key of ['profileLoading', 'bindingPhone', 'saving']) {
+      const guarded = makePage(); guarded.data[key] = true
+      guarded.onPhoneNumberError({ detail: { errMsg: 'getPhoneNumber:fail' } })
+      assert.strictEqual(guarded.data.phoneError, '')
+    }
+  } finally { console.warn = originalWarn }
 
   const success = makePage()
   authStore.bindPhoneNumber = async (code) => {
@@ -348,6 +423,24 @@ async function main() {
   await unavailable.onGetPhoneNumber({ detail: { code: 'another-single-use-code' } })
   assert.strictEqual(unavailable.data.bindingPhone, false)
   assert(/不影响其他功能/.test(unavailable.data.phoneError))
+
+  const expiredCode = makePage()
+  authStore.bindPhoneNumber = async () => { throw Object.assign(new Error('private-server-detail'), { code: 'PHONE_CODE_INVALID' }) }
+  await expiredCode.onGetPhoneNumber({ detail: { code: 'synthetic-expired-code' } })
+  assert(expiredCode.data.phoneError.includes('PHONE_CLOUD_CODE_EXPIRED'))
+  assert(!expiredCode.data.phoneError.includes('private-server-detail'))
+  expiredCode.onNicknameInput({ detail: { value: '虚构未保存昵称' } })
+  expiredCode.onChooseAvatar({ detail: { avatarUrl: 'synthetic-unsaved-avatar' } })
+  expiredCode.onPhoneTap()
+  authStore.bindPhoneNumber = async code => {
+    assert.strictEqual(code, 'synthetic-fresh-code', '重试必须使用用户再次授权得到的新凭证')
+    return { nickname: '虚构旧昵称', phoneBound: true, maskedPhone: '****0000' }
+  }
+  await expiredCode.onGetPhoneNumber({ detail: { code: 'synthetic-fresh-code' } })
+  assert.strictEqual(expiredCode.data.phoneError, '')
+  assert.strictEqual(expiredCode.data.profile.maskedPhone, '****0000')
+  assert.strictEqual(expiredCode.data.nickname, '虚构未保存昵称')
+  assert.strictEqual(expiredCode.data.avatarLocalPath, 'synthetic-unsaved-avatar')
 
   bindCalls = 0
   authStore.bindPhoneNumber = async () => { bindCalls += 1; return {} }

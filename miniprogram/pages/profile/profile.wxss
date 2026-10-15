@@ -41,6 +41,7 @@
 .phone-visibility-button[disabled] { opacity: .48; }
 .profile-info-hint { display: block; margin: 0 0 16rpx; color: var(--muted); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .phone-error { display: block; margin: 0 0 20rpx; padding: 16rpx 18rpx; border: 1rpx solid var(--danger-line); border-radius: 8rpx; background: var(--danger-soft); color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.phone-error.hint { border-color: var(--line-strong); background: var(--surface-muted); color: var(--muted-strong); }
 .profile-save { margin-top: 18rpx; }
 .data-list { overflow: hidden; }
 .data-row { min-height: 92rpx; padding: 16rpx 26rpx; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; border-bottom: 1rpx solid var(--line); font-size: 14px; }
