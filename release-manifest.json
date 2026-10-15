@@ -1,8 +1,8 @@
 {
-  "lastReleasedVersion": "0.3.0",
-  "workingVersion": "0.3.1",
+  "lastReleasedVersion": "0.3.1",
+  "workingVersion": "0.3.2",
   "releaseStatus": "release-candidate",
-  "wechatUploadDescription": "0.3.1：修复旧资料请求覆盖保存结果、资料页切换后的迟到回调、尾号设置失败无法刷新及采购重置旧确认误操作；保留餐单、记录与成员数据。头像选择仍受微信后台隐私声明拦截，原生手机验收未完成；本次上传不代表已正式发布。",
+  "wechatUploadDescription": "0.3.2开发候选：保留头像、昵称和管理员备注；移除手机号绑定、尾号展示及授权入口。修复昵称选择后的保存同步和头像取消提示，保留餐单与记录。历史手机号字段清理待复核，手机原生验收未完成；本次上传不代表正式发布。",
   "stateSchemaVersion": 13,
   "minimumMigratableStateSchemaVersion": 1,
   "aiContractVersion": 4,
