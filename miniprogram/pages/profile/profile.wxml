@@ -1,5 +1,6 @@
 <view class="screen">
-  <view class="profile-header surface">
+  <form class="profile-form surface" bindsubmit="saveProfile">
+  <view class="profile-header">
     <button wx:if="{{avatarPrivacyMode === 'native'}}" class="avatar-button" open-type="chooseAvatar" bindtap="onAvatarTap" bindchooseavatar="onChooseAvatar" binderror="onChooseAvatarError" disabled="{{profileLoading || saving}}" hover-class="profile-control-hover" aria-label="更换头像">
       <view class="avatar-visual">
         <image wx:if="{{avatarPreview && !avatarImageFailed}}" class="avatar" src="{{avatarPreview}}" data-src="{{avatarPreview}}" binderror="onAvatarImageError" mode="aspectFill" />
@@ -16,9 +17,11 @@
       </view>
       <text class="avatar-action">更换头像</text>
     </button>
-    <view class="header-copy"><text class="header-title">{{nickname || '还没有设置昵称'}}</text><text class="header-subtitle">个人资料可以跳过，以后随时修改</text></view>
+    <view class="header-copy">
+      <label class="nickname-label" for="profile-nickname">昵称</label>
+      <input class="nickname-input" type="nickname" name="nickname" id="profile-nickname" maxlength="20" value="{{nickname}}" bindinput="onNicknameInput" bindblur="onNicknameInput" bindconfirm="onNicknameInput" disabled="{{profileLoading || saving}}" placeholder="点击填写昵称" aria-label="昵称，可选择微信昵称或自行填写" />
+    </view>
   </view>
-  <text wx:if="{{avatarLocalPath}}" class="profile-info-hint avatar-draft-hint" aria-role="status">新头像尚未保存。{{nickname ? '' : '可点击下方昵称输入框，选择微信昵称或自行填写；'}}完成后请点击“保存资料”。</text>
   <view wx:if="{{avatarPrivacyError}}" class="avatar-privacy-message {{avatarPrivacyTone}}" aria-role="alert">
     <text>{{avatarPrivacyError}}</text>
     <view wx:if="{{avatarPrivacyMode !== 'native'}}" class="avatar-error-actions">
@@ -34,12 +37,8 @@
     <view class="auth-dot"></view><view><text class="auth-title">正在加载资料</text><text class="auth-detail">请稍候</text></view>
   </view>
 
-  <text class="section-title">个人资料</text>
-  <form class="profile-form surface" bindsubmit="saveProfile">
-    <view class="field-row"><label class="field-label" for="profile-nickname">昵称</label><input type="nickname" name="nickname" id="profile-nickname" maxlength="20" value="{{nickname}}" bindinput="onNicknameInput" bindblur="onNicknameInput" bindconfirm="onNicknameInput" disabled="{{profileLoading || saving}}" placeholder="使用微信昵称或自行填写" aria-label="昵称，可选择微信昵称或自行填写" /></view>
-    <text class="profile-info-hint">点击昵称输入框，可使用微信提供的昵称或自行填写。选择头像不会自动获取昵称；两项填写后一起保存，也可只保存一项。</text>
     <text wx:if="{{profileSaveError}}" class="profile-save-error" aria-role="alert">{{profileSaveError}}</text>
-    <button class="primary-button profile-save" form-type="submit" loading="{{saving}}" disabled="{{profileLoading || saving}}" hover-class="button-hover">保存资料</button>
+    <button class="primary-button profile-save" form-type="submit" loading="{{saving}}" disabled="{{profileLoading || saving}}" hover-class="button-hover">{{saving ? '正在保存' : (avatarLocalPath || nicknameDirty ? '保存修改' : '保存资料')}}</button>
   </form>
 
   <text class="section-title">健康提醒</text>

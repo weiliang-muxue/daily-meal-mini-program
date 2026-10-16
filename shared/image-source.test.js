@@ -113,16 +113,37 @@ function synchronousDependencies(content, counters) {
   await assert.rejects(() => downloadImageSource({ ...metadata, sourceUrl: 'http://cdn.example/image' }, {
     maxBytes: 32, label: '头像', dependencies: {
       ...upgradeDependencies,
-      request() { tlsRequests += 1; throw new Error('synthetic TLS failure') },
+      request() { tlsRequests += 1; throw Object.assign(new Error('synthetic TLS failure'), { code: 'ERR_TLS_CERT_ALTNAME_INVALID' }) },
     },
-  }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE')
+  }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE' && error.imageFetchStage === 'tls' && error.imageSourceProtocol === 'http')
   assert.strictEqual(tlsRequests, 1, 'TLS 失败不得重试明文 HTTP')
 
   for (const lookup of [async () => { throw new Error('synthetic DNS failure') }, async () => []]) {
     await assert.rejects(() => downloadImageSource(metadata, {
       maxBytes: 32, label: '头像', dependencies: { ...upgradeDependencies, lookup },
-    }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE' && error.retryable === true)
+    }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE' && error.retryable === true && error.imageFetchStage === 'dns')
   }
+
+  for (const route of [
+    { statusCode: 403, headers: {}, stage: 'http' },
+    { statusCode: 200, headers: { 'content-encoding': 'gzip' }, body: content, stage: 'encoding' },
+  ]) {
+    await assert.rejects(() => downloadImageSource(metadata, {
+      maxBytes: 32, label: '头像', dependencies: fakeDependencies({ '/image': route }),
+    }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE' && error.imageFetchStage === route.stage
+      && error.imageHttpStatus === route.statusCode && error.imageSourceProtocol === 'https')
+  }
+  const stalled = fakeDependencies({})
+  stalled.request = () => {
+    const request = new EventEmitter()
+    request.setTimeout = () => {}
+    request.end = () => {}
+    request.destroy = error => request.emit('error', error)
+    return request
+  }
+  await assert.rejects(() => downloadImageSource(metadata, {
+    maxBytes: 32, label: '头像', timeoutMs: 10, dependencies: stalled,
+  }), error => error.imageFetchStage === 'timeout', '超时不能被 destroy 的同步 error 误归为网络错误')
 
   const synchronousCounters = { destroyed: 0, ended: 0, timeoutValues: [] }
   const synchronous = await downloadImageSource(metadata, {

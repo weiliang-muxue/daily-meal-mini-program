@@ -707,7 +707,8 @@ Page({
       if (!this.isProfileContextCurrent(context)) return
       const message = error && error.message || '保存失败，请重试'
       this.setData({ profileSaveError: message + (this.data.avatarLocalPath ? '；已选择的头像仍保留在当前页面。' : '') })
-      wx.showToast({ title: message, icon: 'none' })
+      // Keep one readable, persistent error beside the save button. A second
+      // toast used to cover the same message and made the form harder to use.
     } finally {
       this.finishProfileSave(operation)
     }

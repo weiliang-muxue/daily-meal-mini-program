@@ -42,7 +42,17 @@ const AUTH_REQUEST_MESSAGES = new Set([
 function publicAuthFailure(error) {
   const code = typeof (error && error.code) === 'string' ? error.code : ''
   if (Object.prototype.hasOwnProperty.call(AUTH_ERROR_MESSAGES, code)) {
-    return { code, message: AUTH_ERROR_MESSAGES[code] }
+    const failure = { code, message: AUTH_ERROR_MESSAGES[code] }
+    if (code === 'IMAGE_SOURCE_UNAVAILABLE') {
+      if (['dns', 'timeout', 'tls', 'network', 'http', 'encoding', 'response'].includes(error.imageFetchStage)) {
+        failure.imageFetchStage = error.imageFetchStage
+      }
+      if (Number.isInteger(error.imageHttpStatus) && error.imageHttpStatus >= 100 && error.imageHttpStatus <= 599) {
+        failure.imageHttpStatus = error.imageHttpStatus
+      }
+      if (['http', 'https'].includes(error.imageSourceProtocol)) failure.imageSourceProtocol = error.imageSourceProtocol
+    }
+    return failure
   }
   const message = typeof (error && error.message) === 'string' ? error.message : ''
   if (AUTH_REQUEST_MESSAGES.has(message)) return { code: 'AUTH_REQUEST_INVALID', message }

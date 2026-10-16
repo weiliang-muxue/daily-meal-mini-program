@@ -9,10 +9,11 @@ const DEFAULT_TIMEOUT_MS = 7000
 const DNS_TIMEOUT_MS = 2000
 const MAX_REDIRECTS = 2
 
-function imageSourceError(code, message, retryable = false) {
+function imageSourceError(code, message, retryable = false, fetchStage) {
   const error = new Error(message)
   error.code = code
   error.retryable = retryable
+  if (fetchStage) error.imageFetchStage = fetchStage
   return error
 }
 
@@ -132,17 +133,17 @@ async function downloadStep(sourceUrl, options, redirectCount, deadline) {
   const url = validSourceUrl(sourceUrl)
   const hostname = url.hostname.replace(/^\[|\]$/g, '')
   const dnsBudget = Math.min(DNS_TIMEOUT_MS, deadline - dependencies.now())
-  if (dnsBudget < 1) throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取超时，请重新选择`, true)
+  if (dnsBudget < 1) throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取超时，请重新选择`, true, 'timeout')
   const addresses = await withTimeout(dependencies.lookup(hostname), dnsBudget).catch(() => null)
   if (!Array.isArray(addresses) || !addresses.length) {
-    throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取失败，请重新选择`, true)
+    throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取失败，请重新选择`, true, 'dns')
   }
   if (addresses.some((item) => !publicAddress(item && item.address))) {
     throw imageSourceError('IMAGE_SOURCE_INVALID', `${label}临时地址无效，请重新选择`)
   }
   const selected = addresses[0]
   const requestBudget = deadline - dependencies.now()
-  if (requestBudget < 1) throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取超时，请重新选择`, true)
+  if (requestBudget < 1) throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取超时，请重新选择`, true, 'timeout')
 
   return new Promise((resolve, reject) => {
     let settled = false
@@ -156,11 +157,12 @@ async function downloadStep(sourceUrl, options, redirectCount, deadline) {
       if (error) reject(error)
       else resolve(value)
     }
-    const unavailable = () => imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取失败，请重新选择`, true)
-    const timedOut = () => imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取超时，请重新选择`, true)
+    const unavailable = (stage = 'network') => imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取失败，请重新选择`, true, stage)
+    const requestFailed = (error) => unavailable(/TLS|CERT|SSL/.test(String(error && error.code || '')) ? 'tls' : 'network')
+    const timedOut = () => unavailable('timeout')
     absoluteTimer = setTimeout(() => {
-      if (request && typeof request.destroy === 'function') request.destroy(new Error('timeout'))
       settle(timedOut())
+      if (request && typeof request.destroy === 'function') request.destroy(new Error('timeout'))
     }, requestBudget)
     try {
       request = dependencies.request({
@@ -189,7 +191,9 @@ async function downloadStep(sourceUrl, options, redirectCount, deadline) {
         }
         if (status !== 200 || (response.headers['content-encoding'] && response.headers['content-encoding'] !== 'identity')) {
           response.resume()
-          settle(unavailable())
+          const error = unavailable(status !== 200 ? 'http' : 'encoding')
+          if (Number.isInteger(status) && status >= 100 && status <= 599) error.imageHttpStatus = status
+          settle(error)
           return
         }
         const declared = Number(response.headers['content-length'])
@@ -211,18 +215,18 @@ async function downloadStep(sourceUrl, options, redirectCount, deadline) {
           chunks.push(buffer)
         })
         response.on('end', () => settle(null, Buffer.concat(chunks)))
-        response.on('error', () => settle(unavailable()))
+        response.on('error', () => settle(unavailable('response')))
       })
-    } catch (_) {
-      settle(unavailable())
+    } catch (error) {
+      settle(requestFailed(error))
       return
     }
     if (settled) return
     request.setTimeout(requestBudget, () => {
-      request.destroy(new Error('timeout'))
       settle(timedOut())
+      request.destroy(new Error('timeout'))
     })
-    request.on('error', () => settle(unavailable()))
+    request.on('error', (error) => settle(requestFailed(error)))
     request.end()
   })
 }
@@ -234,7 +238,17 @@ async function downloadImageSource(input = {}, options = {}) {
   const dependencies = options.dependencies || defaultDependencies
   const timeoutMs = Number.isSafeInteger(options.timeoutMs) && options.timeoutMs > 0
     ? options.timeoutMs : DEFAULT_TIMEOUT_MS
-  const buffer = await downloadStep(input.sourceUrl, { maxBytes, label, dependencies }, 0, dependencies.now() + timeoutMs)
+  let buffer
+  try {
+    buffer = await downloadStep(input.sourceUrl, { maxBytes, label, dependencies }, 0, dependencies.now() + timeoutMs)
+  } catch (error) {
+    // Fixed-value diagnostics only: never expose the signed source URL, DNS
+    // addresses, headers, credentials or provider error text.
+    if (typeof input.sourceUrl === 'string' && /^https?:\/\//.test(input.sourceUrl)) {
+      error.imageSourceProtocol = input.sourceUrl.startsWith('https:') ? 'https' : 'http'
+    }
+    throw error
+  }
   const digest = crypto.createHash('sha256').update(buffer).digest('hex')
   if (buffer.length !== metadata.size || digest !== metadata.sha256) {
     throw imageSourceError('IMAGE_CONTENT_MISMATCH', `${label}内容发生变化，请重新选择`)

@@ -17,8 +17,8 @@ const avatarButton = (profileWxml.match(/<button[^>]*open-type="chooseAvatar"[^>
 const avatarErrorHandler = (avatarButton.match(/binderror="([^"]+)"/) || [])[1]
 assert.strictEqual(avatarErrorHandler, 'onChooseAvatarError', '原生头像错误必须通过 button 的 binderror 接收，不能只测试成功回调')
 assert(avatarButton.includes('bindtap="onAvatarTap"'), '原生头像入口应提供点击反馈且不能替换原生选择流程')
-assert(profileWxml.includes('wx:if="{{avatarLocalPath}}"') && profileWxml.includes('新头像尚未保存'),
-  '选图预览必须明确尚未保存，不能误报上传成功')
+assert(profileWxml.includes("avatarLocalPath || nicknameDirty ? '保存修改' : '保存资料'"),
+  '未保存修改通过提交按钮表达，不重复堆叠长提示')
 assert(profileWxml.includes('wx:if="{{profileSaveError}}"') && profileWxml.includes('{{profileSaveError}}'),
   '资料保存失败必须留下可读的页内重试提示')
 assert(/open-type="chooseAvatar"[^>]+disabled="\{\{profileLoading \|\| saving\}\}"/.test(profileWxml),
@@ -33,6 +33,8 @@ assert(/aria-label="更换头像"/.test(profileWxml) && /aria-label="授权后�
   '头像入口必须提供与可见动作一致的读屏名称')
 assert(/\.avatar-button\s*\{[^}]*min-width:\s*76px[^}]*min-height:\s*78px/.test(profileWxss),
   '头像入口必须保留稳定且充足的移动端触控区域')
+assert(/\.profile-header \.avatar-button\s*\{[^}]*max-width:\s*76px[^}]*flex:\s*0 0 76px/.test(profileWxss),
+  '头像按钮必须覆盖原生默认 184px 宽度，给旁边昵称留下空间')
 assert(/\.avatar-edit-icon\s*\{[^}]*position:\s*absolute[^}]*border-radius:\s*50%/.test(profileWxss),
   '头像上必须有稳定、不改变布局的编辑状态标记')
 assert.strictEqual((profileWxml.match(/wx:if="\{\{avatarPreview && !avatarImageFailed\}\}"/g) || []).length, 2,
@@ -46,14 +48,20 @@ assert(/<input[^>]+type="nickname"[^>]+bindblur="onNicknameInput"[^>]+bindconfir
   '微信昵称自动填充的 blur/confirm 必须同步草稿，不能只依赖 input')
 assert(/<input[^>]+type="nickname"[^>]+disabled="\{\{profileLoading \|\| saving\}\}"/.test(profileWxml),
   '资料初始化和保存期间必须锁定昵称输入')
-assert(/class="header-title">\{\{nickname \|\| '还没有设置昵称'\}\}/.test(profileWxml),
-  '页头昵称必须实时预览当前输入，不能停留在已保存旧值')
+assert(/class="header-copy">\s*<label[^>]+for="profile-nickname">昵称<\/label>\s*<input[^>]+value="\{\{nickname\}\}"/.test(profileWxml),
+  '昵称直接在头像旁编辑，保留可见标签和当前草稿')
+const identityForm = (profileWxml.match(/<form[^>]+bindsubmit="saveProfile">[\s\S]*?<\/form>/) || [''])[0]
+assert(identityForm.includes('open-type="chooseAvatar"') && identityForm.includes('type="nickname"')
+  && identityForm.includes('form-type="submit"'), '头像、昵称及保存必须在同一表单')
+assert.strictEqual((profileWxml.match(/type="nickname"/g) || []).length, 1, '不重复显示昵称输入')
 assert(/<form[^>]+bindsubmit="saveProfile"/.test(profileWxml) && /form-type="submit"/.test(profileWxml))
 assert(/\.profile-form\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*display:\s*block[^}]*box-sizing:\s*border-box/.test(profileWxss),
   '原生 form 卡片必须显式铺满并使用 border-box，避免 surface 背景碎裂成窄条')
 assert(!/getPhoneNumber|phoneVisibility|手机尾号/.test(profileWxml), '手机号入口和尾号展示已移除')
-assert(profileWxml.includes('使用微信昵称或自行填写') && /\.profile-info-hint\s*\{[^}]*font-size:\s*14px[^}]*overflow-wrap:\s*anywhere/.test(profileWxss),
-  '可选资料提示使用可读字号并在窄屏内换行')
+assert(profileWxml.includes('点击填写昵称') && /\.nickname-input\s*\{[^}]*min-height:\s*48px/.test(profileWxss),
+  '昵称输入必须有明确入口和至少 48px 触控高度')
+assert(/\.header-copy\s*\{[^}]*flex:\s*1[^}]*min-width:\s*0/.test(profileWxss), '昵称在窄屏可收缩，不能挤出卡片')
+assert(!/header-subtitle|新头像尚未保存|点击昵称输入框/.test(profileWxml), '移除重复资料说明')
 assert(/class="primary-button profile-save"[^>]+disabled="\{\{profileLoading \|\| saving\}\}"/.test(profileWxml), '资料加载和保存期间继续锁定提交')
 assert(!/getUserInfo/.test(profileWxml), '资料页不能静默读取已废弃的完整微信资料')
 assert(/avatarPrivacyMode:\s*'native'/.test(profileBehavior),
@@ -305,11 +313,13 @@ async function main() {
     if (avatarWriteCalls === 1) throw new Error('网络暂时不可用，请重试')
     return { nickname: payload.nickname, avatarUrl: 'new-saved-avatar' }
   }
+  const beforeFailureToasts = toastCalls.length
   await avatarSave.saveProfile({ detail: { value: { nickname: '测试资料' } } })
   assert.strictEqual(avatarSave.data.profile.avatarUrl, 'previous-saved-avatar')
   assert.strictEqual(avatarSave.data.avatarLocalPath, 'synthetic-avatar-path')
   assert.strictEqual(avatarSave.data.saving, false)
   assert(avatarSave.data.profileSaveError.includes('保留在当前页面'))
+  assert.strictEqual(toastCalls.length, beforeFailureToasts, '保存失败只显示持久页内错误，不叠加遮挡式 toast')
   await avatarSave.saveProfile({ detail: { value: { nickname: '测试资料' } } })
   assert.strictEqual(avatarSave.data.avatarLocalPath, '')
   assert.strictEqual(avatarSave.data.avatarPreview, 'new-saved-avatar')

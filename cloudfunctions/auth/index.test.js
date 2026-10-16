@@ -210,6 +210,26 @@ async function testPublicErrorBoundary() {
     success: false, code: 'MEMBERSHIP_REQUIRED', message: '需要有效邀请才能使用',
   })
   assert.strictEqual(JSON.stringify(known).includes(privateDetail), false)
+
+  for (const allowed of [true, false]) {
+    reset()
+    const before = get('meal_users', OPENID)
+    downloadHandler = async () => { throw Object.assign(new Error(privateDetail), {
+      code: 'IMAGE_SOURCE_UNAVAILABLE',
+      imageFetchStage: allowed ? 'http' : privateDetail,
+      imageHttpStatus: allowed ? 403 : 999,
+      imageSourceProtocol: allowed ? 'https' : privateDetail,
+      sourceUrl: 'https://private.example/signed?secret=not-for-response',
+    }) }
+    const response = await auth.main({ action: 'updateProfile', expectedCacheNamespace: CACHE_NAMESPACE,
+      profile: { nickname: '不得写入', avatarImage: AVATAR_INPUT } })
+    assert.strictEqual(response.code, 'IMAGE_SOURCE_UNAVAILABLE')
+    assert.strictEqual(response.imageFetchStage, allowed ? 'http' : undefined)
+    assert.strictEqual(response.imageHttpStatus, allowed ? 403 : undefined)
+    assert.strictEqual(response.imageSourceProtocol, allowed ? 'https' : undefined)
+    assert(!/private|secret|not-for-response/.test(JSON.stringify(response)), '诊断不能泄露下载地址或上游错误')
+    assert.deepStrictEqual(get('meal_users', OPENID), before, '下载失败不得写入头像或昵称')
+  }
 }
 
 async function testEveryActionRejectsMissingAndStaleGeneration() {
