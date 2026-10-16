@@ -34,6 +34,12 @@ function validSourceUrl(value) {
   try { url = new URL(value) } catch (_) {
     throw imageSourceError('IMAGE_SOURCE_INVALID', '图片临时地址无效，请重新选择')
   }
+  // Cloud.CDN promises an HTTP URL, not necessarily an HTTPS-formatted URL.
+  // Upgrade the default HTTP endpoint locally before resolving or requesting it;
+  // never fetch private images over plaintext or fall back after a TLS failure.
+  if (url.protocol === 'http:' && !url.port && !url.username && !url.password) {
+    url.protocol = 'https:'
+  }
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) {
     throw imageSourceError('IMAGE_SOURCE_INVALID', '图片临时地址无效，请重新选择')
   }
@@ -127,8 +133,11 @@ async function downloadStep(sourceUrl, options, redirectCount, deadline) {
   const hostname = url.hostname.replace(/^\[|\]$/g, '')
   const dnsBudget = Math.min(DNS_TIMEOUT_MS, deadline - dependencies.now())
   if (dnsBudget < 1) throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取超时，请重新选择`, true)
-  const addresses = await withTimeout(dependencies.lookup(hostname), dnsBudget).catch(() => [])
-  if (!Array.isArray(addresses) || !addresses.length || addresses.some((item) => !publicAddress(item && item.address))) {
+  const addresses = await withTimeout(dependencies.lookup(hostname), dnsBudget).catch(() => null)
+  if (!Array.isArray(addresses) || !addresses.length) {
+    throw imageSourceError('IMAGE_SOURCE_UNAVAILABLE', `${label}读取失败，请重新选择`, true)
+  }
+  if (addresses.some((item) => !publicAddress(item && item.address))) {
     throw imageSourceError('IMAGE_SOURCE_INVALID', `${label}临时地址无效，请重新选择`)
   }
   const selected = addresses[0]

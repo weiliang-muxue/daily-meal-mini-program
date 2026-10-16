@@ -10,7 +10,13 @@ assert.strictEqual(publicAddress('8.8.8.8'), true)
   assert.strictEqual(publicAddress(value), false, `${value} 必须被 SSRF 防护拒绝`)
 })
 assert.strictEqual(publicAddress('2606:4700:4700::1111'), true)
-assert.throws(() => validSourceUrl('http://example.com/a.jpg'), /临时地址无效/)
+assert.strictEqual(validSourceUrl('http://example.com/a.jpg?signature=synthetic#ignored').href,
+  'https://example.com/a.jpg?signature=synthetic')
+assert.strictEqual(validSourceUrl('http://example.com:80/a.jpg').href, 'https://example.com/a.jpg')
+assert.strictEqual(validSourceUrl('https://example.com:443/a.jpg').href, 'https://example.com/a.jpg')
+;['http://example.com:8080/a.jpg', 'http://example.com:443/a.jpg', 'ftp://example.com/a.jpg',
+  'http://user:pass@example.com/a.jpg', 'wxfile://tmp/avatar.jpg', '', { target: 'unresolved-cdn' }]
+  .forEach(value => assert.throws(() => validSourceUrl(value), /临时地址无效/))
 assert.throws(() => validSourceUrl('https://user:pass@example.com/a.jpg'), /临时地址无效/)
 assert.throws(() => validMetadata({ sourceSize: 3, sourceSha256: 'x' }, 10, '头像'), /文件信息无效/)
 
@@ -77,6 +83,46 @@ function synchronousDependencies(content, counters) {
     }),
   })
   assert.deepStrictEqual(downloaded, content)
+
+  const upgradeDependencies = fakeDependencies({
+    '/image': { statusCode: 200, headers: {}, body: content },
+    '/redirect': { statusCode: 302, headers: { location: 'http://cdn.example/image' } },
+    '/private-redirect': { statusCode: 302, headers: { location: 'http://private.example/image' } },
+  })
+  const requested = []
+  const request = upgradeDependencies.request
+  upgradeDependencies.request = (options, callback) => {
+    requested.push(options)
+    assert.strictEqual(options.port, 443)
+    assert.strictEqual(options.rejectUnauthorized, true)
+    assert.strictEqual(options.servername, 'cdn.example')
+    assert.strictEqual(options.hostname, '8.8.8.8', '请求必须使用校验后的固定公网地址')
+    return request(options, callback)
+  }
+  for (const sourceUrl of ['http://cdn.example/image', 'https://cdn.example/redirect']) {
+    assert.deepStrictEqual(await downloadImageSource({ ...metadata, sourceUrl }, {
+      maxBytes: 32, label: '头像', dependencies: upgradeDependencies,
+    }), content)
+  }
+  assert.strictEqual(requested.length, 3)
+  await assert.rejects(() => downloadImageSource({ ...metadata, sourceUrl: 'http://cdn.example/private-redirect' }, {
+    maxBytes: 32, label: '头像', dependencies: upgradeDependencies,
+  }), error => error.code === 'IMAGE_SOURCE_INVALID')
+
+  let tlsRequests = 0
+  await assert.rejects(() => downloadImageSource({ ...metadata, sourceUrl: 'http://cdn.example/image' }, {
+    maxBytes: 32, label: '头像', dependencies: {
+      ...upgradeDependencies,
+      request() { tlsRequests += 1; throw new Error('synthetic TLS failure') },
+    },
+  }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE')
+  assert.strictEqual(tlsRequests, 1, 'TLS 失败不得重试明文 HTTP')
+
+  for (const lookup of [async () => { throw new Error('synthetic DNS failure') }, async () => []]) {
+    await assert.rejects(() => downloadImageSource(metadata, {
+      maxBytes: 32, label: '头像', dependencies: { ...upgradeDependencies, lookup },
+    }), error => error.code === 'IMAGE_SOURCE_UNAVAILABLE' && error.retryable === true)
+  }
 
   const synchronousCounters = { destroyed: 0, ended: 0, timeoutValues: [] }
   const synchronous = await downloadImageSource(metadata, {

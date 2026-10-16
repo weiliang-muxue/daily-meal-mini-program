@@ -4,6 +4,8 @@ const assert = require('assert')
 const crypto = require('crypto')
 const Module = require('module')
 const path = require('path')
+const { EventEmitter } = require('events')
+const { downloadImageSource: realDownloadImageSource } = require('./image-source')
 
 const OPENID = 'test-user'
 const CACHE_NAMESPACE = 'a'.repeat(32)
@@ -396,6 +398,67 @@ async function testSuccessfulAvatarCommitConsumesAndCleansTicket() {
   assert(deletedFiles.includes('cloud://env/avatar-old'), '成功替换后必须清理旧头像')
 }
 
+async function testCdnSourceThroughRealImageValidation() {
+  // Exercise the real downloader and file checks, not the default PNG stub.
+  // Only DNS/network/storage are fake; no real member or image is involved.
+  for (const content of [PNG, Buffer.from('avatar-transport-synthetic-probe')]) {
+    reset()
+    const originalProfile = get('meal_users', OPENID)
+    const contents = []
+    uploadHook = async ({ fileContent }) => { contents.push(fileContent) }
+    const requests = []
+    downloadHandler = (input, options) => realDownloadImageSource(input, {
+      ...options,
+      dependencies: {
+        now: () => Date.now(),
+        lookup: async () => [{ address: '8.8.8.8', family: 4 }],
+        request(options, callback) {
+          requests.push(options)
+          const request = new EventEmitter()
+          request.setTimeout = () => {}
+          request.end = () => {
+            const response = new EventEmitter()
+            response.statusCode = 200
+            response.headers = { 'content-length': String(content.length) }
+            response.destroy = () => {}
+            callback(response)
+            response.emit('data', content)
+            response.emit('end')
+          }
+          return request
+        },
+      },
+    })
+    const response = await auth.main({
+      action: 'updateProfile', expectedCacheNamespace: CACHE_NAMESPACE,
+      profile: {
+        nickname: '虚构昵称', avatarImage: {
+          sourceUrl: 'http://cdn.example/avatar', sourceSize: content.length,
+          sourceSha256: crypto.createHash('sha256').update(content).digest('hex'),
+        },
+      },
+    })
+    assert.strictEqual(requests.length, 1)
+    assert.strictEqual(requests[0].port, 443)
+    assert.strictEqual(requests[0].rejectUnauthorized, true)
+    assert.deepStrictEqual(records('meal_avatar_uploads'), [])
+    if (content === PNG) {
+      assert.strictEqual(response.success, true)
+      assert.strictEqual(get('meal_users', OPENID).nickname, '虚构昵称')
+      assert.strictEqual(uploadedPaths.length, 1)
+    } else {
+      assert.strictEqual(response.success, false)
+      assert.strictEqual(response.message, '头像必须是 JPG、PNG 或 WebP 图片')
+      assert.deepStrictEqual(get('meal_users', OPENID), originalProfile)
+      // Existing ticket cleanup may reclaim its own orphan path using a
+      // one-byte placeholder; it must never upload the invalid source as an
+      // avatar or delete the active avatar.
+      assert(contents.every(value => value.equals(Buffer.from([0]))))
+      assert(!deletedFiles.includes(originalProfile.avatarFileId))
+    }
+  }
+}
+
 async function testAuthStoreSendsExpectedGeneration() {
   const authStorePath = path.resolve(__dirname, '../../miniprogram/services/auth-store.js')
   const cloudPath = path.resolve(__dirname, '../../miniprogram/utils/cloud.js')
@@ -449,6 +512,7 @@ async function tests() {
   await testFailedCompensationKeepsReceiptUntilLeaseRetry()
   await testCleanupReadyCannotOverrideLiveUploadLease()
   await testSuccessfulAvatarCommitConsumesAndCleansTicket()
+  await testCdnSourceThroughRealImageValidation()
   await testAuthStoreSendsExpectedGeneration()
   console.log('auth generation and public boundary tests passed')
 }
